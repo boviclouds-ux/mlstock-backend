@@ -10,7 +10,9 @@ app.use(cors());
 app.use(express.json());
 
 // Connexion à MongoDB
-mongoose.connect(process.env.MONGODB_URI)
+const uri = process.env.MONGO_URI;
+console.log("uri", uri);
+mongoose.connect(uri)
   .then(() => console.log('✅ Connecté à la base de données MLstock (Isolée)'))
   .catch((err) => console.error('❌ Erreur de connexion MongoDB:', err));
 
