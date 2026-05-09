@@ -10,13 +10,23 @@ app.use(cors({
 }));
 app.use(express.json());
 
-const articleRoutes = require('./routes/articleRoutes');
-const transactionRoutes = require('./routes/transactionRoutes');
+// Enregistrement explicite des modèles Mongoose
+// (nécessaire quand un modèle est référencé via ref: 'X' mais pas importé par une route)
+require('./models/Fournisseur');
+require('./models/Unite');
+require('./models/User');
+
+const authRoutes         = require('./routes/auth');
+const uniteRoutes        = require('./routes/unites');
+const articleRoutes      = require('./routes/articles');
+const transactionRoutes  = require('./routes/transactions');
 
 app.get('/api/status', (req, res) => {
-  res.json({ status: 'ok', message: 'API MLstock opérationnelle' });
+  res.json({ status: 'ok', message: 'API MLstock opérationnelle', version: '2.0' });
 });
 
+app.use('/api/auth',         authRoutes);
+app.use('/api/unites',       uniteRoutes);
 app.use('/api/articles',     articleRoutes);
 app.use('/api/transactions', transactionRoutes);
 

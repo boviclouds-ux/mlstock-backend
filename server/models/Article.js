@@ -2,19 +2,61 @@ const mongoose = require('mongoose');
 
 const articleSchema = new mongoose.Schema(
   {
-    code: { type: String, required: true, unique: true, uppercase: true, trim: true },
-    categorie: {
-      type: String,
-      required: true,
-      enum: ['semence', 'azote', 'materiel'],
+    code: {
+      type:      String,
+      required:  [true, 'Le code article est requis'],
+      unique:    true,
+      uppercase: true,
+      trim:      true,
     },
-    unite: { type: String, required: true, trim: true },
-    stockable: { type: Boolean, default: true },
-    actif: { type: Boolean, default: true },
-    seuilAlerte: { type: Number, default: 0 },
-    seuilCritique: { type: Number, default: 0 },
+    designation: {
+      type:     String,
+      required: [true, 'La désignation est requise'],
+      trim:     true,
+    },
+    // Catégorie libre : permet les catégories personnalisées (ex: "Azote", "Équipement"…)
+    categorie: {
+      type:    String,
+      trim:    true,
+      default: 'Autre',
+    },
+    uniteMesure: {
+      type:     String,
+      required: [true, "L'unité de mesure est requise"],
+      enum: {
+        values:  ['Unité', 'Kg', 'L', 'Dose', 'Boîte'],
+        message: 'Unité de mesure invalide : {VALUE}',
+      },
+    },
+    // Optionnel : null = article subventionné / sans valeur marchande
+    valeurEstimee: {
+      type:    Number,
+      min:     [0, 'La valeur estimée ne peut pas être négative'],
+      default: null,
+    },
+    seuilAlerte: {
+      type:    Number,
+      min:     [0, 'Le seuil d\'alerte ne peut pas être négatif'],
+      default: 0,
+    },
+    actif: {
+      type:    Boolean,
+      default: true,
+    },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+    toJSON:    { virtuals: true },
+    toObject:  { virtuals: true },
+  }
 );
+
+/* ─── Virtuel : indique si l'article est subventionné ──── */
+articleSchema.virtual('subventionne').get(function () {
+  return this.valeurEstimee == null;
+});
+
+/* ─── Index texte pour la recherche ────────────────────── */
+articleSchema.index({ designation: 'text', categorie: 'text' });
 
 module.exports = mongoose.model('Article', articleSchema);

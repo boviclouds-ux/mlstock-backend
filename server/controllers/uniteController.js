@@ -1,4 +1,4 @@
-const Article = require('../models/Article');
+const Unite = require('../models/Unite');
 
 /* ─── Helper : formate les erreurs Mongoose ────────────── */
 function validationMessage(err) {
@@ -6,79 +6,75 @@ function validationMessage(err) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   GET /api/articles
-   Query params : ?categorie=Semences  ?actif=true  ?search=holstein
+   GET /api/unites
+   Query params : ?actif=true|false  ?type=COOPERATIVE  ?region=xxx
 ═══════════════════════════════════════════════════════════ */
-const getAllArticles = async (req, res) => {
+const getAllUnites = async (req, res) => {
   try {
     const filter = {};
-    if (req.query.actif !== undefined) filter.actif = req.query.actif === 'true';
-    if (req.query.categorie)           filter.categorie = new RegExp(req.query.categorie, 'i');
+    if (req.query.actif   !== undefined) filter.actif  = req.query.actif === 'true';
+    if (req.query.type)                  filter.type   = req.query.type;
+    if (req.query.region)                filter.region = new RegExp(req.query.region, 'i');
 
-    // Recherche texte libre sur désignation
-    if (req.query.search) {
-      filter.designation = new RegExp(req.query.search, 'i');
-    }
-
-    const articles = await Article.find(filter).sort({ designation: 1 });
-    res.json(articles);
+    const unites = await Unite.find(filter).sort({ nom: 1 });
+    res.json(unites);
   } catch (err) {
-    console.error('[Article] getAllArticles :', err.message);
+    console.error('[Unite] getAllUnites :', err.message);
     res.status(500).json({ message: err.message });
   }
 };
 
 /* ═══════════════════════════════════════════════════════════
-   GET /api/articles/:id
+   GET /api/unites/:id
 ═══════════════════════════════════════════════════════════ */
-const getArticleById = async (req, res) => {
+const getUniteById = async (req, res) => {
   try {
-    const article = await Article.findById(req.params.id);
-    if (!article) return res.status(404).json({ message: 'Article introuvable.' });
-    res.json(article);
+    const unite = await Unite.findById(req.params.id);
+    if (!unite) return res.status(404).json({ message: 'Unité introuvable.' });
+    res.json(unite);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 };
 
 /* ═══════════════════════════════════════════════════════════
-   POST /api/articles
-   Corps : { code, designation, categorie, uniteMesure, valeurEstimee?, seuilAlerte }
+   POST /api/unites
+   Corps : { code, nom, region, type, contact, actif }
 ═══════════════════════════════════════════════════════════ */
-const createArticle = async (req, res) => {
+const createUnite = async (req, res) => {
   try {
-    const article = await Article.create(req.body);
-    res.status(201).json(article);
+    const unite = await Unite.create(req.body);
+    res.status(201).json(unite);
   } catch (err) {
-    if (err.code === 11000)             return res.status(409).json({ message: 'Un article avec ce code existe déjà.' });
+    if (err.code === 11000)          return res.status(409).json({ message: 'Un code unité identique existe déjà.' });
     if (err.name === 'ValidationError') return res.status(400).json({ message: validationMessage(err) });
-    console.error('[Article] createArticle :', err.message);
+    console.error('[Unite] createUnite :', err.message);
     res.status(500).json({ message: err.message });
   }
 };
 
 /* ═══════════════════════════════════════════════════════════
-   PUT /api/articles/:id
-   Modifie n'importe quel champ (désignation, prix, seuil, actif…).
-   Le champ "code" est protégé.
+   PUT /api/unites/:id
+   Permet de mettre à jour nom, region, type, contact, actif.
+   Le champ "code" est protégé (ne peut pas être modifié).
 ═══════════════════════════════════════════════════════════ */
-const updateArticle = async (req, res) => {
+const updateUnite = async (req, res) => {
   try {
+    // Empêche la réécriture du code unique
     const { code: _code, ...updates } = req.body;
 
-    const article = await Article.findByIdAndUpdate(
+    const unite = await Unite.findByIdAndUpdate(
       req.params.id,
       updates,
       { new: true, runValidators: true }
     );
-    if (!article) return res.status(404).json({ message: 'Article introuvable.' });
-    res.json(article);
+    if (!unite) return res.status(404).json({ message: 'Unité introuvable.' });
+    res.json(unite);
   } catch (err) {
-    if (err.code === 11000)             return res.status(409).json({ message: 'Un article avec ce code existe déjà.' });
     if (err.name === 'ValidationError') return res.status(400).json({ message: validationMessage(err) });
-    console.error('[Article] updateArticle :', err.message);
+    console.error('[Unite] updateUnite :', err.message);
     res.status(500).json({ message: err.message });
   }
 };
 
-module.exports = { getAllArticles, getArticleById, createArticle, updateArticle };
+module.exports = { getAllUnites, getUniteById, createUnite, updateUnite };

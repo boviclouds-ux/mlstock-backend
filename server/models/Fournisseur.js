@@ -1,17 +1,39 @@
 const mongoose = require('mongoose');
 
+const contactSchema = new mongoose.Schema(
+  {
+    nom:       { type: String, trim: true, default: '' },
+    telephone: { type: String, trim: true, default: '' },
+    email:     { type: String, trim: true, lowercase: true, default: '' },
+  },
+  { _id: false }
+);
+
 const fournisseurSchema = new mongoose.Schema(
   {
-    code: { type: String, required: true, unique: true, uppercase: true, trim: true },
-    nom: { type: String, required: true, trim: true },
-    pays: { type: String, trim: true },
-    contact: { type: String, trim: true },
-    type: {
-      type: String,
-      required: true,
-      enum: ['laboratoire', 'equipementier', 'autre'],
+    nom: {
+      type:     String,
+      required: [true, 'Le nom du fournisseur est requis'],
+      trim:     true,
     },
-    actif: { type: Boolean, default: true },
+    pays: {
+      type:    String,
+      trim:    true,
+      default: '',
+    },
+    specialite: {
+      type:    String,
+      trim:    true,
+      default: 'Autres',
+    },
+    contact: {
+      type:    contactSchema,
+      default: () => ({}),
+    },
+    actif: {
+      type:    Boolean,
+      default: true,
+    },
   },
   { timestamps: true }
 );
