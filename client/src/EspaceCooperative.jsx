@@ -1,5 +1,6 @@
 // EspaceCooperative.jsx — Portail Responsable Coopérative
 import { useState, useEffect } from "react";
+import { api } from "./lib/api";
 import {
   ClipboardCheck, Truck, BarChart3, Send, AlertCircle,
   CheckCircle, X, ChevronDown, Dna, FlaskConical, Wrench,
@@ -203,7 +204,7 @@ function FicheTechniqueModal({expedition,onClose}){
 }
 
 /* ─── Modale Nouvelle Commande ──────────────────────── */
-function NouvelleCommandeModal({quota,onClose,onSubmit,articles,articlesLoading,articlesError}){
+function NouvelleCommandeModal({quota,onClose,onSubmit,articles,articlesLoading,articlesError,uniteName}){
   const [article,setArticle]=useState(null); const [qte,setQte]=useState(""); const [motif,setMotif]=useState(""); const [done,setDone]=useState(false);
   useEffect(()=>{if(articles.length>0)setArticle(articles[0]);},[articles]);
   const quotaRestant=article?.type==="semence"?quota.semences.alloue-quota.semences.consomme:article?.type==="azote"?quota.azote.alloue-quota.azote.consomme:null;
@@ -214,7 +215,7 @@ function NouvelleCommandeModal({quota,onClose,onSubmit,articles,articlesLoading,
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e=>e.stopPropagation()} style={{animation:"modalIn .18s ease forwards"}}>
         <div className="px-5 pt-5 pb-4 border-b border-gray-100">
           <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-2.5"><div className="bg-blue-100 p-1.5 rounded-lg"><Send size={14} className="text-blue-600"/></div><div><h2 className="text-sm font-semibold text-gray-900">Nouvelle Demande</h2><p className="text-xs text-gray-400 mt-0.5">Sakia Al Hamra → Admin Fédéral</p></div></div>
+            <div className="flex items-center gap-2.5"><div className="bg-blue-100 p-1.5 rounded-lg"><Send size={14} className="text-blue-600"/></div><div><h2 className="text-sm font-semibold text-gray-900">Nouvelle Demande</h2><p className="text-xs text-gray-400 mt-0.5">{uniteName ?? 'Mon Unité'} → Hub Central</p></div></div>
             <button onClick={onClose} className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 p-1.5 rounded-lg transition-colors"><X size={15}/></button>
           </div>
         </div>
@@ -252,7 +253,7 @@ function NouvelleCommandeModal({quota,onClose,onSubmit,articles,articlesLoading,
         </div>
         <div className="px-5 pb-5 flex gap-2">
           <button onClick={onClose} className="px-4 py-2.5 text-sm text-gray-500 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">Annuler</button>
-          <button onClick={()=>{setDone(true);setTimeout(()=>{onSubmit({article:article.label,qte:Number(qte),unite:article.unite,derogation:needsDero,motif});onClose();},900);}} disabled={!Number(qte)||done}
+          <button onClick={()=>{setDone(true);setTimeout(()=>{onSubmit({article:article.label,articleId:article.id,qte:Number(qte),unite:article.unite,derogation:needsDero,motif});onClose();},900);}} disabled={!Number(qte)||done}
             className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-bold rounded-xl transition-all ${done?"bg-emerald-500 text-white":Number(qte)?needsDero?"bg-amber-500 hover:bg-amber-600 text-white":"bg-blue-600 hover:bg-blue-700 text-white shadow-sm":"bg-gray-100 text-gray-400 cursor-not-allowed"}`}>
             {done?<><BadgeCheck size={15}/>Demande envoyée !</>:needsDero?<><AlertCircle size={14}/>Envoyer avec dérogation</>:<><Send size={14}/>Envoyer la demande</>}
           </button>
@@ -262,13 +263,42 @@ function NouvelleCommandeModal({quota,onClose,onSubmit,articles,articlesLoading,
   );
 }
 
+/* ─── Adaptateur Transaction API → format commande UI ─── */
+const STATUT_CMD_MAP = {
+  'Brouillon':   'en_attente',
+  'En attente':  'en_attente',
+  'Validé':      'approuve',
+  'Expédié':     'en_preparation',
+  'Réceptionné': 'livre',
+  'Rejeté':      'en_attente',
+};
+const CAT_TYPE_MAP = { Semences:'semence', Azote:'azote' };
+
+function fromApiToCommande(t) {
+  return {
+    _id:       t._id,
+    id:        t.reference,
+    date:      t.createdAt ? t.createdAt.slice(0, 10) : new Date().toISOString().slice(0, 10),
+    articles:  (t.lignes ?? []).map(l => ({
+      label: l.article?.designation ?? '—',
+      qte:   l.quantite,
+      unite: l.article?.uniteMesure ?? '—',
+      type:  CAT_TYPE_MAP[l.article?.categorie] ?? 'materiel',
+    })),
+    statut:    STATUT_CMD_MAP[t.statut] ?? 'en_attente',
+    derogation: false,
+  };
+}
+
 /* ══════════════════════════════════════════════════════
    COMPOSANT PRINCIPAL
 ══════════════════════════════════════════════════════ */
-export default function EspaceCooperative(){
+export default function EspaceCooperative({ user }){
   const [activeTab,setActiveTab]=useState("receptions");
   const [receptions,setReceptions]=useState(RECEPTIONS);
-  const [commandes,setCommandes]=useState(COMMANDES);
+  const [commandes,setCommandes]=useState([]);
+  const [loadingCommandes,setLoadingCommandes]=useState(true);
+  const [errorCommandes,setErrorCommandes]=useState(null);
   const [recModal,setRecModal]=useState(null);
   const [ficheModal,setFicheModal]=useState(null);
   const [showCommande,setShowCommande]=useState(false);
@@ -277,18 +307,65 @@ export default function EspaceCooperative(){
   const [articlesLoading,setArticlesLoading]=useState(false);
   const [articlesError,setArticlesError]=useState(null);
 
+  // Type normalisé pour les contrôles de quota (quota.semences / quota.azote)
+  const CAT_TYPE = { Semences:'semence', Azote:'azote' };
+
   useEffect(()=>{
     setArticlesLoading(true);
-    fetch("http://localhost:5000/api/articles")
-      .then(res=>{if(!res.ok)throw new Error(`Erreur serveur (${res.status})`);return res.json();})
-      .then(data=>setArticles(data.filter(a=>a.actif).map(a=>({id:a._id,label:a.code,type:a.categorie,unite:a.unite}))))
+    api.get("/api/articles?actif=true")
+      .then(data=>setArticles(data.map(a=>({
+        id:    a._id,
+        label: a.designation,                         // désignation lisible
+        type:  CAT_TYPE[a.categorie] ?? 'materiel',   // semence | azote | materiel
+        unite: a.uniteMesure,                         // Dose, L, U…
+      }))))
       .catch(err=>setArticlesError(err.message))
       .finally(()=>setArticlesLoading(false));
   },[]);
 
+  const [commandeError, setCommandeError] = useState(null);
+  const [commandeOk,    setCommandeOk]    = useState(false);
+
+  /* ─ Chargement de l'historique depuis l'API ─────────── */
+  async function fetchCommandes() {
+    setLoadingCommandes(true);
+    setErrorCommandes(null);
+    try {
+      // Filtre sur EXPEDITION + initiateur = utilisateur connecté
+      const params = `type=EXPEDITION&limit=50${user?.id ? `&initiatedBy=${user.id}` : ''}`;
+      const res = await api.get(`/api/transactions?${params}`);
+      // getAllTransactions renvoie { data: [...], total, page }
+      const list = Array.isArray(res) ? res : (res.data ?? []);
+      setCommandes(list.map(fromApiToCommande));
+    } catch (err) {
+      setErrorCommandes(err.message);
+      // Fallback sur les données statiques si la DB est inaccessible
+      setCommandes(COMMANDES.map(c => c));
+    } finally {
+      setLoadingCommandes(false);
+    }
+  }
+
+  useEffect(() => { fetchCommandes(); }, []);
+
   function validerReception(id,conformite){setReceptions(p=>p.map(r=>r.id===id?{...r,statut:"receptionne",conformite}:r));}
-  function nouvelleCommande({article,qte,unite,derogation,motif}){
-    setCommandes(p=>[{id:`CMD-COOP-${String(p.length+92).padStart(4,"0")}`,date:"2025-06-14",articles:[{label:article,qte,unite}],statut:"en_attente",derogation},...p]);
+
+  async function nouvelleCommande({ article, articleId, qte, unite, derogation, motif }) {
+    setCommandeError(null);
+    try {
+      await api.post("/api/transactions", {
+        type:   "EXPEDITION",
+        statut: "En attente",
+        motif:  motif || (derogation ? "Dérogation — demande hors quota" : ""),
+        lignes: [{ article: articleId, quantite: qte }],
+      });
+      // Re-fetch depuis l'API pour avoir la vraie référence et les données peuplées
+      await fetchCommandes();
+      setCommandeOk(true);
+      setTimeout(() => setCommandeOk(false), 4000);
+    } catch (err) {
+      setCommandeError(err.message);
+    }
   }
 
   const enTransit=receptions.filter(r=>r.statut==="en_transit");
@@ -298,18 +375,51 @@ export default function EspaceCooperative(){
     <div className="space-y-6">
       {recModal&&<ReceptionModal expedition={recModal} onClose={()=>setRecModal(null)} onValider={validerReception}/>}
       {ficheModal&&<FicheTechniqueModal expedition={ficheModal} onClose={()=>setFicheModal(null)}/>}
-      {showCommande&&<NouvelleCommandeModal quota={quota} onClose={()=>setShowCommande(false)} onSubmit={nouvelleCommande} articles={articles} articlesLoading={articlesLoading} articlesError={articlesError}/>}
+      {showCommande&&<NouvelleCommandeModal quota={quota} onClose={()=>setShowCommande(false)} onSubmit={nouvelleCommande} articles={articles} articlesLoading={articlesLoading} articlesError={articlesError} uniteName={user?.unite}/>}
+
+      {/* Toast succès API */}
+      {commandeOk && (
+        <div className="flex items-center gap-3 bg-emerald-50 border border-emerald-200 rounded-2xl px-5 py-3">
+          <CheckCircle size={16} className="text-emerald-500 shrink-0" />
+          <div>
+            <p className="text-xs font-bold text-emerald-700">Demande enregistrée avec succès</p>
+            <p className="text-[11px] text-emerald-600 mt-0.5">La commande a été transmise au Hub Central.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Bandeau erreur API */}
+      {commandeError && (
+        <div className="flex items-center justify-between gap-3 bg-red-50 border border-red-200 rounded-2xl px-5 py-3">
+          <div className="flex items-center gap-2.5">
+            <AlertCircle size={15} className="text-red-500 shrink-0" />
+            <div>
+              <p className="text-xs font-bold text-red-700">Erreur lors de l'envoi</p>
+              <p className="text-[11px] text-red-500 mt-0.5">{commandeError}</p>
+            </div>
+          </div>
+          <button onClick={() => setCommandeError(null)}
+            className="text-red-400 hover:text-red-600 transition-colors shrink-0">
+            <X size={15} />
+          </button>
+        </div>
+      )}
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-xl font-bold text-gray-900">Portail : <span className="text-blue-700">{COOP.nom}</span></h1>
+            <h1 className="text-xl font-bold text-gray-900">
+              Portail : <span className="text-blue-700">{user?.unite ?? 'Mon Unité'}</span>
+            </h1>
             <span className="inline-flex items-center gap-1.5 text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block"/>Unité Active
             </span>
           </div>
-          <p className="text-sm text-gray-400 mt-1">{COOP.region} · <span className="font-mono">{COOP.code}</span></p>
+          <p className="text-sm text-gray-400 mt-1">
+            {user?.role ?? 'Responsable Unité'}
+            {user?.email ? <> · <span className="font-mono">{user.email}</span></> : null}
+          </p>
         </div>
         <button onClick={()=>setShowCommande(true)} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold px-5 py-2.5 rounded-xl transition-colors shadow-sm whitespace-nowrap">
           <Plus size={15}/>Nouvelle Demande
@@ -392,14 +502,34 @@ export default function EspaceCooperative(){
       {activeTab==="commandes"&&(
         <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
-            <div className="flex items-center gap-2"><History size={14} className="text-gray-400"/><h2 className="text-sm font-bold text-gray-800">Mes Commandes & Historique</h2></div>
+            <div className="flex items-center gap-2">
+              <History size={14} className="text-gray-400"/>
+              <h2 className="text-sm font-bold text-gray-800">Mes Commandes & Historique</h2>
+              {loadingCommandes&&<span className="w-3.5 h-3.5 border-2 border-blue-200 border-t-blue-500 rounded-full animate-spin"/>}
+            </div>
             <button onClick={()=>setShowCommande(true)} className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors border border-blue-200"><Plus size={12}/>Nouvelle demande</button>
           </div>
+
+          {/* Bandeau erreur API */}
+          {errorCommandes&&(
+            <div className="flex items-center justify-between gap-3 bg-amber-50 border-b border-amber-200 px-5 py-2.5">
+              <div className="flex items-center gap-2 text-xs text-amber-700">
+                <AlertCircle size={12} className="shrink-0"/>
+                Données locales (API indisponible) — {errorCommandes}
+              </div>
+              <button onClick={fetchCommandes} className="text-[11px] font-bold text-amber-700 hover:underline shrink-0">Réessayer</button>
+            </div>
+          )}
+
           <div className="overflow-x-auto"><div className="min-w-[580px]">
             <table className="w-full">
               <thead><tr className="bg-gray-50/80 border-b border-gray-100">{["N° Commande","Date","Articles","Statut","Dérogation"].map(h=><th key={h} className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide px-4 py-3 whitespace-nowrap">{h}</th>)}</tr></thead>
               <tbody className="divide-y divide-gray-50">
-                {commandes.map(cmd=>{
+                {loadingCommandes&&commandes.length===0?(
+                  <tr><td colSpan={5} className="text-center py-8 text-xs text-gray-400">Chargement de l'historique…</td></tr>
+                ):commandes.length===0?(
+                  <tr><td colSpan={5} className="text-center py-8 text-xs text-gray-400">Aucune commande trouvée.</td></tr>
+                ):commandes.map(cmd=>{
                   const sm=statutCmd(cmd.statut);
                   return (
                     <tr key={cmd.id} className="hover:bg-gray-50/60 transition-colors">

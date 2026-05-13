@@ -1,5 +1,6 @@
 // MagasinierCentral.jsx — Interface terrain Magasinier Central
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import { api } from "./lib/api";
 import {
   Truck, PackageCheck, AlertTriangle, CheckCircle, XCircle,
   ChevronDown, X, Snowflake, QrCode, Calendar, MapPin,
@@ -30,14 +31,14 @@ const LOTS = [
 const COMMANDES_EXP = [
   { id:"ORD-2025-0041", origine:"admin",  destinataire:"Coopérative Sakia Al Hamra", region:"Laâyoune-Sakia",
     articles:[{label:"Holstein – BENNER JESUALDO",qte:500,unite:"doses",type:"semence"},{label:"Azote liquide",qte:10,unite:"litres",type:"azote"}],
-    statut:"a_preparer", origineNote:"Répartition suite à l'arrivage Alta Genetics · CMD-891" },
+    statut:"En attente", origineNote:"Répartition suite à l'arrivage Alta Genetics · CMD-891" },
   { id:"REQ-2025-0091", origine:"region", destinataire:"Coopérative Tadla Azilal", region:"Béni Mellal-Khénifra",
     articles:[{label:"Montbéliarde – ALPAGA RF",qte:200,unite:"doses",type:"semence"},{label:"Cathéters jetables",qte:500,unite:"unités",type:"materiel"}],
-    statut:"en_attente_admin",
+    statut:"Validé",
     lotsScelles:[{numLot:"LOT-2025-0042",article:"Montbéliarde – ALPAGA RF",qteRetire:200,unite:"doses",cuve:"A-01"},{numLot:"LOT-2025-0047",article:"Cathéters jetables",qteRetire:500,unite:"unités",cuve:"—"}] },
   { id:"ORD-2025-0042", origine:"admin",  destinataire:"Coopérative Gharb Chrarda", region:"Rabat-Salé-Kénitra",
     articles:[{label:"Normande – OLIVIER ET",qte:150,unite:"doses",type:"semence"}],
-    statut:"approuve",
+    statut:"Validé",
     lotsScelles:[{numLot:"LOT-2025-0043",article:"Normande – OLIVIER ET",qteRetire:150,unite:"doses",cuve:"C-03"}] },
 ];
 
@@ -58,13 +59,16 @@ function peremptionMeta(ds) {
   return {color:"text-gray-400",bg:"",border:"",label:ds,urgent:false};
 }
 
-function statutExp(s) {
-  return {
-    a_preparer:      {label:"À préparer",       bg:"bg-blue-50",   text:"text-blue-700",   border:"border-blue-200",   dot:"bg-blue-500"   },
-    en_attente_admin:{label:"En attente Admin",  bg:"bg-amber-50",  text:"text-amber-700",  border:"border-amber-200",  dot:"bg-amber-500"  },
-    approuve:        {label:"Prêt au départ",    bg:"bg-emerald-50",text:"text-emerald-700",border:"border-emerald-200",dot:"bg-emerald-500" },
-  }[s]??{};
-}
+/* Mapping DB statut → badge UI (clés = valeurs Mongoose enum) */
+const STATUT_UI = {
+  'Brouillon':   { label:'Brouillon',        bg:'bg-gray-50',    text:'text-gray-600',    border:'border-gray-200',   dot:'bg-gray-400'    },
+  'En attente':  { label:'À préparer',       bg:'bg-blue-50',    text:'text-blue-700',    border:'border-blue-200',   dot:'bg-blue-500'    },
+  'Validé':      { label:'Prêt au départ',   bg:'bg-emerald-50', text:'text-emerald-700', border:'border-emerald-200',dot:'bg-emerald-500'  },
+  'Expédié':     { label:'Expédié',          bg:'bg-indigo-50',  text:'text-indigo-700',  border:'border-indigo-200', dot:'bg-indigo-500'   },
+  'Réceptionné': { label:'Réceptionné',      bg:'bg-teal-50',    text:'text-teal-700',    border:'border-teal-200',   dot:'bg-teal-500'     },
+  'Rejeté':      { label:'Rejeté',           bg:'bg-red-50',     text:'text-red-700',     border:'border-red-200',    dot:'bg-red-500'      },
+};
+function statutExp(s) { return STATUT_UI[s] ?? { label: s, bg:'bg-gray-50', text:'text-gray-500', border:'border-gray-200', dot:'bg-gray-400' }; }
 
 /* ─── Carte Cuve ────────────────────────────────────── */
 function CuveCard({cuve}) {
@@ -253,22 +257,124 @@ function TransporteurModal({commande,onClose,onConfirm}) {
   );
 }
 
+/* ─── Adaptateur API Transaction → format UI Magasinier ─ */
+function fromApiTransaction(t) {
+  return {
+    _id:         t._id,
+    id:          t.reference,
+    origine:     t.type === 'ORDRE_ADMIN' ? 'admin' : 'region',
+    origineNote: t.motif ?? '',
+    destinataire:t.uniteCible?.nom    ?? 'Hub Central',
+    region:      t.uniteCible?.region ?? '—',
+    statut:      t.statut,          // valeur brute Mongoose — jamais de alias UI
+    articles:    (t.lignes ?? []).map(l => ({
+      label: l.article?.designation ?? '—',
+      qte:   l.quantite,
+      unite: l.article?.uniteMesure ?? '—',
+      type:  { Semences:'semence', Azote:'azote' }[l.article?.categorie] ?? 'materiel',
+    })),
+    lotsScelles: [],
+  };
+}
+
 /* ══════════════════════════════════════════════════════
    COMPOSANT PRINCIPAL
 ══════════════════════════════════════════════════════ */
 const Zap2 = Zap; // alias pour éviter le conflit
 export default function MagasinierCentral() {
-  const [activeTab,setActiveTab]=useState("chambre");
-  const [pickingCmd,setPickingCmd]=useState(null);
-  const [transportCmd,setTransportCmd]=useState(null);
-  const [commandes,setCommandes]=useState(COMMANDES_EXP);
-  function handleSceller(id,lots){setCommandes(p=>p.map(c=>c.id===id?{...c,statut:"en_attente_admin",lotsScelles:lots}:c));}
-  function handleExpedition(id){setCommandes(p=>p.map(c=>c.id===id?{...c,statut:"expedie"}:c));}
-  const actives=commandes.filter(c=>c.statut!=="expedie");
+  const [activeTab,    setActiveTab]    = useState("chambre");
+  const [pickingCmd,   setPickingCmd]   = useState(null);
+  const [transportCmd, setTransportCmd] = useState(null);
+  const [commandes,    setCommandes]    = useState(COMMANDES_EXP);
+  const [loadingCmd,   setLoadingCmd]   = useState(false);
+  const [errorCmd,     setErrorCmd]     = useState(null);
+  const [toast,        setToast]        = useState(null);  // { ok, msg }
+
+  function showToast(ok, msg) {
+    setToast({ ok, msg });
+    setTimeout(() => setToast(null), 3500);
+  }
+
+  /* ─ Récupération des transactions au montage ──────── */
+  useEffect(() => {
+    setLoadingCmd(true);
+    // Récupère tous les flux actifs (EXPEDITION + ORDRE_ADMIN)
+    api.get("/api/transactions?limit=100")
+      .then(res => {
+        // getAllTransactions renvoie { data: [...], total } ou un tableau direct
+        const list = Array.isArray(res) ? res : (res.data ?? []);
+        const mapped = list
+          .filter(t => ['EXPEDITION','ORDRE_ADMIN'].includes(t.type))
+          .map(fromApiTransaction);
+        if (mapped.length > 0) setCommandes(mapped);
+      })
+      .catch(err => {
+        setErrorCmd(err.message);
+        // Fallback : les données statiques COMMANDES_EXP restent
+      })
+      .finally(() => setLoadingCmd(false));
+  }, []);
+
+  /* Sceller = soumettre les lots + passer en "Validé" (prêt au départ) */
+  function handleSceller(id, lots) {
+    setCommandes(p => p.map(c => c.id === id ? { ...c, lotsScelles: lots } : c));
+    handleUpdateStatut(id, 'Validé');
+  }
+
+  /* ═════════════════════════════════════════════════════
+     handleUpdateStatut — PUT /statut avec valeur enum DB
+     Optimistic update immédiat + rollback sur erreur.
+  ═════════════════════════════════════════════════════ */
+  async function handleUpdateStatut(cmdId, nouveauStatut) {
+    const target = commandes.find(c => c.id === cmdId);
+    if (!target) return;
+
+    const prevStatut = target.statut;
+
+    // Optimistic update : on stocke directement la valeur DB
+    setCommandes(p => p.map(c => c.id === cmdId ? { ...c, statut: nouveauStatut } : c));
+
+    if (!target._id) {
+      showToast(true, `Statut mis à jour (local) → ${nouveauStatut}`);
+      return;
+    }
+
+    try {
+      await api.put(`/api/transactions/${target._id}/statut`, { statut: nouveauStatut });
+      showToast(true, `Commande ${cmdId} — "${nouveauStatut}" enregistré en base.`);
+    } catch (err) {
+      console.error('[MagasinierCentral] handleUpdateStatut failed:', err);
+      // Rollback si l'API échoue
+      setCommandes(p => p.map(c => c.id === cmdId ? { ...c, statut: prevStatut } : c));
+      showToast(false, `Échec : ${err.message}`);
+    }
+  }
+
+  async function handleExpedition(id) { await handleUpdateStatut(id, 'Expédié'); }
+
+  const actives = commandes.filter(c => c.statut !== 'Expédié' && c.statut !== 'Réceptionné');
   return (
     <div className="space-y-6">
       {pickingCmd&&<PickingDrawer commande={pickingCmd} onClose={()=>setPickingCmd(null)} onSceller={handleSceller}/>}
       {transportCmd&&<TransporteurModal commande={transportCmd} onClose={()=>setTransportCmd(null)} onConfirm={handleExpedition}/>}
+
+      {/* Toast confirmation action */}
+      {toast && (
+        <div className={`flex items-center gap-3 rounded-2xl px-5 py-3 shadow-sm border
+          ${toast.ok ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}
+          style={{ animation:'fadeIn .2s ease' }}>
+          <style>{`@keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}`}</style>
+          {toast.ok
+            ? <CheckCircle size={15} className="text-emerald-500 shrink-0" />
+            : <AlertTriangle size={15} className="text-red-500 shrink-0" />}
+          <p className={`text-xs font-semibold ${toast.ok ? 'text-emerald-700' : 'text-red-700'}`}>
+            {toast.msg}
+          </p>
+          <button onClick={() => setToast(null)} className="ml-auto text-gray-400 hover:text-gray-600 shrink-0">
+            <X size={13} />
+          </button>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="grid grid-cols-2 gap-2 bg-white border border-gray-100 rounded-2xl p-1.5">
@@ -324,8 +430,29 @@ export default function MagasinierCentral() {
 
       {/* Expéditions */}
       {activeTab==="expeditions"&&(
+        <div className="space-y-3">
+
+          {/* Bandeau erreur API */}
+          {errorCmd&&(
+            <div className="flex items-center justify-between gap-3 bg-red-50 border border-red-200 rounded-2xl px-5 py-3">
+              <div className="flex items-center gap-2.5">
+                <AlertTriangle size={14} className="text-red-500 shrink-0"/>
+                <div>
+                  <p className="text-xs font-bold text-red-700">Synchronisation partielle</p>
+                  <p className="text-[11px] text-red-500">{errorCmd} — données statiques affichées.</p>
+                </div>
+              </div>
+              <button onClick={()=>setErrorCmd(null)} className="text-red-400 hover:text-red-600 shrink-0"><X size={14}/></button>
+            </div>
+          )}
+
         <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-50 flex items-center gap-2"><Package size={14} className="text-gray-400"/><h2 className="text-sm font-bold text-gray-800">Ordres d'Expédition</h2><span className="ml-auto text-xs text-gray-400">{actives.length} actif{actives.length>1?"s":""}</span></div>
+          <div className="px-5 py-4 border-b border-gray-50 flex items-center gap-2">
+            <Package size={14} className="text-gray-400"/>
+            <h2 className="text-sm font-bold text-gray-800">Ordres d'Expédition</h2>
+            {loadingCmd&&<span className="w-3.5 h-3.5 border-2 border-blue-200 border-t-blue-500 rounded-full animate-spin ml-1"/>}
+            <span className="ml-auto text-xs text-gray-400">{actives.length} actif{actives.length>1?"s":""}</span>
+          </div>
           <div className="overflow-x-auto"><div className="min-w-[720px]">
             <table className="w-full">
               <thead><tr className="bg-gray-50/80 border-b border-gray-100">{["N° Ordre","Origine","Destinataire","Articles","Statut","Action"].map(h=><th key={h} className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide px-4 py-3 whitespace-nowrap">{h}</th>)}</tr></thead>
@@ -346,14 +473,37 @@ export default function MagasinierCentral() {
                       </td>
                       <td className="px-4 py-3.5">
                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${sm.bg} ${sm.text} ${sm.border}`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${sm.dot} ${cmd.statut==="en_attente_admin"?"animate-pulse":""}`}/>
+                          <span className={`w-1.5 h-1.5 rounded-full ${sm.dot} ${cmd.statut==="En attente"?"animate-pulse":""}`}/>
                           {sm.label}
                         </span>
                       </td>
                       <td className="px-4 py-3.5">
-                        {cmd.statut==="a_preparer"&&<button onClick={()=>setPickingCmd(cmd)} className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition-colors whitespace-nowrap"><PackageCheck size={12}/>Commencer le Picking</button>}
-                        {cmd.statut==="en_attente_admin"&&<span className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed whitespace-nowrap"><Lock size={11}/>En attente Admin</span>}
-                        {cmd.statut==="approuve"&&<button onClick={()=>setTransportCmd(cmd)} className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-colors whitespace-nowrap"><Truck size={12}/>Remise Transporteur</button>}
+                        {/* En attente / Brouillon → picking ou expédition directe */}
+                        {(cmd.statut === 'En attente' || cmd.statut === 'Brouillon') && (
+                          <div className="flex flex-col gap-1">
+                            <button onClick={() => setPickingCmd(cmd)}
+                              className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition-colors whitespace-nowrap">
+                              <PackageCheck size={12}/> Commencer le Picking
+                            </button>
+                            <button onClick={() => handleUpdateStatut(cmd.id, 'Expédié')}
+                              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 text-emerald-700 transition-colors whitespace-nowrap">
+                              <Truck size={11}/> Valider & Expédier
+                            </button>
+                          </div>
+                        )}
+                        {/* Validé (lots scellés) → remise au transporteur → Expédié */}
+                        {cmd.statut === 'Validé' && (
+                          <button onClick={() => setTransportCmd(cmd)}
+                            className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-colors whitespace-nowrap">
+                            <Truck size={12}/> Remise Transporteur
+                          </button>
+                        )}
+                        {/* Rejeté */}
+                        {cmd.statut === 'Rejeté' && (
+                          <span className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl bg-red-50 text-red-500 border border-red-200 cursor-not-allowed whitespace-nowrap">
+                            <XCircle size={11}/> Rejeté
+                          </span>
+                        )}
                       </td>
                     </tr>
                   );
@@ -362,9 +512,15 @@ export default function MagasinierCentral() {
             </table>
           </div></div>
           <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between">
-            <div className="flex items-center gap-1.5 text-xs text-gray-400"><span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse inline-block"/>Flux actif</div>
-            <p className="text-[10px] text-gray-400 flex items-center gap-1"><Shield size={10}/>Toute sortie requiert validation Admin</p>
+            <div className="flex items-center gap-1.5 text-xs text-gray-400">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse inline-block"/>Flux actif
+            </div>
+            <p className="text-[10px] text-gray-400 flex items-center gap-1">
+              <Shield size={10}/>
+              {loadingCmd ? "Synchronisation…" : errorCmd ? "Données locales" : "API MongoDB"}
+            </p>
           </div>
+        </div>
         </div>
       )}
     </div>

@@ -4,26 +4,9 @@ import {
   FlaskConical, Wrench, Dna, BarChart3, Users, Package,
   X, RefreshCw, Save, Zap, Info, AlertCircle, Lock, Unlock
 } from "lucide-react";
+import Spinner from "./components/Spinner.jsx";
+import { api } from "./lib/api.js";
 
-const semencesData = [
-  { id:1, cooperative:"Unité Aït Si Salem",      region:"Souss-Massa",          article:"Holstein – BENNER JESUALDO", dotation:500,  consomme:450, statut:"critique" },
-  { id:2, cooperative:"Unité Sakia Al Hamra",    region:"Laâyoune-Sakia",       article:"Montbéliarde – ALPAGA RF",   dotation:320,  consomme:180, statut:"normal"   },
-  { id:3, cooperative:"Unité Tadla Azilal",      region:"Béni Mellal-Khénifra", article:"Holstein – DESTINED P",      dotation:750,  consomme:620, statut:"alerte"   },
-  { id:4, cooperative:"Unité Gharb Chrarda",     region:"Rabat-Salé-Kénitra",   article:"Normande – OLIVIER ET",      dotation:400,  consomme:110, statut:"normal"   },
-  { id:5, cooperative:"Unité Chaouia Ouardigha", region:"Casablanca-Settat",    article:"Holstein – BENNER JESUALDO", dotation:600,  consomme:555, statut:"critique" },
-  { id:6, cooperative:"Unité Doukkala Abda",     region:"Marrakech-Safi",       article:"Prim'Holstein – JACKPOT",    dotation:280,  consomme:195, statut:"alerte"   },
-];
-const consommablesData = [
-  { id:1, cooperative:"Unité Aït Si Salem",   region:"Souss-Massa",          article:"Azote liquide (L)",               dotation:2000, consomme:1850, statut:"critique" },
-  { id:2, cooperative:"Unité Sakia Al Hamra", region:"Laâyoune-Sakia",       article:"Gants d'insémination (unités)",   dotation:5000, consomme:2100, statut:"normal"   },
-  { id:3, cooperative:"Unité Tadla Azilal",   region:"Béni Mellal-Khénifra", article:"Paillettes de stockage (boîtes)", dotation:300,  consomme:245,  statut:"alerte"   },
-  { id:4, cooperative:"Unité Gharb Chrarda",  region:"Rabat-Salé-Kénitra",   article:"Cathéters jetables (unités)",     dotation:1200, consomme:300,  statut:"normal"   },
-];
-const materielData = [
-  { id:1, cooperative:"Unité Aït Si Salem",      region:"Souss-Massa",       article:"Cuve à azote 35L",                dotation:4,  consomme:3, statut:"alerte"   },
-  { id:2, cooperative:"Unité Sakia Al Hamra",    region:"Laâyoune-Sakia",    article:"Pistolet d'insémination Minitüb", dotation:10, consomme:4, statut:"normal"   },
-  { id:3, cooperative:"Unité Chaouia Ouardigha", region:"Casablanca-Settat", article:"Microscope portable LED",         dotation:2,  consomme:2, statut:"critique" },
-];
 
 const COOPERATIVES = [
   { id:1, name:"Unité Aït Si Salem",      region:"Souss-Massa"          },
@@ -100,7 +83,34 @@ const CATEGORIES = {
   },
 };
 
-const periodes = ["Mois en cours","Mois précédent","T1 2025","T2 2025","Année 2025"];
+const MOIS_FR  = ["Janv","Févr","Mars","Avr","Mai","Juin","Juil","Août","Sept","Oct","Nov","Déc"];
+const Q_MOIS   = { T1:[0,1,2], T2:[3,4,5], T3:[6,7,8], T4:[9,10,11] };
+
+function periodeLabel(key) {
+  const now = new Date();
+  if (key === "Mois en cours")  return `${MOIS_FR[now.getMonth()]} ${now.getFullYear()}`;
+  if (key === "Mois précédent") {
+    const prev = new Date(now.getFullYear(), now.getMonth() - 1);
+    return `${MOIS_FR[prev.getMonth()]} ${prev.getFullYear()}`;
+  }
+  return key;
+}
+
+function filterByPeriode(rows, key) {
+  if (!key || key === "Toutes les périodes") return rows;
+  const label = periodeLabel(key);
+  const qMatch   = label.match(/^(T[1-4])\s+(\d{4})$/);
+  const yrMatch  = label.match(/^Année\s+(\d{4})$/);
+  if (qMatch)  {
+    const idxs   = Q_MOIS[qMatch[1]] ?? [];
+    const labels = idxs.map(i => `${MOIS_FR[i]} ${qMatch[2]}`);
+    return rows.filter(r => r.periode && labels.includes(r.periode));
+  }
+  if (yrMatch) return rows.filter(r => r.periode?.includes(yrMatch[1]));
+  return rows.filter(r => r.periode === label);
+}
+
+const periodes = ["Toutes les périodes","Mois en cours","Mois précédent","T1 2025","T2 2025","Année 2025"];
 const regions  = ["Toutes les régions","Souss-Massa","Laâyoune-Sakia","Béni Mellal-Khénifra","Rabat-Salé-Kénitra","Casablanca-Settat","Marrakech-Safi"];
 const tabs     = [
   { id:"semences",     label:"Semences",         icon:Dna         },
@@ -115,7 +125,7 @@ function distribute(total, n) {
 }
 
 function ProgressBar({ dotation, consomme, statut }) {
-  const pct = Math.min((consomme / dotation) * 100, 100);
+  const pct = dotation > 0 ? Math.min((consomme / dotation) * 100, 100) : 0;
   const c = {
     normal:   { bar:"bg-emerald-500", track:"bg-emerald-100", text:"text-emerald-700" },
     alerte:   { bar:"bg-amber-500",   track:"bg-amber-100",   text:"text-amber-700"   },
@@ -191,12 +201,18 @@ function AjusterModal({ row, onClose, onSave }) {
    DRAWER — NOUVELLE CAMPAGNE
 ══════════════════════════════════════════════════════ */
 function NouvelleCampagneDrawer({ onClose, onCreated }) {
-  const [categorieId, setCategorieId] = useState("semences");
+  const now = new Date();
+  const periodeDefaut = `${MOIS_FR[now.getMonth()]} ${now.getFullYear()}`;
+  const monthInputDefaut = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+  const [categorieId,  setCategorieId]  = useState("semences");
   const cat = CATEGORIES[categorieId];
-  const [genetique,   setGenetique]   = useState(CATEGORIES.semences.articles[0]);
-  const [volumeTotal, setVolumeTotal] = useState(1000);
-  const [periode,     setPeriode]     = useState("Juin 2025");
-  const [step,        setStep]        = useState(1);
+  const [genetique,    setGenetique]    = useState(CATEGORIES.semences.articles[0]);
+  const [volumeTotal,  setVolumeTotal]  = useState(1000);
+  const [periode,      setPeriode]      = useState(periodeDefaut);
+  const [step,         setStep]         = useState(1);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError,  setSubmitError]  = useState(null);
 
   function handleCategorieChange(id) {
     setCategorieId(id);
@@ -240,9 +256,28 @@ function NouvelleCampagneDrawer({ onClose, onCreated }) {
     setStep(2);
   }
 
-  function handleValidate() {
-    setValidated(true);
-    setTimeout(() => { onCreated?.(); onClose(); }, 1300);
+  async function handleValidate() {
+    setIsSubmitting(true);
+    setSubmitError(null);
+    try {
+      await api.post('/api/quotas', {
+        categorieId,
+        article:     genetique,
+        volumeTotal: Number(volumeTotal),
+        periode,
+        lignes: COOPERATIVES.map((coop, idx) => ({
+          cooperative: coop.name,
+          region:      coop.region,
+          alloue:      Number(dotations[idx]) || 0,
+        })),
+      });
+      setValidated(true);
+      setTimeout(() => { onCreated?.(); onClose(); }, 1200);
+    } catch (err) {
+      setSubmitError(err.message ?? "Erreur lors de la création de la campagne.");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   /* Frappe : met à jour la valeur brute SANS verrouiller ni redistribuer */
@@ -416,11 +451,10 @@ function NouvelleCampagneDrawer({ onClose, onCreated }) {
                 <label className="block text-sm font-semibold text-gray-800 mb-1.5">
                   Période de campagne
                 </label>
-                <input type="month" defaultValue="2025-06"
+                <input type="month" defaultValue={monthInputDefaut}
                   onChange={e => {
                     const [y, m] = e.target.value.split("-");
-                    const mn = ["Janv","Févr","Mars","Avr","Mai","Juin","Juil","Août","Sept","Oct","Nov","Déc"][+m-1];
-                    setPeriode(`${mn} ${y}`);
+                    setPeriode(`${MOIS_FR[+m - 1]} ${y}`);
                   }}
                   className="border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-52 hover:border-gray-300 transition-colors" />
               </div>
@@ -600,32 +634,43 @@ function NouvelleCampagneDrawer({ onClose, onCreated }) {
             className="px-4 py-2 text-sm text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-center">
             Annuler
           </button>
-          <div className="flex items-center gap-2">
-            {step === 2 && (
-              <button onClick={() => setStep(1)}
-                className="flex-1 sm:flex-none px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-1.5">
-                ← Retour
-              </button>
+          <div className="flex flex-col gap-2 w-full sm:w-auto">
+            {/* Erreur de soumission */}
+            {submitError && (
+              <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700">
+                <AlertCircle size={13} className="shrink-0" />
+                {submitError}
+              </div>
             )}
-            {step === 1 ? (
-              <button onClick={goToStep2}
-                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-                Configurer la répartition →
-              </button>
-            ) : (
-              <button onClick={handleValidate} disabled={!isBalanced || validated}
-                className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2 text-sm font-semibold rounded-lg transition-all duration-200
-                  ${validated
-                    ? "bg-emerald-500 text-white"
-                    : isBalanced
-                      ? "bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
-                      : "bg-gray-100 text-gray-400 cursor-not-allowed"}`}>
-                {validated
-                  ? <><CheckCircle size={15} /> Campagne créée !</>
-                  : <><Save size={15} /> Valider la répartition</>
-                }
-              </button>
-            )}
+            <div className="flex items-center gap-2">
+              {step === 2 && (
+                <button onClick={() => setStep(1)} disabled={isSubmitting}
+                  className="flex-1 sm:flex-none px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-40">
+                  ← Retour
+                </button>
+              )}
+              {step === 1 ? (
+                <button onClick={goToStep2}
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
+                  Configurer la répartition →
+                </button>
+              ) : (
+                <button onClick={handleValidate} disabled={!isBalanced || validated || isSubmitting}
+                  className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2 text-sm font-semibold rounded-lg transition-all duration-200
+                    ${validated
+                      ? "bg-emerald-500 text-white"
+                      : isBalanced && !isSubmitting
+                        ? "bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+                        : "bg-gray-100 text-gray-400 cursor-not-allowed"}`}>
+                  {validated
+                    ? <><CheckCircle size={15} /> Campagne créée !</>
+                    : isSubmitting
+                      ? <><RefreshCw size={15} className="animate-spin" /> Enregistrement…</>
+                      : <><Save size={15} /> Valider la répartition</>
+                  }
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -639,14 +684,37 @@ function NouvelleCampagneDrawer({ onClose, onCreated }) {
 ══════════════════════════════════════════════════════ */
 export default function GestionQuotas() {
   const [activeTab,    setActiveTab]    = useState("semences");
-  const [periode,      setPeriode]      = useState(periodes[0]);
+  const [periode,      setPeriode]      = useState(periodes[0]);  // "Toutes les périodes"
   const [region,       setRegion]       = useState(regions[0]);
   const [ajusterRow,   setAjusterRow]   = useState(null);
   const [showCampagne, setShowCampagne] = useState(true);
-  const [data, setData] = useState({ semences:semencesData, consommables:consommablesData, materiel:materielData });
+  const [data,       setData]       = useState({ semences:[], consommables:[], materiel:[] });
+  const [isLoading,  setIsLoading]  = useState(true);
+  const [error,      setError]      = useState(null);
 
-  const allRows    = data[activeTab];
-  const rows       = region === regions[0] ? allRows : allRows.filter(r => r.region === region);
+  /* Fonction de chargement réutilisable — appelée au mount ET après chaque création */
+  const fetchData = useCallback(() => {
+    setIsLoading(true);
+    setError(null);
+    api.get("/api/quotas/data")
+      .then(payload => {
+        const safe = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
+        setData({
+          semences:     Array.isArray(safe.semences)     ? safe.semences     : [],
+          consommables: Array.isArray(safe.consommables) ? safe.consommables : [],
+          materiel:     Array.isArray(safe.materiel)     ? safe.materiel     : [],
+        });
+      })
+      .catch(err => setError(err.message ?? "Impossible de charger les données de quotas."))
+      .finally(() => setIsLoading(false));
+  }, []);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  /* Filtrage : région puis période */
+  const allRows  = data[activeTab];
+  const byRegion = region === regions[0] ? allRows : allRows.filter(r => r.region === region);
+  const rows     = filterByPeriode(byRegion, periode);
   const total      = rows.reduce((a, r) => a + r.dotation, 0);
   const totalConso = rows.reduce((a, r) => a + r.consomme, 0);
   const critiques  = rows.filter(r => r.statut === "critique").length;
@@ -657,11 +725,43 @@ export default function GestionQuotas() {
       ...prev,
       [activeTab]: prev[activeTab].map(r => {
         if (r.id !== id) return r;
-        const pct    = (r.consomme / newDotation) * 100;
+        const pct    = newDotation > 0 ? (r.consomme / newDotation) * 100 : 0;
         const statut = pct >= 90 ? "critique" : pct >= 75 ? "alerte" : "normal";
         return { ...r, dotation: newDotation, statut };
       })
     }));
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-[50vh] flex flex-col items-center justify-center gap-6">
+        <div className="grid grid-cols-3 gap-3 w-full max-w-2xl">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="rounded-2xl border border-slate-100 bg-white shadow-sm p-5 h-24 animate-pulse" />
+          ))}
+        </div>
+        <div className="rounded-2xl border border-slate-100 bg-white shadow-sm w-full max-w-2xl h-48 animate-pulse" />
+        <Spinner label="Chargement des quotas…" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[50vh] text-center p-8">
+        <div className="p-4 rounded-full bg-red-50 border border-red-100 mb-4">
+          <AlertCircle size={28} className="text-red-500" />
+        </div>
+        <h2 className="text-sm font-bold text-slate-900 mb-1">Impossible de charger les données de quotas</h2>
+        <p className="text-xs text-slate-500 mb-5 max-w-xs leading-relaxed">{error}</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl transition-colors"
+        >
+          <RefreshCw size={13} /> Réessayer
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -670,7 +770,7 @@ export default function GestionQuotas() {
       {showCampagne && (
         <NouvelleCampagneDrawer
           onClose={() => setShowCampagne(false)}
-          onCreated={() => setShowCampagne(false)}
+          onCreated={() => { setShowCampagne(false); fetchData(); }}
         />
       )}
 
@@ -746,9 +846,10 @@ export default function GestionQuotas() {
               <tbody className="divide-y divide-gray-50">
                 {rows.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="text-center py-12">
-                      <Users size={32} className="mx-auto mb-2 text-gray-200" />
-                      <span className="text-sm text-gray-400">Aucune donnée pour cette région</span>
+                    <td colSpan={7} className="text-center py-14">
+                      <Package size={32} className="mx-auto mb-2 text-gray-200" />
+                      <p className="text-sm font-medium text-gray-400">Aucune donnée disponible pour le moment</p>
+                      <p className="text-xs text-gray-300 mt-1">Les quotas apparaîtront ici dès que l'API aura fourni des données.</p>
                     </td>
                   </tr>
                 ) : rows.map(row => (

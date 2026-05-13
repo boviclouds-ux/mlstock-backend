@@ -5,21 +5,57 @@ const cors = require('cors');
 
 const app = express();
 
-app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:3000'],
-}));
+/* ═══════════════════════════════════════════════════════════
+   CONFIGURATION CORS
+   Seules les origines explicitement listées dans ALLOWED_ORIGINS
+   peuvent interroger cette API.
+
+   Pour ajouter l'URL de production, décommentez la ligne
+   correspondante ci-dessous OU ajoutez FRONTEND_URL dans .env.
+═══════════════════════════════════════════════════════════ */
+const ALLOWED_ORIGINS = [
+  'http://localhost:5173',          // dev Vite
+  process.env.FRONTEND_URL,         // production (défini dans .env ou variables Cloud)
+].filter(Boolean);
+
+const corsOptions = {
+  origin(incomingOrigin, callback) {
+    // Autorise les requêtes sans header Origin (Postman, curl, appels internes)
+    if (!incomingOrigin) return callback(null, true);
+    if (ALLOWED_ORIGINS.includes(incomingOrigin)) return callback(null, true);
+    callback(new Error(`CORS : origine "${incomingOrigin}" non autorisée.`));
+  },
+  methods:          ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders:   ['Content-Type', 'Authorization'],
+  exposedHeaders:   ['Content-Length'],
+  credentials:      true,   // nécessaire pour transmettre le JWT Bearer
+  optionsSuccessStatus: 200, // compatibilité navigateurs anciens (IE11, etc.)
+};
+
+// Répond explicitement aux requêtes preflight OPTIONS avant toute autre route
+app.options('*', cors(corsOptions));
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // Enregistrement explicite des modèles Mongoose
 // (nécessaire quand un modèle est référencé via ref: 'X' mais pas importé par une route)
+require('./models/User');
 require('./models/Fournisseur');
 require('./models/Unite');
-require('./models/User');
+require('./models/Article');
+require('./models/Cooperative');  // utilisé via ref dans Dotation + PinSession
+require('./models/Campagne');     // utilisé via ref dans Dotation
+require('./models/Lot');
+require('./models/Dotation');
+require('./models/Transaction');
 
 const authRoutes         = require('./routes/auth');
 const uniteRoutes        = require('./routes/unites');
 const articleRoutes      = require('./routes/articles');
 const transactionRoutes  = require('./routes/transactions');
+const usersRoutes        = require('./routes/users');
+const dashboardRoutes    = require('./routes/dashboard');
+const quotasRoutes       = require('./routes/quotas');
 
 app.get('/api/status', (req, res) => {
   res.json({ status: 'ok', message: 'API MLstock opérationnelle', version: '2.0' });
@@ -29,17 +65,18 @@ app.use('/api/auth',         authRoutes);
 app.use('/api/unites',       uniteRoutes);
 app.use('/api/articles',     articleRoutes);
 app.use('/api/transactions', transactionRoutes);
+app.use('/api/users',        usersRoutes);
+app.use('/api/dashboard',    dashboardRoutes);
+app.use('/api/quotas',       quotasRoutes);
 
 const PORT = process.env.PORT || 5000;
 
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => {
-    console.log('MongoDB connecté avec succès');
-    app.listen(PORT, () => {
-      console.log(`Serveur démarré sur le port ${PORT}`);
-    });
-  })
+app.listen(PORT, () => {
+  console.log(`🚀 Serveur Backend MLStock démarré avec succès sur le port ${PORT}`);
+});  })
   .catch((err) => {
     console.error('Échec de la connexion MongoDB :', err.message);
     process.exit(1);

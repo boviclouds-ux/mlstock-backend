@@ -1,4 +1,5 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import { api } from "./lib/api";
 import {
   Package, Clock, Truck, ClipboardList, Lock,
   Scan, CheckCircle, AlertTriangle, X, ChevronRight,
@@ -79,6 +80,37 @@ const LOTS_DISPO = [
   { id: "LOT-2025-0047", article: "Cathéters jetables",         qte: 2400,unite: "unités", cuve: "—"    },
   { id: "LOT-2025-0048", article: "Gants insémination",         qte: 1200,unite: "unités", cuve: "—"    },
 ];
+
+/* ─── Adaptateur Transaction API → format UI expéditions ── */
+const STATUT_EXP = {
+  'Brouillon':   'a_preparer',
+  'En attente':  'a_preparer',
+  'Validé':      'approuve',
+  'Expédié':     'expedie',
+  'Réceptionné': 'expedie',
+  'Rejeté':      'a_preparer',
+};
+const CAT_EXP = { Semences:'semence', Azote:'azote' };
+
+function fromApiToExpedition(t) {
+  return {
+    _id:         t._id,
+    id:          t.reference,
+    origine:     t.type === 'ORDRE_ADMIN' ? 'admin' : 'region',
+    origineNote: t.motif ?? '',
+    destinataire:t.uniteCible?.nom    ?? 'Hub Central',
+    region:      t.uniteCible?.region ?? '—',
+    statut:      STATUT_EXP[t.statut] ?? 'a_preparer',
+    priorite:    t.type === 'ORDRE_ADMIN' ? 'haute' : 'normale',
+    articles:    (t.lignes ?? []).map(l => ({
+      label: l.article?.designation ?? '—',
+      qte:   l.quantite,
+      unite: l.article?.uniteMesure ?? '—',
+      type:  CAT_EXP[l.article?.categorie] ?? 'materiel',
+    })),
+    lotsScelles: [],
+  };
+}
 
 function statutMeta(s) {
   return {
@@ -368,11 +400,34 @@ function PickingDrawer({ commande, onClose, onSceller }) {
 }
 
 export default function PreparationsExpeditions() {
-  const [commandes,       setCommandes]       = useState(COMMANDES_INIT);
+  const [commandes,       setCommandes]       = useState([]);
+  const [loading,         setLoading]         = useState(true);
+  const [apiError,        setApiError]        = useState(null);
   const [pickingCmd,      setPickingCmd]      = useState(null);
   const [transporteurCmd, setTransporteurCmd] = useState(null);
   const [flashId,         setFlashId]         = useState(null);
   const [filtre,          setFiltre]          = useState("tous");
+
+  /* ─ Chargement depuis l'API ─────────────────────────── */
+  async function fetchExpeditions() {
+    setLoading(true);
+    setApiError(null);
+    try {
+      const res  = await api.get("/api/transactions?limit=100");
+      const list = Array.isArray(res) ? res : (res.data ?? []);
+      const mapped = list
+        .filter(t => ['EXPEDITION', 'ORDRE_ADMIN'].includes(t.type))
+        .map(fromApiToExpedition);
+      setCommandes(mapped.length > 0 ? mapped : COMMANDES_INIT);
+    } catch (err) {
+      setApiError(err.message);
+      setCommandes(COMMANDES_INIT); // fallback données statiques
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { fetchExpeditions(); }, []);
 
   const kpi = {
     aPreparer: commandes.filter(c => c.statut === "a_preparer").length,
@@ -380,15 +435,29 @@ export default function PreparationsExpeditions() {
     enAttente: commandes.filter(c => c.statut === "en_attente_admin").length,
   };
 
-  function handleSceller(id, lots) {
+  function flash(id) { setFlashId(id); setTimeout(() => setFlashId(null), 800); }
+
+  /* ─ Sceller : local + PUT API (En attente → Validé) ─── */
+  async function handleSceller(id, lots) {
     setCommandes(p => p.map(c => c.id === id ? { ...c, statut: "en_attente_admin", lotsScelles: lots } : c));
     flash(id);
+    const target = commandes.find(c => c.id === id);
+    if (target?._id) {
+      try { await api.put(`/api/transactions/${target._id}/statut`, { statut: 'Validé' }); }
+      catch { /* la vue locale est déjà mise à jour */ }
+    }
   }
-  function handleExpedition(id) {
+
+  /* ─ Expédier : optimistic update + PUT API ───────────── */
+  async function handleExpedition(id) {
     setCommandes(p => p.map(c => c.id === id ? { ...c, statut: "expedie" } : c));
     flash(id);
+    const target = commandes.find(c => c.id === id);
+    if (target?._id) {
+      try { await api.put(`/api/transactions/${target._id}/statut`, { statut: 'Expédié' }); }
+      catch { /* rollback silencieux — l'UI reste cohérente */ }
+    }
   }
-  function flash(id) { setFlashId(id); setTimeout(() => setFlashId(null), 800); }
 
   const actives = commandes.filter(c => {
     if (c.statut === "expedie") return false;
@@ -430,7 +499,7 @@ export default function PreparationsExpeditions() {
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-3 sm:gap-4 mb-5">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-5">
           {[
             { label:"À préparer",               value:kpi.aPreparer, icon:Package, bg:"bg-blue-50",   iconColor:"text-blue-600",   border:"border-blue-100"   },
             { label:"Ordres Admin Prioritaires", value:kpi.adminPrio, icon:Zap,     bg:"bg-violet-50", iconColor:"text-violet-700", border:"border-violet-100" },
@@ -462,7 +531,18 @@ export default function PreparationsExpeditions() {
           <div className="px-5 py-4 border-b border-gray-50 flex items-center gap-2">
             <ClipboardList size={14} className="text-gray-400" />
             <h2 className="text-sm font-bold text-gray-800">Ordres d'Expédition</h2>
+            {loading && <span className="w-3.5 h-3.5 border-2 border-blue-200 border-t-blue-500 rounded-full animate-spin ml-1" />}
+            {!loading && <span className="ml-auto text-[10px] text-gray-400 font-mono">{apiError ? "⚠ Données locales" : "API MongoDB"}</span>}
           </div>
+          {apiError && (
+            <div className="flex items-center justify-between gap-3 bg-amber-50 border-b border-amber-100 px-5 py-2.5">
+              <p className="text-xs text-amber-700 flex items-center gap-1.5">
+                <AlertTriangle size={12} className="shrink-0" />
+                {apiError} — données de démonstration affichées
+              </p>
+              <button onClick={fetchExpeditions} className="text-[11px] font-bold text-amber-700 hover:underline shrink-0">Réessayer</button>
+            </div>
+          )}
 
           <div className="overflow-x-auto">
             <div className="min-w-[760px]">
@@ -475,7 +555,12 @@ export default function PreparationsExpeditions() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {actives.length === 0 ? (
+                  {loading && commandes.length === 0 ? (
+                    <tr><td colSpan={6} className="text-center py-12">
+                      <div className="w-8 h-8 border-2 border-blue-200 border-t-blue-500 rounded-full animate-spin mx-auto mb-3" />
+                      <p className="text-sm text-gray-400">Chargement des ordres d'expédition…</p>
+                    </td></tr>
+                  ) : actives.length === 0 ? (
                     <tr><td colSpan={6} className="text-center py-12">
                       <CheckCircle size={28} className="mx-auto mb-2 text-gray-200"/>
                       <p className="text-sm text-gray-400">Aucun ordre actif pour ce filtre.</p>

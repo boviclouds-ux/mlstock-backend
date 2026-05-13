@@ -1,30 +1,29 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dna, Droplets, BarChart3, AlertTriangle, Activity,
   TrendingUp, TrendingDown, MapPin, ChevronRight,
-  Truck, CheckCircle, Shield, Zap, Eye, Settings,
-  Home, Package
+  Truck, CheckCircle, Shield, Zap, Eye, Settings, RefreshCw,
+  Package
 } from "lucide-react";
+import Spinner from "./components/Spinner.jsx";
+import { api } from "./lib/api.js";
 
-const REGIONS = [
-  { nom:"Souss-Massa",          pct:82, doses:1240, statut:"alerte"   },
-  { nom:"Casablanca-Settat",    pct:71, doses:980,  statut:"normal"   },
-  { nom:"Béni Mellal-Khénifra", pct:64, doses:890,  statut:"normal"   },
-  { nom:"Rabat-Salé-Kénitra",   pct:55, doses:760,  statut:"normal"   },
-  { nom:"Marrakech-Safi",       pct:38, doses:520,  statut:"normal"   },
-  { nom:"Laâyoune-Sakia",       pct:22, doses:310,  statut:"critique" },
-];
-
-const ACTIVITE = [
-  { id:1, delta:"Il y a 8 min",  Icon:Truck,         bg:"bg-blue-50 dark:bg-blue-900/60",    ring:"ring-blue-200 dark:ring-blue-800",    ic:"text-blue-600 dark:text-blue-400",    action:"Expédition envoyée",    detail:"500 doses Holstein → Coopérative Aït Si Salem" },
-  { id:2, delta:"Il y a 42 min", Icon:CheckCircle,   bg:"bg-emerald-50 dark:bg-emerald-900/60",ring:"ring-emerald-200 dark:ring-emerald-800",ic:"text-emerald-600 dark:text-emerald-400",action:"Réception validée",   detail:"1 000 doses Alta Genetics NL · CMD-891"        },
-  { id:3, delta:"Il y a 1h 20",  Icon:AlertTriangle, bg:"bg-amber-50 dark:bg-amber-900/60",   ring:"ring-amber-200 dark:ring-amber-800",   ic:"text-amber-500 dark:text-amber-400",  action:"Dérogation accordée",  detail:"+100 doses · Unité Sakia Al Hamra"              },
-  { id:4, delta:"Il y a 2h 05",  Icon:Zap,           bg:"bg-violet-50 dark:bg-violet-900/60", ring:"ring-violet-200 dark:ring-violet-800", ic:"text-violet-600 dark:text-violet-400",action:"Ordre prioritaire émis",detail:"Répartition Montbéliarde → Gharb Chrarda"       },
-  { id:5, delta:"Il y a 3h",     Icon:Shield,        bg:"bg-slate-100 dark:bg-slate-700",     ring:"ring-slate-200 dark:ring-slate-600",   ic:"text-slate-500 dark:text-slate-400",  action:"PIN dérogation généré",detail:"Code 15 min · Sakia Al Hamra"                   },
-];
-
+// Seuils d'alerte — configuration métier (à terme depuis /api/config)
 const SEUILS = { semences: 5000, azote: 2000 };
-const STOCKS  = { semences: 45200, azote: 8500 };
+
+// Mapping type API → style visuel pour la timeline d'activité
+const ACTIVITE_STYLE = {
+  EXPEDITION: { Icon:Truck,         bg:"bg-blue-50 dark:bg-blue-900/60",    ring:"ring-blue-200 dark:ring-blue-800",    ic:"text-blue-600 dark:text-blue-400"    },
+  RECEPTION:  { Icon:CheckCircle,   bg:"bg-emerald-50 dark:bg-emerald-900/60",ring:"ring-emerald-200 dark:ring-emerald-800",ic:"text-emerald-600 dark:text-emerald-400" },
+  DEROGATION: { Icon:AlertTriangle, bg:"bg-amber-50 dark:bg-amber-900/60",   ring:"ring-amber-200 dark:ring-amber-800",   ic:"text-amber-500 dark:text-amber-400"   },
+  ORDRE:      { Icon:Zap,           bg:"bg-violet-50 dark:bg-violet-900/60", ring:"ring-violet-200 dark:ring-violet-800", ic:"text-violet-600 dark:text-violet-400"  },
+  PIN:        { Icon:Shield,        bg:"bg-slate-100 dark:bg-slate-700",     ring:"ring-slate-200 dark:ring-slate-600",   ic:"text-slate-500 dark:text-slate-400"   },
+};
+
+function enrichActivite(evt) {
+  const s = ACTIVITE_STYLE[evt.type] ?? ACTIVITE_STYLE.PIN;
+  return { ...evt, ...s };
+}
 
 function barColor(pct, statut) {
   if (statut==="critique") return "bg-red-500";
@@ -40,14 +39,90 @@ export default function DashboardDirection() {
   const today = new Date().toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
   const card = "rounded-2xl border p-5 flex flex-col gap-3 transition-colors bg-white border-slate-100 shadow-sm dark:bg-slate-800 dark:border-slate-700";
 
+  const [isLoading,  setIsLoading]  = useState(true);
+  const [error,      setError]      = useState(null);
+  const [stocks,     setStocks]     = useState({});
+  const [regions,    setRegions]    = useState([]);
+  const [activite,   setActivite]   = useState([]);
+  const [lotsAlerte, setLotsAlerte] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setIsLoading(true);
+    setError(null);
+
+    api.get("/api/dashboard/stats")
+      .then(data => {
+        if (cancelled) return;
+        setStocks(data.stocks ?? {});
+        setRegions(data.regions ?? []);
+        setActivite((data.activite ?? []).map(enrichActivite));
+        setLotsAlerte(data.alertes?.lots ?? []);
+      })
+      .catch(err => {
+        if (cancelled) return;
+        setError(err.message ?? "Impossible de charger les données.");
+      })
+      .finally(() => { if (!cancelled) setIsLoading(false); });
+
+    return () => { cancelled = true; };
+  }, []);
+
+  /* ── État chargement ────────────────────────────────────── */
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="h-8 w-64 rounded-xl bg-slate-100 animate-pulse" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="rounded-2xl border border-slate-100 bg-white shadow-sm p-5 flex flex-col gap-3">
+              <div className="h-10 w-10 rounded-xl bg-slate-100 animate-pulse" />
+              <div className="h-7 w-24 rounded-lg bg-slate-100 animate-pulse" />
+              <div className="h-3 w-full rounded bg-slate-100 animate-pulse" />
+            </div>
+          ))}
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="rounded-2xl border border-slate-100 bg-white shadow-sm h-64 animate-pulse" />
+          <div className="rounded-2xl border border-slate-100 bg-white shadow-sm h-64 animate-pulse" />
+        </div>
+        <div className="flex justify-center pt-4">
+          <Spinner label="Chargement du tableau de bord…" />
+        </div>
+      </div>
+    );
+  }
+
+  /* ── État erreur ────────────────────────────────────────── */
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[50vh] text-center p-8">
+        <div className="p-4 rounded-full bg-red-50 border border-red-100 mb-4">
+          <AlertTriangle size={28} className="text-red-500" />
+        </div>
+        <h2 className="text-sm font-bold text-slate-900 mb-1">Impossible de charger le tableau de bord</h2>
+        <p className="text-xs text-slate-500 mb-5 max-w-xs leading-relaxed">{error}</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl transition-colors"
+        >
+          <RefreshCw size={13} /> Réessayer
+        </button>
+      </div>
+    );
+  }
+
+  /* ── Calculs KPI ─────────────────────────────────────────── */
   const alertesSeuils = [];
-  if (STOCKS.semences < SEUILS.semences) alertesSeuils.push(`Semences : ${STOCKS.semences.toLocaleString()} doses (seuil ${SEUILS.semences.toLocaleString()})`);
-  if (STOCKS.azote < SEUILS.azote) alertesSeuils.push(`Azote : ${STOCKS.azote.toLocaleString()} L (seuil ${SEUILS.azote.toLocaleString()})`);
-  const lotsAlerte = ["LOT-0044 · 14j restants","LOT-0048 · 7j restants","LOT-0042 · 51j restants"];
+  if ((stocks.semences ?? Infinity) < SEUILS.semences)
+    alertesSeuils.push(`Semences : ${stocks.semences.toLocaleString()} doses (seuil ${SEUILS.semences.toLocaleString()})`);
+  if ((stocks.azote ?? Infinity) < SEUILS.azote)
+    alertesSeuils.push(`Azote : ${stocks.azote.toLocaleString()} L (seuil ${SEUILS.azote.toLocaleString()} L)`);
   const totalAlertes = alertesSeuils.length + lotsAlerte.length;
 
   return (
     <div className="space-y-6">
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
         <div>
@@ -59,7 +134,7 @@ export default function DashboardDirection() {
           text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/40
           border border-emerald-200 dark:border-emerald-800 px-3 py-1.5 rounded-full">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />
-          Flux actif · 6 coopératives
+          {regions.length > 0 ? `Flux actif · ${regions.length} régions` : "En attente de données"}
         </div>
       </div>
 
@@ -74,7 +149,9 @@ export default function DashboardDirection() {
           </div>
           <div>
             <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">Stock Central Semences</p>
-            <p className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums mt-0.5 leading-none">{STOCKS.semences.toLocaleString()}</p>
+            <p className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums mt-0.5 leading-none">
+              {stocks.semences?.toLocaleString() ?? '—'}
+            </p>
             <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">doses · Seuil alerte : {SEUILS.semences.toLocaleString()}</p>
           </div>
           <div className="flex items-center gap-1.5">
@@ -92,7 +169,9 @@ export default function DashboardDirection() {
           </div>
           <div>
             <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">Stock Azote National</p>
-            <p className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums mt-0.5 leading-none">{STOCKS.azote.toLocaleString()}</p>
+            <p className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums mt-0.5 leading-none">
+              {stocks.azote?.toLocaleString() ?? '—'}
+            </p>
             <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">litres · Seuil alerte : {SEUILS.azote.toLocaleString()} L</p>
           </div>
           <div className="flex items-center gap-1.5">
@@ -108,41 +187,54 @@ export default function DashboardDirection() {
           </div>
           <div>
             <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">Consommation Quota National</p>
-            <p className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums mt-0.5 leading-none">68%</p>
+            <p className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums mt-0.5 leading-none">
+              {stocks.quotaPct != null ? `${stocks.quotaPct}%` : '—'}
+            </p>
             <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">alloué sur quota national</p>
           </div>
-          <div>
-            <div className="h-1.5 rounded-full overflow-hidden bg-indigo-100 dark:bg-indigo-900/60">
-              <div className="h-full rounded-full bg-indigo-500 transition-all duration-700" style={{width:"68%"}} />
+          {stocks.quotaPct != null ? (
+            <div>
+              <div className="h-1.5 rounded-full overflow-hidden bg-indigo-100 dark:bg-indigo-900/60">
+                <div className="h-full rounded-full bg-indigo-500 transition-all duration-700" style={{width:`${stocks.quotaPct}%`}} />
+              </div>
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">{100 - stocks.quotaPct}% de quota restant</p>
             </div>
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">32% de quota restant</p>
-          </div>
+          ) : (
+            <p className="text-[10px] text-slate-400">Aucune donnée disponible pour le moment</p>
+          )}
         </div>
 
         <div className="rounded-2xl border p-5 flex flex-col gap-3 transition-colors bg-white border-red-100 shadow-sm shadow-red-50 dark:bg-slate-800 dark:border-red-900/60">
           <div className="flex items-start justify-between">
             <div className="p-2.5 rounded-xl bg-red-50 dark:bg-red-900/40"><AlertTriangle size={20} className="text-red-500 dark:text-red-400" /></div>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse text-red-600 bg-red-100 dark:text-red-400 dark:bg-red-900/50">
-              Action requise
-            </span>
+            {totalAlertes > 0 && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse text-red-600 bg-red-100 dark:text-red-400 dark:bg-red-900/50">
+                Action requise
+              </span>
+            )}
           </div>
           <div>
             <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">Alertes Critiques</p>
             <p className="text-2xl font-bold text-red-600 dark:text-red-400 tabular-nums mt-0.5 leading-none">{totalAlertes}</p>
             <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">lots & seuils dépassés</p>
           </div>
-          <div className="space-y-1">
-            {lotsAlerte.slice(0,2).map(l => (
-              <div key={l} className="flex items-center gap-1.5 text-[10px] font-semibold text-red-600 dark:text-red-400">
-                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse shrink-0" /> {l}
-              </div>
-            ))}
-          </div>
+          {lotsAlerte.length > 0 ? (
+            <div className="space-y-1">
+              {lotsAlerte.slice(0,2).map(l => (
+                <div key={l} className="flex items-center gap-1.5 text-[10px] font-semibold text-red-600 dark:text-red-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse shrink-0" /> {l}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-[10px] text-slate-400 dark:text-slate-500">Aucune alerte active</p>
+          )}
         </div>
       </div>
 
       {/* Zone centrale */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
         {/* Régions */}
         <div className="rounded-2xl border overflow-hidden transition-colors bg-white border-slate-100 shadow-sm dark:bg-slate-800 dark:border-slate-700">
           <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
@@ -161,8 +253,15 @@ export default function DashboardDirection() {
               ))}
             </div>
           </div>
+
           <div className="px-5 py-5 space-y-4">
-            {REGIONS.map(r=>(
+            {regions.length === 0 ? (
+              <div className="py-8 text-center">
+                <MapPin size={28} className="mx-auto mb-2 text-slate-200" />
+                <p className="text-sm text-slate-400 font-medium">Aucune donnée disponible pour le moment</p>
+                <p className="text-xs text-slate-300 mt-1">Les données régionales apparaîtront ici dès la synchronisation.</p>
+              </div>
+            ) : regions.map(r=>(
               <div key={r.nom} className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 min-w-0">
@@ -182,13 +281,16 @@ export default function DashboardDirection() {
               </div>
             ))}
           </div>
+
           <div className="px-5 py-3 border-t border-slate-100 dark:border-slate-700 flex justify-between">
-            <span className="text-xs text-slate-400 dark:text-slate-500">6 régions · Données J-1</span>
-            <span className="text-xs font-semibold text-red-500 dark:text-red-400">1 critique · 1 alerte</span>
+            <span className="text-xs text-slate-400 dark:text-slate-500">{regions.length} région{regions.length !== 1 ? "s" : ""} · Données J-1</span>
+            <span className="text-xs font-semibold text-red-500 dark:text-red-400">
+              {regions.filter(r=>r.statut==="critique").length} critique · {regions.filter(r=>r.statut==="alerte").length} alerte
+            </span>
           </div>
         </div>
 
-        {/* Timeline */}
+        {/* Timeline activité */}
         <div className="rounded-2xl border overflow-hidden transition-colors bg-white border-slate-100 shadow-sm dark:bg-slate-800 dark:border-slate-700">
           <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -202,27 +304,37 @@ export default function DashboardDirection() {
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block"/>Live
             </span>
           </div>
+
           <div className="px-5 py-5">
-            <div className="relative">
-              <div className="absolute left-4 top-4 bottom-4 w-px bg-slate-100 dark:bg-slate-700"/>
-              <div className="space-y-5">
-                {ACTIVITE.map(evt=>(
-                  <div key={evt.id} className="relative flex gap-3.5 items-start">
-                    <div className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center shrink-0 ring-2 ${evt.bg} ${evt.ring}`}>
-                      <evt.Icon size={13} className={evt.ic}/>
-                    </div>
-                    <div className="flex-1 min-w-0 pt-0.5">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="text-xs font-bold text-slate-800 dark:text-slate-100">{evt.action}</p>
-                        <span className="text-[10px] text-slate-400 dark:text-slate-500 whitespace-nowrap shrink-0">{evt.delta}</span>
-                      </div>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">{evt.detail}</p>
-                    </div>
-                  </div>
-                ))}
+            {activite.length === 0 ? (
+              <div className="py-8 text-center">
+                <Activity size={28} className="mx-auto mb-2 text-slate-200" />
+                <p className="text-sm text-slate-400 font-medium">Aucune activité pour le moment</p>
+                <p className="text-xs text-slate-300 mt-1">Les événements logistiques apparaîtront ici en temps réel.</p>
               </div>
-            </div>
+            ) : (
+              <div className="relative">
+                <div className="absolute left-4 top-4 bottom-4 w-px bg-slate-100 dark:bg-slate-700"/>
+                <div className="space-y-5">
+                  {activite.map(evt=>(
+                    <div key={evt.id} className="relative flex gap-3.5 items-start">
+                      <div className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center shrink-0 ring-2 ${evt.bg} ${evt.ring}`}>
+                        <evt.Icon size={13} className={evt.ic}/>
+                      </div>
+                      <div className="flex-1 min-w-0 pt-0.5">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-xs font-bold text-slate-800 dark:text-slate-100">{evt.action}</p>
+                          <span className="text-[10px] text-slate-400 dark:text-slate-500 whitespace-nowrap shrink-0">{evt.delta}</span>
+                        </div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">{evt.detail}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
+
           <div className="px-5 py-3 border-t border-slate-100 dark:border-slate-700">
             <button className="w-full flex items-center justify-center gap-1.5 py-1 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:opacity-75 transition-opacity">
               Voir l'historique complet <ChevronRight size={12}/>
@@ -235,7 +347,7 @@ export default function DashboardDirection() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
           {label:"Gestion des Quotas",    sub:"Admin Fédéral",   bg:"bg-blue-600   hover:bg-blue-700",   icon:BarChart3   },
-          {label:"Centre de Validations", sub:"3 en attente",    bg:"bg-amber-500  hover:bg-amber-600",  icon:CheckCircle },
+          {label:"Centre de Validations", sub:"En attente",      bg:"bg-amber-500  hover:bg-amber-600",  icon:CheckCircle },
           {label:"Traçabilité",           sub:"Logs & Rapports", bg:"bg-slate-700  hover:bg-slate-800",  icon:Eye         },
           {label:"Configuration",         sub:"Super Admin",     bg:"bg-violet-700 hover:bg-violet-800", icon:Settings    },
         ].map(({label,sub,bg,icon:Icon})=>(

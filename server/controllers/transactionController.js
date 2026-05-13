@@ -41,7 +41,6 @@ const createTransaction = async (req, res) => {
     });
 
     const populated = await Transaction.findById(transaction._id).populate(POPULATE_STD);
-    console.log(`[Transaction] Créée : ${populated.reference} (${populated.type})`);
     res.status(201).json(populated);
   } catch (err) {
     if (err.code === 11000)             return res.status(409).json({ message: 'Référence de transaction déjà existante.' });
@@ -121,7 +120,6 @@ const updateTransactionStatut = async (req, res) => {
 
     if (!transaction) return res.status(404).json({ message: 'Transaction introuvable.' });
 
-    console.log(`[Transaction] ${transaction.reference} → "${statut}"`);
     res.json(transaction);
   } catch (err) {
     console.error('[Transaction] updateTransactionStatut :', err.message);
