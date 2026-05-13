@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { Mail, Lock, Eye, EyeOff, Dna, AlertCircle, ChevronRight, ShieldCheck } from "lucide-react";
 
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:5000";
+const API_URL = import.meta.env.VITE_API_URL ?? "https://mlstock-backend-3.onrender.com";
 
 /* ─── Fond animé ────────────────────────────────────────── */
 function Background() {
