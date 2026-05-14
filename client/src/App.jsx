@@ -1,4 +1,5 @@
 // App.jsx — Routage principal + Authentification JWT
+import logoImg from './assets/logo.png';
 import { useState, useEffect } from "react";
 import { Menu } from 'lucide-react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
@@ -146,10 +147,6 @@ function AppLayout({ user, userRole, onLogout }) {
                 <h1 className="text-xl font-bold text-slate-900">{pageTitle}</h1>
               </div>
             </div>
-            <span className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-full shrink-0">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />
-              Session active
-            </span>
           </div>
 
           {/* Routage des modules */}

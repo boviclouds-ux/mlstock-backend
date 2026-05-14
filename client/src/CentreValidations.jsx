@@ -1,5 +1,6 @@
 // CentreValidations.jsx — Centre de validations & Sécurité Admin Fédéral
 import { useState, useEffect, useCallback } from "react";
+import { api } from "./lib/api";
 import {
   Clock, ShieldAlert, Key, CheckCircle, X, XCircle,
   Inbox, Package, AlertTriangle, ChevronDown, RefreshCw,
@@ -9,29 +10,39 @@ import {
   FlaskConical, Wrench, Filter
 } from "lucide-react";
 
-/* ─── Données ──────────────────────────────────────── */
-const REQUETES_INIT = [
-  { id:"REQ-2025-0840", type:"reception", origine:"Semex Europe FR", pays:"France", demandeur:"Magasinier · Stock Central",
-    detail:"Réception 500 doses Montbéliarde – ALPAGA RF", article:"Montbéliarde – ALPAGA RF", quantite:490,
-    date:"2025-06-14 07:15", statut:"en_attente", conformite:"anomalie",
-    rapport:{cmdRef:"CMD-892",prevu:500,recu:490,remarque:"10 doses endommagées (choc thermique). Mises en quarantaine.",magasinier:"Karim Benali",temperature:"-185 °C (⚠ écart détecté)"}},
-  { id:"REQ-2025-0841", type:"reception", origine:"Alta Genetics NL", pays:"Pays-Bas", demandeur:"Magasinier · Stock Central",
-    detail:"Réception 1 000 doses Holstein – BENNER JESUALDO", article:"Holstein – BENNER JESUALDO", quantite:1000,
-    date:"2025-06-14 08:32", statut:"en_attente", conformite:"conforme",
-    rapport:{cmdRef:"CMD-891",prevu:1000,recu:1000,remarque:"Livraison complète. Aucune anomalie.",magasinier:"Karim Benali",temperature:"-196 °C (OK)"}},
-  { id:"REQ-2025-0842", type:"depassement", demandeur:"Unité Sakia Al Hamra", detail:"Demande 600 doses — Quota: 500",
-    article:"Montbéliarde – ALPAGA RF", quantite:100, quota:500, consomme:500,
-    date:"2025-06-14 09:15", statut:"en_attente", priorite:"critique", unite:"Unité Sakia Al Hamra",
-    historique:[{mois:"Avril 2025",derogations:1,accordees:1},{mois:"Mai 2025",derogations:2,accordees:2},{mois:"Juin 2025",derogations:1,accordees:0}], totalDerogations:3},
-  { id:"REQ-2025-0843", type:"expedition", demandeur:"Magasinier · Tadla Azilal", detail:"Expédition 200 gants insémination",
-    article:"Gants d'insémination", quantite:200, date:"2025-06-14 09:48", statut:"en_attente" },
-  { id:"REQ-2025-0844", type:"depassement", demandeur:"Unité Doukkala Abda", detail:"Demande 380 doses — Quota: 280",
-    article:"Prim'Holstein – JACKPOT", quantite:100, quota:280, consomme:280,
-    date:"2025-06-14 10:22", statut:"en_attente", priorite:"critique", unite:"Unité Doukkala Abda",
-    historique:[{mois:"Avril 2025",derogations:0,accordees:0},{mois:"Mai 2025",derogations:1,accordees:1},{mois:"Juin 2025",derogations:1,accordees:0}], totalDerogations:1},
-  { id:"REQ-2025-0845", type:"expedition", demandeur:"Magasinier · Gharb Chrarda", detail:"Expédition 8 cuves azote 35L",
-    article:"Cuves azote 35L", quantite:8, date:"2025-06-14 10:05", statut:"en_attente" },
-];
+/* ─── Adaptateur Transaction API → Requête Validation ── */
+const TYPE_REQ_MAP = { RECEPTION:'reception', EXPEDITION:'expedition', ORDRE_ADMIN:'expedition' };
+
+function fromApiToRequete(t) {
+  const totalQte    = (t.lignes ?? []).reduce((s, l) => s + l.quantite, 0);
+  const hasAnomalie = (t.lignes ?? []).some(l => ['Non conforme','Partiel'].includes(l.statutConformite));
+  return {
+    _id:       t._id,
+    id:        t.reference,
+    type:      TYPE_REQ_MAP[t.type] ?? 'expedition',
+    origine:   t.fournisseurCible?.nom  ?? null,
+    pays:      t.fournisseurCible?.pays ?? null,
+    demandeur: t.initiatedBy
+      ? `${t.initiatedBy.prenom ?? ''} ${t.initiatedBy.nom ?? ''}`.trim()
+      : '—',
+    detail:    t.motif?.trim() || `${(t.lignes ?? []).length} article(s) · ${totalQte} unités`,
+    article:   t.lignes?.[0]?.article?.designation ?? '—',
+    quantite:  totalQte,
+    date:      new Date(t.createdAt).toLocaleString('fr-FR', {
+      year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit',
+    }),
+    statut:    'en_attente',
+    conformite: hasAnomalie ? 'anomalie' : t.type === 'RECEPTION' ? 'conforme' : null,
+    rapport:   t.type === 'RECEPTION' ? {
+      cmdRef:      t.reference,
+      prevu:       totalQte,
+      recu:        totalQte,
+      remarque:    t.motif ?? '',
+      magasinier:  t.initiatedBy ? `${t.initiatedBy.prenom ?? ''} ${t.initiatedBy.nom ?? ''}`.trim() : '—',
+      temperature: 'Non renseigné',
+    } : null,
+  };
+}
 
 const COOPERATIVES_LIST=["Coopérative Sakia Al Hamra","Coopérative Aït Si Salem","Coopérative Tadla Azilal","Coopérative Gharb Chrarda","Coopérative Chaouia Ouardigha","Coopérative Doukkala Abda"];
 const ARTICLES_PUSH=[{label:"Holstein – BENNER JESUALDO",unite:"doses"},{label:"Montbéliarde – ALPAGA RF",unite:"doses"},{label:"Azote liquide",unite:"litres"},{label:"Cathéters jetables",unite:"unités"}];
@@ -85,7 +96,7 @@ function PinWidget(){
 /* ─── Drawer Dérogation ─────────────────────────────── */
 function DerogationDrawer({req,onClose,onDecision}){
   const [dec,setDec]=useState(null);
-  const pct=Math.round((req.consomme/req.quota)*100);
+  const pct = req.quota > 0 ? Math.round((req.consomme / req.quota) * 100) : 0;
   function decide(d){setDec(d);setTimeout(()=>{onDecision(req.id,d);onClose();},900);}
   return (
     <div className="fixed inset-0 z-40 flex">
@@ -227,10 +238,21 @@ function NouvelOrdreModal({onClose,onSubmit}){
    COMPOSANT PRINCIPAL
 ══════════════════════════════════════════════════════ */
 export default function CentreValidations(){
-  const [requetes,setRequetes]=useState(REQUETES_INIT);
+  const [requetes,  setRequetes]  = useState([]);
+  const [loading,   setLoading]   = useState(true);
   const [drawerDero,setDrawerDero]=useState(null); const [drawerRec,setDrawerRec]=useState(null); const [showOrdre,setShowOrdre]=useState(false);
   const [flashId,setFlashId]=useState(null); const [filterType,setFilterType]=useState("tous");
   const [ordresEmis,setOrdresEmis]=useState([]);
+
+  useEffect(() => {
+    api.get("/api/transactions?statut=En%20attente&limit=100")
+      .then(res => {
+        const list = Array.isArray(res) ? res : (res.data ?? []);
+        setRequetes(list.map(fromApiToRequete));
+      })
+      .catch(() => setRequetes([]))
+      .finally(() => setLoading(false));
+  }, []);
 
   const stats={receptions:requetes.filter(r=>r.type==="reception"&&r.statut==="en_attente").length, expeditions:requetes.filter(r=>r.type==="expedition"&&r.statut==="en_attente").length, depassements:requetes.filter(r=>r.type==="depassement"&&r.statut==="en_attente").length};
 
@@ -289,7 +311,7 @@ export default function CentreValidations(){
 
       {/* Tableau requêtes */}
       <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-        {pending.length>0?(
+        {loading?(<div className="flex items-center justify-center gap-3 py-12"><span className="w-5 h-5 border-2 border-gray-200 border-t-blue-500 rounded-full animate-spin"/><span className="text-sm text-gray-400">Chargement des requêtes…</span></div>):pending.length>0?(
           <div className="overflow-x-auto"><div className="min-w-[780px]">
             <table className="w-full">
               <thead><tr className="bg-gray-50/80 border-b border-gray-100">{["ID Requête","Type","Origine / Demandeur","Détail","État & Conformité","Date / Heure","Statut","Actions"].map(h=><th key={h} className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide px-4 py-3 whitespace-nowrap">{h}</th>)}</tr></thead>
@@ -320,7 +342,7 @@ export default function CentreValidations(){
             </table>
           </div></div>
         ):(
-          <div className="flex flex-col items-center justify-center py-14 text-center"><div className="bg-emerald-50 rounded-full p-4 mb-3"><CheckCircle size={28} className="text-emerald-500"/></div><p className="text-sm font-semibold text-gray-700">File d'attente vide</p><p className="text-xs text-gray-400 mt-1">Toutes les requêtes ont été traitées.</p></div>
+          <div className="flex flex-col items-center justify-center py-14 text-center"><div className="bg-emerald-50 rounded-full p-4 mb-3"><CheckCircle size={28} className="text-emerald-500"/></div><p className="text-sm font-semibold text-gray-700">File d'attente vide</p><p className="text-xs text-gray-400 mt-1">Aucune requête en attente de validation.</p></div>
         )}
         {resolved.length>0&&(
           <details className="border-t border-gray-100">

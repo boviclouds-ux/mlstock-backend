@@ -42,8 +42,7 @@ const COMMANDES_EXP = [
     lotsScelles:[{numLot:"LOT-2025-0043",article:"Normande – OLIVIER ET",qteRetire:150,unite:"doses",cuve:"C-03"}] },
 ];
 
-const today = new Date("2025-06-14");
-const joursRestants = ds => Math.round((new Date(ds)-today)/86400000);
+const joursRestants = ds => Math.round((new Date(ds) - new Date()) / 86400000);
 
 /* ─── Helpers ──────────────────────────────────────── */
 function typeIcon(type, sz=11) {
@@ -113,7 +112,7 @@ function PickingDrawer({commande,onClose,onSceller}) {
   const ref=useRef();
   const totalDem=commande.articles.reduce((s,a)=>s+a.qte,0);
   const totalScan=lots.reduce((s,l)=>s+l.qteRetire,0);
-  const pct=Math.min((totalScan/totalDem)*100,100);
+  const pct = totalDem > 0 ? Math.min((totalScan / totalDem) * 100, 100) : 0;
   function handleScan(e){
     e.preventDefault(); const val=scan.trim().toUpperCase();
     if(!val)return;
@@ -306,7 +305,7 @@ export default function MagasinierCentral() {
         const mapped = list
           .filter(t => ['EXPEDITION','ORDRE_ADMIN'].includes(t.type))
           .map(fromApiTransaction);
-        if (mapped.length > 0) setCommandes(mapped);
+        setCommandes(mapped);
       })
       .catch(err => {
         setErrorCmd(err.message);
@@ -439,7 +438,7 @@ export default function MagasinierCentral() {
                 <AlertTriangle size={14} className="text-red-500 shrink-0"/>
                 <div>
                   <p className="text-xs font-bold text-red-700">Synchronisation partielle</p>
-                  <p className="text-[11px] text-red-500">{errorCmd} — données statiques affichées.</p>
+                  <p className="text-[11px] text-red-500">{errorCmd}</p>
                 </div>
               </div>
               <button onClick={()=>setErrorCmd(null)} className="text-red-400 hover:text-red-600 shrink-0"><X size={14}/></button>

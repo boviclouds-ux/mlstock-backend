@@ -10,31 +10,28 @@ import {
 } from "lucide-react";
 
 /* ─── Données ──────────────────────────────────────── */
-const COOP = {
-  nom:"Sakia Al Hamra", region:"Laâyoune-Sakia", code:"COOP-SAH-007",
-  quota:{ semences:{alloue:1200,consomme:850,unite:"doses"}, azote:{alloue:2000,consomme:720,unite:"litres"} },
-};
-
-
 const COULEUR_DOT={rouge:"bg-red-500",jaune:"bg-yellow-400",bleu:"bg-blue-500",vert:"bg-green-500",rose:"bg-pink-400",gris:"bg-gray-400"};
 
-const RECEPTIONS=[
-  { id:"EXP-2025-0042", dateEnvoi:"2025-06-13", articles:[{label:"Normande – OLIVIER ET",qte:150,unite:"doses"}],
-    transporteur:"SDTM Maroc", matricule:"32841-B-5", statut:"en_transit",
-    ficheTechnique:[{taureau:"OLIVIER ET",nni:"FR7291048",race:"Normande",refLot:"ML-FR-043",couleur:"vert",qte:90},{taureau:"RIGOLO NL",nni:"FR7291102",race:"Normande",refLot:"ML-FR-044",couleur:"rouge",qte:60}] },
-  { id:"EXP-2025-0039", dateEnvoi:"2025-06-10", articles:[{label:"Holstein – BENNER JESUALDO",qte:200,unite:"doses"},{label:"Azote liquide",qte:80,unite:"litres"}],
-    transporteur:"Trans-Atlas", matricule:"18204-A-6", statut:"en_transit",
-    ficheTechnique:[{taureau:"BENNER JESUALDO",nni:"NL9283741",race:"Holstein",refLot:"ML-NL-041",couleur:"bleu",qte:120},{taureau:"DESTINED P",nni:"NL9283800",race:"Holstein",refLot:"ML-NL-042",couleur:"jaune",qte:80}] },
-  { id:"EXP-2025-0031", dateEnvoi:"2025-06-05", articles:[{label:"Cathéters jetables",qte:500,unite:"unités"}],
-    transporteur:"Ghazala Transport", matricule:"55012-D-3", statut:"receptionne", conformite:"conforme", ficheTechnique:null },
-];
-
-const COMMANDES=[
-  {id:"CMD-COOP-0091",date:"2025-06-12",articles:[{label:"Holstein – BENNER JESUALDO",qte:100,unite:"doses"}],statut:"approuve",derogation:false},
-  {id:"CMD-COOP-0088",date:"2025-06-08",articles:[{label:"Azote liquide",qte:200,unite:"litres"}],statut:"en_preparation",derogation:false},
-  {id:"CMD-COOP-0083",date:"2025-06-01",articles:[{label:"Montbéliarde – ALPAGA RF",qte:150,unite:"doses"}],statut:"livre",derogation:false},
-  {id:"CMD-COOP-0079",date:"2025-05-24",articles:[{label:"Prim'Holstein – JACKPOT",qte:95,unite:"doses"}],statut:"livre",derogation:false},
-];
+/* ─── Adaptateur Transaction API → format Réception ────── */
+function fromApiToReception(t) {
+  const CAT = { Semences:'semence', Azote:'azote' };
+  return {
+    _id:           t._id,
+    id:            t.reference,
+    dateEnvoi:     (t.createdAt ?? '').slice(0, 10),
+    articles:      (t.lignes ?? []).map(l => ({
+      label: l.article?.designation ?? '—',
+      qte:   l.quantite,
+      unite: l.article?.uniteMesure ?? '—',
+      type:  CAT[l.article?.categorie] ?? 'materiel',
+    })),
+    transporteur:  '—',
+    matricule:     '—',
+    statut:        t.statut === 'Réceptionné' ? 'receptionne' : 'en_transit',
+    conformite:    null,
+    ficheTechnique: null,
+  };
+}
 
 /* ─── Helpers ───────────────────────────────────────── */
 function statutCmd(s){
@@ -54,8 +51,8 @@ function articleIcon(type,sz=12){
 
 /* ─── Composant Barre Quota ─────────────────────────── */
 function QuotaBar({label,alloue,consomme,unite,icon:Icon,iconColor,trackColor,barColor}){
-  const pct=Math.min(Math.round((consomme/alloue)*100),100);
-  const reste=alloue-consomme;
+  const pct   = alloue > 0 ? Math.min(Math.round((consomme / alloue) * 100), 100) : 0;
+  const reste = alloue - consomme;
   const urgent=pct>=90, alerte=pct>=75;
   return (
     <div className="bg-white rounded-2xl border border-gray-100 p-5">
@@ -295,20 +292,61 @@ function fromApiToCommande(t) {
 ══════════════════════════════════════════════════════ */
 export default function EspaceCooperative({ user }){
   const [activeTab,setActiveTab]=useState("receptions");
-  const [receptions,setReceptions]=useState(RECEPTIONS);
+  const [receptions,setReceptions]=useState([]);
+  const [loadingReceptions,setLoadingReceptions]=useState(true);
   const [commandes,setCommandes]=useState([]);
   const [loadingCommandes,setLoadingCommandes]=useState(true);
   const [errorCommandes,setErrorCommandes]=useState(null);
   const [recModal,setRecModal]=useState(null);
   const [ficheModal,setFicheModal]=useState(null);
   const [showCommande,setShowCommande]=useState(false);
-  const [quota]=useState(COOP.quota);
+  const [quota,setQuota]=useState({ semences:{alloue:0,consomme:0,unite:"doses"}, azote:{alloue:0,consomme:0,unite:"litres"} });
   const [articles,setArticles]=useState([]);
   const [articlesLoading,setArticlesLoading]=useState(false);
   const [articlesError,setArticlesError]=useState(null);
 
   // Type normalisé pour les contrôles de quota (quota.semences / quota.azote)
   const CAT_TYPE = { Semences:'semence', Azote:'azote' };
+
+  /* ─ Réceptions : expéditions vers cette unité ─────────── */
+  useEffect(() => {
+    api.get("/api/transactions?type=EXPEDITION&statut=Expédi%C3%A9&limit=50")
+      .then(res => {
+        const list = Array.isArray(res) ? res : (res.data ?? []);
+        setReceptions(list.map(fromApiToReception));
+      })
+      .catch(() => setReceptions([]))
+      .finally(() => setLoadingReceptions(false));
+  }, []);
+
+  /* ─ Quotas : consommation de cette coopérative ─────────── */
+  useEffect(() => {
+    api.get("/api/quotas/data")
+      .then(res => {
+        if (!res || typeof res !== 'object') return;
+        const coopName = user?.unite;
+        if (!coopName) return;
+        const allRows = [
+          ...(res.semences     ?? []),
+          ...(res.consommables ?? []),
+          ...(res.materiel     ?? []),
+        ].filter(r => r.cooperative === coopName);
+
+        const sem   = allRows.filter(r => r.article?.toLowerCase().includes('holstein') || r.article?.toLowerCase().includes('montbéliarde') || r.article?.toLowerCase().includes('normande') || r.article?.toLowerCase().includes('prim') || r.article?.toLowerCase().includes('semence') || r.article?.toLowerCase().includes('dose'));
+        const azote = allRows.filter(r => r.article?.toLowerCase().includes('azote'));
+
+        const agg = (rows) => ({ alloue: rows.reduce((s,r) => s + (r.dotation||0), 0), consomme: rows.reduce((s,r) => s + (r.consomme||0), 0) });
+        const semAgg   = agg(sem.length   ? sem   : allRows.filter(r => getTab(r) === 'semences'));
+        const azoteAgg = agg(azote.length ? azote : allRows.filter(r => getTab(r) === 'consommables'));
+
+        if (semAgg.alloue > 0 || azoteAgg.alloue > 0)
+          setQuota({
+            semences: { alloue: semAgg.alloue,   consomme: semAgg.consomme,   unite: "doses"  },
+            azote:    { alloue: azoteAgg.alloue,  consomme: azoteAgg.consomme, unite: "litres" },
+          });
+      })
+      .catch(() => {});
+  }, [user?.unite]);
 
   useEffect(()=>{
     setArticlesLoading(true);
@@ -339,8 +377,7 @@ export default function EspaceCooperative({ user }){
       setCommandes(list.map(fromApiToCommande));
     } catch (err) {
       setErrorCommandes(err.message);
-      // Fallback sur les données statiques si la DB est inaccessible
-      setCommandes(COMMANDES.map(c => c));
+      setCommandes([]);
     } finally {
       setLoadingCommandes(false);
     }
@@ -446,7 +483,12 @@ export default function EspaceCooperative({ user }){
       {/* Onglet Réceptions */}
       {activeTab==="receptions"&&(
         <div className="space-y-4">
-          {enTransit.length>0?(
+          {loadingReceptions ? (
+            <div className="bg-white rounded-2xl border border-gray-100 py-12 text-center flex items-center justify-center gap-3">
+              <span className="w-5 h-5 border-2 border-gray-200 border-t-blue-500 rounded-full animate-spin" />
+              <span className="text-sm text-gray-400">Chargement des livraisons…</span>
+            </div>
+          ) : enTransit.length>0?(
             <div>
               <div className="flex items-center gap-2 mb-3"><span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse inline-block"/><h2 className="text-xs font-bold text-gray-500 uppercase tracking-widest">En transit — {enTransit.length} livraison{enTransit.length>1?"s":""}</h2></div>
               <div className="space-y-2">
@@ -473,7 +515,7 @@ export default function EspaceCooperative({ user }){
               </div>
             </div>
           ):(
-            <div className="bg-white rounded-2xl border border-gray-100 py-12 text-center"><Truck size={32} className="mx-auto mb-2 text-gray-200"/><p className="text-sm font-semibold text-gray-400">Aucune livraison en cours</p></div>
+            <div className="bg-white rounded-2xl border border-gray-100 py-12 text-center"><Truck size={32} className="mx-auto mb-2 text-gray-200"/><p className="text-sm font-semibold text-gray-400">Aucune livraison en cours</p><p className="text-xs text-gray-300 mt-1">Les expéditions reçues depuis le Hub Central apparaîtront ici.</p></div>
           )}
           {receptionnees.length>0&&(
             <details className="mt-2">

@@ -8,67 +8,6 @@ import {
   Trash2, BadgeCheck, Filter
 } from "lucide-react";
 
-const COMMANDES_INIT = [
-  {
-    id: "ORD-2025-0041", origine: "admin",
-    origineNote: "Répartition suite à l'arrivage Alta Genetics · CMD-891",
-    destinataire: "Coopérative Sakia Al Hamra", region: "Laâyoune-Sakia",
-    articles: [
-      { label: "Holstein – BENNER JESUALDO", qte: 500, unite: "doses",  type: "semence" },
-      { label: "Azote liquide",              qte: 10,  unite: "litres", type: "azote"   },
-    ],
-    statut: "a_preparer", priorite: "haute",
-  },
-  {
-    id: "ORD-2025-0042", origine: "admin",
-    origineNote: "Dotation Campagne Semences Juin 2025",
-    destinataire: "Coopérative Gharb Chrarda", region: "Rabat-Salé-Kénitra",
-    articles: [{ label: "Normande – OLIVIER ET", qte: 150, unite: "doses", type: "semence" }],
-    statut: "approuve", priorite: "haute",
-    lotsScelles: [{ numLot: "LOT-2025-0043", article: "Normande – OLIVIER ET", qteRetire: 150, unite: "doses", cuve: "C-03" }],
-  },
-  {
-    id: "REQ-2025-0091", origine: "region",
-    destinataire: "Coopérative Tadla Azilal", region: "Béni Mellal-Khénifra",
-    articles: [
-      { label: "Montbéliarde – ALPAGA RF", qte: 200, unite: "doses",  type: "semence"  },
-      { label: "Cathéters jetables",        qte: 500, unite: "unités", type: "materiel" },
-    ],
-    statut: "en_attente_admin", priorite: "normale",
-    lotsScelles: [
-      { numLot: "LOT-2025-0042", article: "Montbéliarde – ALPAGA RF", qteRetire: 200, unite: "doses",  cuve: "A-01" },
-      { numLot: "LOT-2025-0047", article: "Cathéters jetables",        qteRetire: 500, unite: "unités", cuve: "—"   },
-    ],
-  },
-  {
-    id: "REQ-2025-0092", origine: "region",
-    destinataire: "Coopérative Aït Si Salem", region: "Souss-Massa",
-    articles: [
-      { label: "Prim'Holstein – JACKPOT", qte: 95,  unite: "doses",  type: "semence"  },
-      { label: "Gants insémination",      qte: 200, unite: "unités", type: "materiel" },
-    ],
-    statut: "a_preparer", priorite: "normale",
-  },
-  {
-    id: "REQ-2025-0093", origine: "region",
-    destinataire: "Coopérative Chaouia Ouardigha", region: "Casablanca-Settat",
-    articles: [{ label: "Azote liquide", qte: 80, unite: "litres", type: "azote" }],
-    statut: "a_preparer", priorite: "normale",
-  },
-  {
-    id: "REQ-2025-0094", origine: "region",
-    destinataire: "Coopérative Doukkala Abda", region: "Marrakech-Safi",
-    articles: [
-      { label: "Holstein – BENNER JESUALDO", qte: 100, unite: "doses",  type: "semence"  },
-      { label: "Pistolet insémination",      qte: 2,   unite: "pièces", type: "materiel" },
-    ],
-    statut: "en_attente_admin", priorite: "normale",
-    lotsScelles: [
-      { numLot: "LOT-2025-0041", article: "Holstein – BENNER JESUALDO", qteRetire: 100, unite: "doses",  cuve: "A-01" },
-      { numLot: "LOT-2025-0047", article: "Pistolet insémination",       qteRetire: 2,   unite: "pièces", cuve: "—"   },
-    ],
-  },
-];
 
 const LOTS_DISPO = [
   { id: "LOT-2025-0041", article: "Holstein – BENNER JESUALDO", qte: 320, unite: "doses",  cuve: "A-01" },
@@ -257,7 +196,7 @@ function PickingDrawer({ commande, onClose, onSceller }) {
 
   const totalDemande = commande.articles.reduce((s, a) => s + a.qte, 0);
   const totalScanne  = lotsAjoutes.reduce((s, l) => s + l.qteRetire, 0);
-  const pct          = Math.min((totalScanne / totalDemande) * 100, 100);
+  const pct          = totalDemande > 0 ? Math.min((totalScanne / totalDemande) * 100, 100) : 0;
   const canSceller   = lotsAjoutes.length > 0;
 
   function handleScan(e) {
@@ -418,10 +357,10 @@ export default function PreparationsExpeditions() {
       const mapped = list
         .filter(t => ['EXPEDITION', 'ORDRE_ADMIN'].includes(t.type))
         .map(fromApiToExpedition);
-      setCommandes(mapped.length > 0 ? mapped : COMMANDES_INIT);
+      setCommandes(mapped);
     } catch (err) {
       setApiError(err.message);
-      setCommandes(COMMANDES_INIT); // fallback données statiques
+      setCommandes([]);
     } finally {
       setLoading(false);
     }

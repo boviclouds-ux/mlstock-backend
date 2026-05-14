@@ -1,5 +1,6 @@
 // ReceptionsImportations.jsx — Hub Logistique Central · Déchargements en cours
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { api } from "./lib/api";
 import {
   Truck, Snowflake, FlaskConical, Wrench, Dna,
   PackageCheck, ClipboardCheck, AlertTriangle, CheckCircle,
@@ -7,67 +8,37 @@ import {
   ScanLine, ShieldCheck,
 } from "lucide-react";
 
-/* ─── Données ──────────────────────────────────────────── */
-const CAMIONS_INIT = [
-  {
-    id: "DEC-2025-0041",
-    matricule: "32841-B-5",
-    transporteur: "SDTM Maroc",
-    origine: "Casablanca Port · Transit Alta Genetics France",
-    quai: "Quai A",
-    heureArrivee: "07:30",
-    ref_bc: "BC-2025-0089",
-    chargement: [
-      { label: "Holstein – BENNER JESUALDO", qte: 500,  unite: "doses",   type: "semence" },
-      { label: "Azote liquide",              qte: 200,  unite: "litres",  type: "azote"   },
-    ],
-    statut: "en_cours",
+/* ─── Adaptateur Transaction API → Camion Réception ───── */
+const STATUT_CAMION_MAP = {
+  'Brouillon':   'en_attente',
+  'En attente':  'en_cours',
+  'Validé':      'controle',
+  'Expédié':     'en_stock',
+  'Réceptionné': 'en_stock',
+  'Rejeté':      'incident',
+};
+
+function fromApiToCamion(t) {
+  const catToType = { Semences:'semence', Azote:'azote' };
+  return {
+    _id:          t._id,
+    id:           t.reference,
+    matricule:    '—',
+    transporteur: '—',
+    origine:      t.fournisseurCible?.nom ? `Transit ${t.fournisseurCible.nom}` : '—',
+    quai:         'Quai A',
+    heureArrivee: new Date(t.createdAt).toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' }),
+    ref_bc:       t.reference,
+    chargement:   (t.lignes ?? []).map(l => ({
+      label: l.article?.designation ?? '—',
+      qte:   l.quantite,
+      unite: l.article?.uniteMesure  ?? '—',
+      type:  catToType[l.article?.categorie] ?? 'materiel',
+    })),
+    statut:   STATUT_CAMION_MAP[t.statut] ?? 'en_attente',
     controle: null,
-  },
-  {
-    id: "DEC-2025-0040",
-    matricule: "18204-A-6",
-    transporteur: "Trans-Atlas",
-    origine: "Agadir Port · Transit Sunnylodge B.V.",
-    quai: "Quai B",
-    heureArrivee: "09:15",
-    ref_bc: "BC-2025-0085",
-    chargement: [
-      { label: "Holstein – DESTINED P", qte: 1500, unite: "doses", type: "semence" },
-    ],
-    statut: "en_attente",
-    controle: null,
-  },
-  {
-    id: "DEC-2025-0038",
-    matricule: "55012-D-3",
-    transporteur: "Ghazala Transport",
-    origine: "Tanger MED · Transit Nedap Livestock Mgmt.",
-    quai: "Quai C",
-    heureArrivee: "11:45",
-    ref_bc: "BC-2025-0081",
-    chargement: [
-      { label: "Cathéters d'insémination",  qte: 10000, unite: "unités", type: "materiel" },
-      { label: "Gants insémination",        qte: 5000,  unite: "unités", type: "materiel" },
-    ],
-    statut: "en_stock",
-    controle: { resultat: "conforme", note: "RAS — Quantités conformes au BL." },
-  },
-  {
-    id: "DEC-2025-0036",
-    matricule: "40193-C-1",
-    transporteur: "Al Amine Logistique",
-    origine: "Casablanca Port · Transit CryoBio France",
-    quai: "Quai A",
-    heureArrivee: "06:00",
-    ref_bc: "BC-2025-0078",
-    chargement: [
-      { label: "Azote liquide industriel", qte: 5000, unite: "litres", type: "azote" },
-    ],
-    statut: "incident",
-    controle: { resultat: "non_conforme", note: "Déficit de 320L constaté — Litige ouvert avec transporteur." },
-  },
-];
+  };
+}
 
 /* ─── Helpers ──────────────────────────────────────────── */
 function typeIcon(type, sz = 11) {
@@ -198,8 +169,20 @@ function ModalControle({ camion, onClose, onValider }) {
 
 /* ─── Composant principal ──────────────────────────────── */
 export default function ReceptionsImportations() {
-  const [camions, setCamions] = useState(CAMIONS_INIT);
-  const [modal,   setModal]   = useState(null);
+  const [camions,  setCamions]  = useState([]);
+  const [loading,  setLoading]  = useState(true);
+  const [apiError, setApiError] = useState(null);
+  const [modal,    setModal]    = useState(null);
+
+  useEffect(() => {
+    api.get("/api/transactions?type=RECEPTION&limit=100")
+      .then(res => {
+        const list = Array.isArray(res) ? res : (res.data ?? []);
+        setCamions(list.map(fromApiToCamion));
+      })
+      .catch(err => { setApiError(err.message); setCamions([]); })
+      .finally(() => setLoading(false));
+  }, []);
 
   const counts = {
     enAttente:  camions.filter(c => c.statut === "en_attente").length,
@@ -264,7 +247,19 @@ export default function ReceptionsImportations() {
 
       {/* Liste des camions */}
       <div className="space-y-3">
-        {camions.map(camion => {
+        {loading ? (
+          <div className="flex items-center justify-center gap-3 py-10 bg-white rounded-2xl border border-slate-100">
+            <span className="w-5 h-5 border-2 border-slate-200 border-t-blue-500 rounded-full animate-spin" />
+            <span className="text-sm text-slate-400">Chargement des réceptions…</span>
+          </div>
+        ) : camions.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-14 text-center bg-white rounded-2xl border border-slate-100">
+            <Archive size={32} className="text-slate-200 mb-3" />
+            <p className="text-sm font-semibold text-slate-600">Aucune réception en cours</p>
+            <p className="text-xs text-slate-400 mt-1">Les arrivages du jour apparaîtront ici dès leur enregistrement.</p>
+            {apiError && <p className="text-xs text-red-400 mt-2">{apiError}</p>}
+          </div>
+        ) : camions.map(camion => {
           const isTermine = camion.statut === "en_stock" || camion.statut === "incident";
           return (
             <div

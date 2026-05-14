@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Dna, Droplets, BarChart3, AlertTriangle, Activity,
   TrendingUp, TrendingDown, MapPin, ChevronRight,
@@ -37,6 +38,7 @@ function dotColor(s) {
 
 export default function DashboardDirection() {
   const today = new Date().toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+  const navigate = useNavigate();
   const card = "rounded-2xl border p-5 flex flex-col gap-3 transition-colors bg-white border-slate-100 shadow-sm dark:bg-slate-800 dark:border-slate-700";
 
   const [isLoading,  setIsLoading]  = useState(true);
@@ -346,12 +348,12 @@ export default function DashboardDirection() {
       {/* Accès rapides */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          {label:"Gestion des Quotas",    sub:"Admin Fédéral",   bg:"bg-blue-600   hover:bg-blue-700",   icon:BarChart3   },
-          {label:"Centre de Validations", sub:"En attente",      bg:"bg-amber-500  hover:bg-amber-600",  icon:CheckCircle },
-          {label:"Traçabilité",           sub:"Logs & Rapports", bg:"bg-slate-700  hover:bg-slate-800",  icon:Eye         },
-          {label:"Configuration",         sub:"Super Admin",     bg:"bg-violet-700 hover:bg-violet-800", icon:Settings    },
-        ].map(({label,sub,bg,icon:Icon})=>(
-          <button key={label} className={`${bg} text-white rounded-2xl p-4 flex flex-col gap-2.5 text-left transition-colors shadow-sm`}>
+          {label:"Gestion des Quotas",    sub:"Admin Fédéral",   bg:"bg-blue-600   hover:bg-blue-700",   icon:BarChart3,   path:"/quotas"      },
+          {label:"Centre de Validations", sub:"En attente",      bg:"bg-amber-500  hover:bg-amber-600",  icon:CheckCircle, path:"/validations"  },
+          {label:"Traçabilité",           sub:"Logs & Rapports", bg:"bg-slate-700  hover:bg-slate-800",  icon:Eye,         path:"/tracabilite"  },
+          {label:"Configuration",         sub:"Super Admin",     bg:"bg-violet-700 hover:bg-violet-800", icon:Settings,    path:"/configuration"},
+        ].map(({label,sub,bg,icon:Icon,path})=>(
+          <button key={label} onClick={() => navigate(path)} className={`${bg} text-white rounded-2xl p-4 flex flex-col gap-2.5 text-left transition-colors shadow-sm`}>
             <Icon size={18} className="text-white/80"/>
             <div>
               <p className="text-xs font-bold leading-tight">{label}</p>

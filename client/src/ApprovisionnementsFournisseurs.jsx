@@ -1,6 +1,7 @@
 // ApprovisionnementsFournisseurs.jsx — Suivi des commandes Direction → Fournisseurs
 // Règle métier : le Magasinier consulte uniquement. Seul l'Admin Fédéral crée des commandes.
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { api } from "./lib/api";
 import {
   Truck, Dna, FlaskConical, Wrench, X,
   CheckCircle, XCircle, Clock, FileText,
@@ -32,65 +33,39 @@ const CATALOGUE = [
 
 const LIEU_STOCKAGE_DEFAUT = "Magasin Central National · Agadir";
 
-/* ─── Données initiales ─────────────────────────────────── */
-const BONS_COMMANDE_INIT = [
-  {
-    id: "BC-2025-0089",
-    fournisseur: "Alta Genetics France", pays: "France", pavillon: "🇫🇷",
-    articles: [
-      { label: "Holstein – BENNER JESUALDO", qte: 2000, unite: "doses",  type: "semence" },
-      { label: "Montbéliarde – ALPAGA RF",   qte: 800,  unite: "doses",  type: "semence" },
-    ],
-    dateCommande: "2025-05-28", dateArrivee: "2025-06-18",
-    statut: "en_transit", transporteur: "SDTM Maroc", ref_bl: null, conformite: null,
+/* ─── Adaptateur Transaction API → Bon de Commande ─────── */
+const STATUT_BC_MAP = {
+  'Brouillon':   'prevu',
+  'En attente':  'en_transit',
+  'Validé':      'a_quai',
+  'Expédié':     'conforme',
+  'Réceptionné': 'conforme',
+  'Rejeté':      'non_conforme',
+};
+
+function fromApiToBC(t) {
+  const catToType = { Semences:'semence', Azote:'azote' };
+  return {
+    _id:         t._id,
+    id:          t.reference,
+    fournisseur: t.fournisseurCible?.nom  ?? '—',
+    pays:        t.fournisseurCible?.pays ?? '—',
+    pavillon:    '🌍',
+    articles: (t.lignes ?? []).map(l => ({
+      label: l.article?.designation ?? '—',
+      qte:   l.quantite,
+      unite: l.article?.uniteMesure  ?? '—',
+      type:  catToType[l.article?.categorie] ?? 'materiel',
+    })),
+    dateCommande: (t.createdAt ?? '').slice(0, 10),
+    dateArrivee:  null,
+    statut:       STATUT_BC_MAP[t.statut] ?? 'prevu',
+    transporteur: '—',
+    ref_bl:       null,
+    conformite:   null,
     lieuStockage: LIEU_STOCKAGE_DEFAUT,
-  },
-  {
-    id: "BC-2025-0085",
-    fournisseur: "Sunnylodge B.V.", pays: "Pays-Bas", pavillon: "🇳🇱",
-    articles: [
-      { label: "Holstein – DESTINED P",  qte: 1500, unite: "doses", type: "semence" },
-      { label: "Normande – OLIVIER ET",  qte: 600,  unite: "doses", type: "semence" },
-    ],
-    dateCommande: "2025-05-15", dateArrivee: "2025-06-10",
-    statut: "a_quai", transporteur: "Trans-Atlas", ref_bl: "BL-NL-2025-1842", conformite: null,
-    lieuStockage: LIEU_STOCKAGE_DEFAUT,
-  },
-  {
-    id: "BC-2025-0081",
-    fournisseur: "Nedap Livestock Mgmt.", pays: "Pays-Bas", pavillon: "🇳🇱",
-    articles: [
-      { label: "Cathéters d'insémination", qte: 10000, unite: "unités", type: "materiel" },
-      { label: "Gants insémination",       qte: 5000,  unite: "unités", type: "materiel" },
-    ],
-    dateCommande: "2025-05-10", dateArrivee: "2025-06-05",
-    statut: "conforme", transporteur: "Ghazala Transport", ref_bl: "BL-NL-2025-1783",
-    conformite: { resultat: "conforme", note: "RAS — Quantités conformes au BL." },
-    lieuStockage: LIEU_STOCKAGE_DEFAUT,
-  },
-  {
-    id: "BC-2025-0078",
-    fournisseur: "CryoBio France", pays: "France", pavillon: "🇫🇷",
-    articles: [
-      { label: "Azote liquide industriel", qte: 5000, unite: "litres", type: "azote" },
-    ],
-    dateCommande: "2025-05-08", dateArrivee: "2025-06-02",
-    statut: "non_conforme", transporteur: "Al Amine Logistique", ref_bl: "BL-FR-2025-2901",
-    conformite: { resultat: "non_conforme", note: "Déficit de 320L constaté — Litige ouvert." },
-    lieuStockage: LIEU_STOCKAGE_DEFAUT,
-  },
-  {
-    id: "BC-2025-0071",
-    fournisseur: "Alta Genetics France", pays: "France", pavillon: "🇫🇷",
-    articles: [
-      { label: "Prim'Holstein – JACKPOT", qte: 1200, unite: "doses", type: "semence" },
-    ],
-    dateCommande: "2025-04-20", dateArrivee: "2025-05-15",
-    statut: "conforme", transporteur: "SDTM Maroc", ref_bl: "BL-FR-2025-2640",
-    conformite: { resultat: "conforme", note: "" },
-    lieuStockage: LIEU_STOCKAGE_DEFAUT,
-  },
-];
+  };
+}
 
 /* ─── Helpers ──────────────────────────────────────────── */
 function typeIcon(type, sz = 11) {
@@ -119,7 +94,7 @@ function StatutBadge({ statut }) {
 
 function dateRelative(ds) {
   if (!ds) return { label: "—", urgent: false, past: false };
-  const diff = Math.round((new Date(ds) - new Date("2025-06-14")) / 86400000);
+  const diff = Math.round((new Date(ds) - new Date()) / 86400000);
   if (diff < 0)   return { label: `Il y a ${Math.abs(diff)}j`, urgent: false, past: true  };
   if (diff === 0) return { label: "Aujourd'hui",                urgent: true,  past: false };
   if (diff <= 3)  return { label: `Dans ${diff}j`,             urgent: true,  past: false };
@@ -127,8 +102,9 @@ function dateRelative(ds) {
 }
 
 function nextBcId(bons) {
-  const max = Math.max(...bons.map(b => parseInt(b.id.split("-")[2], 10)));
-  return `BC-2025-${String(max + 1).padStart(4, "0")}`;
+  const nums = bons.map(b => parseInt(b.id.split("-")[2], 10)).filter(n => !isNaN(n));
+  const max  = nums.length ? Math.max(...nums) : 0;
+  return `BC-${new Date().getFullYear()}-${String(max + 1).padStart(4, "0")}`;
 }
 
 /* ─── Champ de formulaire stylisé (dark) ────────────────── */
@@ -372,9 +348,21 @@ function ModalConformite({ bc, onClose, onSave }) {
 
 /* ─── Composant principal ──────────────────────────────── */
 export default function ApprovisionnementsFournisseurs({ userRole }) {
-  const [bons,         setBons]         = useState(BONS_COMMANDE_INIT);
-  const [modal,        setModal]        = useState(null); // modal conformité
-  const [showNouveau,  setShowNouveau]  = useState(false);
+  const [bons,        setBons]        = useState([]);
+  const [loading,     setLoading]     = useState(true);
+  const [apiError,    setApiError]    = useState(null);
+  const [modal,       setModal]       = useState(null);
+  const [showNouveau, setShowNouveau] = useState(false);
+
+  useEffect(() => {
+    api.get("/api/transactions?type=RECEPTION&limit=100")
+      .then(res => {
+        const list = Array.isArray(res) ? res : (res.data ?? []);
+        setBons(list.map(fromApiToBC));
+      })
+      .catch(err => { setApiError(err.message); setBons([]); })
+      .finally(() => setLoading(false));
+  }, []);
 
   const isAdmin = userRole === "ADMIN_FEDERAL";
 
@@ -456,7 +444,19 @@ export default function ApprovisionnementsFournisseurs({ userRole }) {
         </div>
 
         <div className="divide-y divide-slate-50">
-          {bons.map(bc => {
+          {loading ? (
+            <div className="flex items-center justify-center gap-3 py-12">
+              <span className="w-5 h-5 border-2 border-slate-200 border-t-emerald-500 rounded-full animate-spin" />
+              <span className="text-sm text-slate-400">Chargement des commandes…</span>
+            </div>
+          ) : bons.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-14 text-center">
+              <Truck size={32} className="text-slate-200 mb-3" />
+              <p className="text-sm font-semibold text-slate-600">Aucune commande fournisseur pour le moment</p>
+              <p className="text-xs text-slate-400 mt-1">Les bons de commande émis vers les fournisseurs apparaîtront ici.</p>
+              {apiError && <p className="text-xs text-red-400 mt-2">{apiError}</p>}
+            </div>
+          ) : bons.map(bc => {
             const arr = dateRelative(bc.dateArrivee);
             const termine = bc.statut === "conforme" || bc.statut === "non_conforme";
             return (

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { api } from "./lib/api";
 import {
   BarChart3, Download, Database, Shield, Activity,
   FileText, FileSpreadsheet, ChevronDown, TrendingUp,
@@ -11,102 +12,28 @@ import {
    DONNÉES SIMULÉES
 ══════════════════════════════════════════════════════ */
 
-const PERIODES   = ["Ce mois", "Ce trimestre", "Cette année", "Personnalisée..."];
-const REGIONS    = ["Toutes les régions", "Souss-Massa", "Laâyoune-Sakia", "Béni Mellal-Khénifra", "Rabat-Salé-Kénitra", "Casablanca-Settat"];
-const UNITES     = ["Unité Aït Si Salem", "Unité Sakia Al Hamra", "Unité Tadla Azilal", "Unité Gharb Chrarda", "Unité Chaouia Ouardigha", "Unité Doukkala Abda"];
-const PERIMETRE  = ["Global (Tout le Maroc)", "Régional", "Par Unité / Coopérative"];
-const ARTICLES   = ["Tous les articles", "Semences Bovines", "Azote Liquide", "Matériel & Équipements"];
+const PERIODES  = ["Ce mois", "Ce trimestre", "Cette année", "Personnalisée..."];
+const PERIMETRE = ["Global (Tout le Maroc)", "Régional", "Par Unité / Coopérative"];
 
-const STOCKS_REGIONAUX = [
-  { region: "Unité Aït Si Salem",       semences: 1240, semencesMax: 2000, azote: 820,  azoteMax: 1500, statut: "normal"   },
-  { region: "Unité Sakia Al Hamra",     semences: 310,  semencesMax: 2000, azote: 180,  azoteMax: 1500, statut: "critique" },
-  { region: "Unité Tadla Azilal",       semences: 890,  semencesMax: 2000, azote: 1100, azoteMax: 1500, statut: "normal"   },
-  { region: "Unité Gharb Chrarda",      semences: 1560, semencesMax: 2000, azote: 650,  azoteMax: 1500, statut: "alerte"   },
-  { region: "Unité Chaouia Ouardigha",  semences: 420,  semencesMax: 2000, azote: 290,  azoteMax: 1500, statut: "alerte"   },
-  { region: "Unité Doukkala Abda",      semences: 1780, semencesMax: 2000, azote: 1320, azoteMax: 1500, statut: "normal"   },
-];
+const TX_TO_AUDIT = {
+  RECEPTION:   { action:"Réception enregistrée",     type:"success" },
+  EXPEDITION:  { action:"Expédition transmise",       type:"info"    },
+  ORDRE_ADMIN: { action:"Ordre Admin émis",           type:"warning" },
+};
 
-const GRAPH_DATA = [
-  { mois: "Mars",  alloue: 3200, consomme: 2100 },
-  { mois: "Avr.",  alloue: 3500, consomme: 3100 },
-  { mois: "Mai",   alloue: 4100, consomme: 3850 },
-  { mois: "Juin",  alloue: 3800, consomme: 2960 },
-];
-
-const AUDIT_LOGS = [
-  {
-    id: 1,
-    datetime: "2025-06-14 13:42",
-    utilisateur: "Super Admin",
-    role: "Administration",
-    action: "Génération PIN Dérogation",
-    cible: "Unité Sakia Al Hamra",
-    type: "warning",
-  },
-  {
-    id: 2,
-    datetime: "2025-06-14 12:17",
-    utilisateur: "Admin Fédéral",
-    role: "Administration",
-    action: "Réception Fournisseur Validée",
-    cible: "Semex Europe FR · CMD-892",
-    type: "success",
-  },
-  {
-    id: 3,
-    datetime: "2025-06-14 11:55",
-    utilisateur: "Direction",
-    role: "Direction Générale",
-    action: "Modification Quota Global",
-    cible: "Campagne Semences Juin 2025",
-    type: "info",
-  },
-  {
-    id: 4,
-    datetime: "2025-06-14 11:08",
-    utilisateur: "Admin Fédéral",
-    role: "Administration",
-    action: "Dérogation Accordée (+100 doses)",
-    cible: "Unité Doukkala Abda",
-    type: "warning",
-  },
-  {
-    id: 5,
-    datetime: "2025-06-14 10:34",
-    utilisateur: "Magasinier · Benali",
-    role: "Opérateur Stock",
-    action: "Expédition Validée (600 L azote)",
-    cible: "Unité Aït Si Salem",
-    type: "success",
-  },
-  {
-    id: 6,
-    datetime: "2025-06-14 09:50",
-    utilisateur: "Admin Fédéral",
-    role: "Administration",
-    action: "Tentative connexion PIN échouée",
-    cible: "Session #A-0049",
-    type: "error",
-  },
-  {
-    id: 7,
-    datetime: "2025-06-14 09:15",
-    utilisateur: "Super Admin",
-    role: "Administration",
-    action: "Nouvelle Campagne Créée",
-    cible: "Semences Juin 2025 · 6 unités",
-    type: "info",
-  },
-  {
-    id: 8,
-    datetime: "2025-06-14 08:32",
-    utilisateur: "Admin Fédéral",
-    role: "Administration",
-    action: "Réception Validée (1 000 doses)",
-    cible: "Alta Genetics NL · CMD-891",
-    type: "success",
-  },
-];
+function fromTxToAudit(t, idx) {
+  const meta = TX_TO_AUDIT[t.type] ?? { action: t.type, type: "info" };
+  const dest = t.uniteCible?.nom || t.fournisseurCible?.nom || '—';
+  return {
+    id:          t._id ?? idx,
+    datetime:    new Date(t.createdAt).toLocaleString('fr-FR', { year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit' }),
+    utilisateur: t.initiatedBy ? `${t.initiatedBy.prenom ?? ''} ${t.initiatedBy.nom ?? ''}`.trim() : '—',
+    role:        t.initiatedBy?.role ?? '—',
+    action:      meta.action,
+    cible:       `${t.reference} → ${dest}`,
+    type:        meta.type,
+  };
+}
 
 /* ══════════════════════════════════════════════════════
    HELPERS & SOUS-COMPOSANTS
@@ -139,7 +66,7 @@ function AuditBadge({ type }) {
 }
 
 function MiniStockBar({ value, max, statut, label, unit }) {
-  const pct = Math.min((value / max) * 100, 100);
+  const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0;
   const barColor = statut === "critique" ? "bg-red-500"
     : pct < 35 ? "bg-red-400"
     : pct < 55 ? "bg-amber-400"
@@ -314,21 +241,52 @@ export default function TracabiliteRapports() {
   const [periode,    setPeriode]    = useState(PERIODES[0]);
   const [perimetre,  setPerimetre]  = useState(PERIMETRE[0]);
   const [selection,  setSelection]  = useState("");
-  const [article,    setArticle]    = useState(ARTICLES[0]);
-
-  /* ── Export modal ── */
-  const [exportModal, setExportModal] = useState(null); // null | "pdf" | "excel"
-
-  /* ── Audit ── */
+  const [article,    setArticle]    = useState("Tous les articles");
   const [auditFilter, setAuditFilter] = useState("tous");
+  const [exportModal, setExportModal] = useState(null);
 
-  /* ── Sélection dynamique selon périmètre ── */
+  /* ── Données dynamiques ── */
+  const [stocks,        setStocks]        = useState({});
+  const [stocksRegion,  setStocksRegion]  = useState([]);
+  const [auditLogs,     setAuditLogs]     = useState([]);
+  const [unitesList,    setUnitesList]    = useState([]);
+  const [regionsList,   setRegionsList]   = useState([]);
+  const [articlesList,  setArticlesList]  = useState(["Tous les articles"]);
+  const [isLoading,     setIsLoading]     = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      api.get('/api/dashboard/stats'),
+      api.get('/api/transactions?limit=10'),
+      api.get('/api/unites?limit=200'),
+      api.get('/api/articles?limit=200'),
+    ]).then(([statsRes, txRes, unitesRes, articlesRes]) => {
+      /* Stats dashboard */
+      setStocks(statsRes.stocks ?? {});
+      setStocksRegion(statsRes.regions ?? []);
+
+      /* Audit logs depuis transactions */
+      const txList = Array.isArray(txRes) ? txRes : (txRes.data ?? []);
+      setAuditLogs(txList.map(fromTxToAudit));
+
+      /* Filtres unités */
+      const unites = Array.isArray(unitesRes) ? unitesRes : (unitesRes.data ?? []);
+      const noms   = unites.map(u => u.nom).filter(Boolean);
+      const regions = [...new Set(unites.map(u => u.region).filter(Boolean))];
+      setUnitesList(noms);
+      setRegionsList(regions);
+
+      /* Filtres articles */
+      const arts = Array.isArray(articlesRes) ? articlesRes : (articlesRes.data ?? []);
+      setArticlesList(["Tous les articles", ...arts.map(a => a.designation).filter(Boolean)]);
+    }).catch(() => {}).finally(() => setIsLoading(false));
+  }, []);
+
   const selectionOptions =
-    perimetre === "Régional"               ? REGIONS.slice(1) :
-    perimetre === "Par Unité / Coopérative" ? UNITES           : [];
+    perimetre === "Régional"               ? regionsList :
+    perimetre === "Par Unité / Coopérative" ? unitesList  : [];
   const showSelection = selectionOptions.length > 0;
 
-  /* Résumé filtres pour la modale */
   const filtersSummary = {
     periode,
     perimetre,
@@ -336,11 +294,9 @@ export default function TracabiliteRapports() {
     article,
   };
 
-  const graphMax = Math.max(...GRAPH_DATA.map(d => d.alloue)) * 1.1;
-
   const filteredLogs = auditFilter === "tous"
-    ? AUDIT_LOGS
-    : AUDIT_LOGS.filter(l => l.type === auditFilter);
+    ? auditLogs
+    : auditLogs.filter(l => l.type === auditFilter);
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
@@ -421,7 +377,10 @@ export default function TracabiliteRapports() {
                   <select value={selection} onChange={e => setSelection(e.target.value)}
                     className="appearance-none w-full bg-white border border-blue-300 text-gray-700 text-sm rounded-lg pl-3 pr-7 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 hover:border-blue-400 transition-colors cursor-pointer">
                     <option value="">— Sélectionner —</option>
-                    {selectionOptions.map(o => <option key={o}>{o}</option>)}
+                    {selectionOptions.length === 0
+                      ? <option>Aucune donnée</option>
+                      : selectionOptions.map(o => <option key={o}>{o}</option>)
+                    }
                   </select>
                   <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                 </div>
@@ -434,7 +393,7 @@ export default function TracabiliteRapports() {
               <div className="relative">
                 <select value={article} onChange={e => setArticle(e.target.value)}
                   className="appearance-none w-full bg-white border border-gray-200 text-gray-700 text-sm rounded-lg pl-3 pr-7 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 hover:border-gray-300 transition-colors cursor-pointer">
-                  {ARTICLES.map(o => <option key={o}>{o}</option>)}
+                  {articlesList.map(o => <option key={o}>{o}</option>)}
                 </select>
                 <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
               </div>
@@ -445,13 +404,13 @@ export default function TracabiliteRapports() {
               {[
                 perimetre !== PERIMETRE[0] ? perimetre.split(" ")[0] : null,
                 selection || null,
-                article !== ARTICLES[0] ? article : null,
+                article !== "Tous les articles" ? article : null,
               ].filter(Boolean).map(tag => (
                 <span key={tag} className="text-[10px] font-semibold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
                   {tag}
                 </span>
               ))}
-              {perimetre === PERIMETRE[0] && article === ARTICLES[0] && (
+              {perimetre === PERIMETRE[0] && article === "Tous les articles" && (
                 <span className="text-[10px] text-gray-400">Vue globale</span>
               )}
             </div>
@@ -463,50 +422,32 @@ export default function TracabiliteRapports() {
           {[
             {
               label: "Stock Central Semences",
-              value: "45 200",
+              value: isLoading ? '…' : (stocks.semences?.toLocaleString() ?? '—'),
               unit: "doses",
-              icon: Database,
-              bg: "bg-blue-50", iconColor: "text-blue-600",
-              trend: "+3.2%", trendUp: true,
-              sub: "Capacité totale : 80 000 doses",
+              icon: Database, bg: "bg-blue-50", iconColor: "text-blue-600",
             },
             {
               label: "Stock Central Azote",
-              value: "8 500",
+              value: isLoading ? '…' : (stocks.azote?.toLocaleString() ?? '—'),
               unit: "litres",
-              icon: Droplets,
-              bg: "bg-cyan-50", iconColor: "text-cyan-600",
-              trend: "−1.8%", trendUp: false,
-              sub: "Seuil critique : 2 000 L",
+              icon: Droplets, bg: "bg-cyan-50", iconColor: "text-cyan-600",
             },
             {
               label: "Taux Consommation Quota",
-              value: "78%",
+              value: isLoading ? '…' : (stocks.quotaPct != null ? `${stocks.quotaPct}%` : '—'),
               unit: "alloué",
-              icon: BarChart3,
-              bg: "bg-indigo-50", iconColor: "text-indigo-600",
-              trend: "+5 pts", trendUp: true,
-              sub: "Reste : 22% non consommé",
+              icon: BarChart3, bg: "bg-indigo-50", iconColor: "text-indigo-600",
             },
             {
-              label: "Indice Sécurité OTP/PIN",
-              value: "98%",
-              unit: "succès",
-              icon: Shield,
-              bg: "bg-emerald-50", iconColor: "text-emerald-600",
-              trend: "−1 échec", trendUp: false,
-              sub: "1 tentative invalide · J-0",
+              label: "Activité logistique",
+              value: isLoading ? '…' : auditLogs.length,
+              unit: "transactions",
+              icon: Activity, bg: "bg-emerald-50", iconColor: "text-emerald-600",
             },
-          ].map(({ label, value, unit, icon: Icon, bg, iconColor, trend, trendUp, sub }) => (
+          ].map(({ label, value, unit, icon: Icon, bg, iconColor }) => (
             <div key={label} className="bg-white rounded-xl border border-gray-100 p-4 flex flex-col gap-3">
-              <div className="flex items-start justify-between gap-2">
-                <div className={`${bg} p-2.5 rounded-xl shrink-0`}>
-                  <Icon size={18} className={iconColor} />
-                </div>
-                <span className={`flex items-center gap-0.5 text-xs font-semibold ${trendUp ? "text-emerald-600" : "text-red-500"}`}>
-                  {trendUp ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
-                  {trend}
-                </span>
+              <div className={`${bg} p-2.5 rounded-xl w-fit`}>
+                <Icon size={18} className={iconColor} />
               </div>
               <div>
                 <p className="text-xs text-gray-400 mb-0.5">{label}</p>
@@ -514,7 +455,6 @@ export default function TracabiliteRapports() {
                   {value} <span className="text-sm font-normal text-gray-400">{unit}</span>
                 </p>
               </div>
-              <p className="text-[10px] text-gray-400 border-t border-gray-50 pt-2">{sub}</p>
             </div>
           ))}
         </div>
@@ -537,11 +477,22 @@ export default function TracabiliteRapports() {
             </div>
 
             <div className="divide-y divide-gray-50">
-              {STOCKS_REGIONAUX.map(({ region, semences, semencesMax, azote, azoteMax, statut }) => {
+              {isLoading ? (
+                <div className="flex items-center justify-center gap-3 py-10">
+                  <span className="w-4 h-4 border-2 border-gray-200 border-t-blue-500 rounded-full animate-spin" />
+                  <span className="text-sm text-gray-400">Chargement…</span>
+                </div>
+              ) : stocksRegion.length === 0 ? (
+                <div className="py-10 text-center">
+                  <MapPin size={28} className="mx-auto mb-2 text-gray-200" />
+                  <p className="text-sm text-gray-400 font-medium">Aucune donnée régionale</p>
+                  <p className="text-xs text-gray-300 mt-1">Les données apparaîtront après la première campagne.</p>
+                </div>
+              ) : stocksRegion.map(({ nom, doses, pct, statut }) => {
                 const alerteRegion = statut === "critique" || statut === "alerte";
-                const initials = region.replace("Unité ", "").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+                const initials = nom.replace("Unité ", "").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
                 return (
-                  <div key={region}
+                  <div key={nom}
                     className={`px-5 py-3.5 flex gap-3 items-start transition-colors hover:bg-gray-50/60
                       ${statut === "critique" ? "bg-red-50/30" : ""}`}>
                     <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5
@@ -550,25 +501,17 @@ export default function TracabiliteRapports() {
                         : "bg-blue-50 text-blue-600"}`}>
                       {initials}
                     </div>
-
                     <div className="flex-1 min-w-0 space-y-2">
                       <div className="flex items-center justify-between gap-2">
-                        <div>
-                          <p className={`text-xs font-semibold ${statut === "critique" ? "text-red-700" : "text-gray-800"}`}>
-                            {region}
-                          </p>
-                        </div>
+                        <p className={`text-xs font-semibold ${statut === "critique" ? "text-red-700" : "text-gray-800"}`}>{nom}</p>
                         {alerteRegion && (
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0
                             ${statut === "critique" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
-                            {statut === "critique" ? "⚠ Rupture imminente" : "↓ Niveau bas"}
+                            {statut === "critique" ? "⚠ Critique" : "↓ Alerte"}
                           </span>
                         )}
                       </div>
-                      <div className="flex gap-4">
-                        <MiniStockBar value={semences} max={semencesMax} statut={statut} label="Semences" unit="doses" />
-                        <MiniStockBar value={azote}    max={azoteMax}    statut={statut} label="Azote"    unit="L"     />
-                      </div>
+                      <MiniStockBar value={doses} max={Math.max(doses, 1)} statut={statut} label={`${pct}% consommé`} unit="doses" />
                     </div>
                   </div>
                 );
@@ -577,8 +520,8 @@ export default function TracabiliteRapports() {
 
             <div className="px-5 py-2.5 border-t border-gray-50 bg-gray-50/40">
               <p className="text-[10px] text-gray-400">
-                {STOCKS_REGIONAUX.filter(s => s.statut === "critique").length} unité(s) en rupture imminente ·{" "}
-                {STOCKS_REGIONAUX.filter(s => s.statut === "alerte").length} en alerte
+                {stocksRegion.filter(s => s.statut === "critique").length} région(s) critique ·{" "}
+                {stocksRegion.filter(s => s.statut === "alerte").length} en alerte
               </p>
             </div>
           </div>
@@ -601,78 +544,10 @@ export default function TracabiliteRapports() {
             </div>
 
             <div className="px-5 py-5">
-              {/* Axe Y labels */}
-              <div className="flex flex-col gap-0 mb-2">
-                <div className="flex items-end gap-3 h-52">
-                  {/* Axe Y */}
-                  <div className="flex flex-col justify-between items-end h-full pb-6 shrink-0">
-                    {[4500, 3000, 1500, 0].map(v => (
-                      <span key={v} className="text-[10px] text-gray-300 tabular-nums">{v.toLocaleString()}</span>
-                    ))}
-                  </div>
-
-                  {/* Barres */}
-                  <div className="flex-1 flex items-end justify-around gap-2 h-full">
-                    {GRAPH_DATA.map(({ mois, alloue, consomme }) => {
-                      const hAlloue    = (alloue    / graphMax) * 100;
-                      const hConsomme  = (consomme  / graphMax) * 100;
-                      const pctConso   = Math.round((consomme / alloue) * 100);
-                      const overUsed   = pctConso >= 95;
-                      return (
-                        <div key={mois} className="flex flex-col items-center gap-1.5 flex-1 h-full group">
-                          {/* Tooltip hover */}
-                          <div className="relative flex items-end justify-center gap-1 flex-1 w-full">
-                            {/* Bulle tooltip */}
-                            <div className="absolute -top-1 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity z-10
-                              bg-slate-900 text-white text-[10px] rounded-lg px-2.5 py-1.5 whitespace-nowrap pointer-events-none shadow-lg">
-                              <div className="font-semibold mb-0.5">{mois}</div>
-                              <div>Alloué : {alloue.toLocaleString()}</div>
-                              <div>Consommé : {consomme.toLocaleString()} ({pctConso}%)</div>
-                            </div>
-
-                            {/* Barre allouée (fond) */}
-                            <div className="relative w-full flex items-end h-full">
-                              <div
-                                className="w-full bg-blue-100 rounded-t-md relative overflow-hidden"
-                                style={{ height: `${hAlloue}%` }}>
-                                {/* Barre consommée (superposée) */}
-                                <div
-                                  className={`absolute bottom-0 left-0 right-0 rounded-t-sm transition-all duration-700
-                                    ${overUsed ? "bg-amber-500" : "bg-blue-600"}`}
-                                  style={{ height: `${(consomme / alloue) * 100}%` }}
-                                />
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Label mois */}
-                          <span className="text-[10px] font-medium text-gray-500">{mois}</span>
-
-                          {/* Pct */}
-                          <span className={`text-[10px] font-bold tabular-nums ${overUsed ? "text-amber-600" : "text-blue-600"}`}>
-                            {pctConso}%
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              {/* Résumé sous le graphique */}
-              <div className="mt-4 grid grid-cols-2 gap-2 pt-4 border-t border-gray-50">
-                {[
-                  { label:"Total alloué",    value: GRAPH_DATA.reduce((a,d) => a + d.alloue,   0).toLocaleString(), unit:"doses", color:"text-blue-600"   },
-                  { label:"Total consommé",  value: GRAPH_DATA.reduce((a,d) => a + d.consomme, 0).toLocaleString(), unit:"doses", color:"text-blue-900"   },
-                  { label:"Pic de consomm.", value: Math.max(...GRAPH_DATA.map(d => d.consomme)).toLocaleString(),   unit:"doses · Mai", color:"text-amber-600" },
-                  { label:"Taux moyen",      value: `${Math.round(GRAPH_DATA.reduce((a,d) => a + (d.consomme/d.alloue)*100, 0) / GRAPH_DATA.length)}%`,
-                    unit:"sur 4 mois", color:"text-indigo-600" },
-                ].map(({ label, value, unit, color }) => (
-                  <div key={label} className="bg-gray-50 rounded-lg px-3 py-2">
-                    <p className="text-[10px] text-gray-400">{label}</p>
-                    <p className={`text-sm font-bold ${color} tabular-nums`}>{value} <span className="text-[10px] font-normal text-gray-400">{unit}</span></p>
-                  </div>
-                ))}
+              <div className="flex flex-col items-center justify-center py-10 text-center border-2 border-dashed border-gray-100 rounded-xl">
+                <BarChart3 size={28} className="mx-auto mb-2 text-gray-200" />
+                <p className="text-sm text-gray-400 font-medium">Graphique de consommation</p>
+                <p className="text-xs text-gray-300 mt-1">Disponible après l'enregistrement des campagnes mensuelles.</p>
               </div>
             </div>
           </div>
@@ -721,6 +596,11 @@ export default function TracabiliteRapports() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
+                  {filteredLogs.length === 0 && (
+                    <tr><td colSpan={6} className="text-center py-10 text-sm text-gray-400">
+                      {isLoading ? 'Chargement des logs…' : 'Aucune activité enregistrée pour le moment.'}
+                    </td></tr>
+                  )}
                   {filteredLogs.map((log, i) => (
                     <tr key={log.id} className={`transition-colors hover:bg-gray-50/60
                       ${log.type === "error" ? "bg-red-50/20" : ""}`}>

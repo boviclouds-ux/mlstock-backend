@@ -18,18 +18,6 @@ const MOTIFS = [
   "Autre",
 ];
 
-/* ─── Fallback historique (affiché si l'API est muette) */
-const ORDRES_FALLBACK = [
-  { id:"TRX-2025-00041", date:"2025-06-14", uniteCible:"Unité Sakia Al Hamra",    motif:"Dotation exceptionnelle",
-    articles:[{ label:"Holstein – BENNER JESUALDO", qte:500, unite:"doses", type:"semence" },{ label:"Azote liquide", qte:200, unite:"litres", type:"azote" }],
-    statut:"Validé" },
-  { id:"TRX-2025-00039", date:"2025-06-11", uniteCible:"Unité Tadla Azilal",      motif:"Urgence sanitaire",
-    articles:[{ label:"Antibiotiques intra-mammaires", qte:50, unite:"unités", type:"sante" }],
-    statut:"Expédié" },
-  { id:"TRX-2025-00037", date:"2025-06-08", uniteCible:"Unité Gharb Chrarda",     motif:"Campagne de vaccination",
-    articles:[{ label:"Normande – OLIVIER ET", qte:200, unite:"doses", type:"semence" }],
-    statut:"Réceptionné" },
-];
 
 /* ─── Adaptateurs API ───────────────────────────────── */
 const CAT_TO_TYPE = { Semences:"semence", Azote:"azote", "Santé":"sante", "Santé Animale":"sante" };
@@ -98,7 +86,7 @@ export default function OrdresAdmin() {
   /* ─ Données API ───────────────────────────────────── */
   const [unites,      setUnites]      = useState([]);
   const [catalogue,   setCatalogue]   = useState([]);
-  const [ordres,      setOrdres]      = useState(ORDRES_FALLBACK);
+  const [ordres,      setOrdres]      = useState([]);
   const [loadingData, setLoadingData] = useState(true);
   const [apiError,    setApiError]    = useState(null);
 
@@ -133,7 +121,7 @@ export default function OrdresAdmin() {
         if (cat.length > 0)
           setLignes([{ _key:1, articleId:cat[0]._id, label:cat[0].label, unite:cat[0].unite, type:cat[0].type, qte:"" }]);
 
-        if (o.length > 0) setOrdres(o.map(fromApiOrdre));
+        setOrdres(o.map(fromApiOrdre));
       })
       .catch(err => setApiError(err.message))
       .finally(() => setLoadingData(false));
@@ -416,6 +404,12 @@ export default function OrdresAdmin() {
         </div>
 
         <div className="divide-y divide-slate-50">
+          {!loadingData && ordres.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-10 text-center">
+              <p className="text-sm font-semibold text-slate-500">Aucun ordre émis pour le moment.</p>
+              <p className="text-xs text-slate-400 mt-1">Les ordres créés via le formulaire apparaîtront ici.</p>
+            </div>
+          )}
           {ordres.map(ordre => (
             <div key={ordre.id}
               className="grid grid-cols-[1fr_0.7fr_1.4fr_1.2fr_1fr_1fr] gap-3 items-center px-5 py-3.5 hover:bg-slate-50/60 transition-colors">

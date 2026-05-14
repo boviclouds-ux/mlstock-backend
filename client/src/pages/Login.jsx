@@ -1,34 +1,52 @@
-// Login.jsx — Portail d'Authentification MLStock
+// Login.jsx — Portail BOVICLOUDS · Glassmorphism Premium
+import logoImg from '../assets/logo.png';
 import { useState } from "react";
-import { Mail, Lock, Eye, EyeOff, Dna, AlertCircle, ChevronRight, ShieldCheck } from "lucide-react";
+import { Mail, Lock, Eye, EyeOff, AlertCircle, Globe } from "lucide-react";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "https://mlstock-backend-3.onrender.com";
 
-/* ─── Fond animé ────────────────────────────────────────── */
-function Background() {
+/* ─── Fond liquide — bleus profonds, aqua, touches d'or ──── */
+function LiquidBackground() {
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950" />
+      {/* Couche de base — navy très profond */}
       <div
-        className="absolute inset-0 opacity-[0.05]"
-        style={{
-          backgroundImage:
-            "linear-gradient(rgba(148,163,184,.8) 1px,transparent 1px)," +
-            "linear-gradient(90deg,rgba(148,163,184,.8) 1px,transparent 1px)",
-          backgroundSize: "44px 44px",
-        }}
+        className="absolute inset-0"
+        style={{ background: 'linear-gradient(135deg, #030C18 0%, #04162A 40%, #062840 70%, #030C18 100%)' }}
       />
-      <div className="absolute -top-48 -left-48 w-[600px] h-[600px] rounded-full bg-blue-700/15 blur-[140px]" />
-      <div className="absolute -bottom-32 -right-32 w-[500px] h-[500px] rounded-full bg-violet-700/10 blur-[120px]" />
+
+      {/* Blob aqua principal — halo central */}
+      <div
+        className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[600px]"
+        style={{ background: 'radial-gradient(ellipse at center, rgba(6,182,212,0.22) 0%, transparent 68%)', filter: 'blur(50px)' }}
+      />
+
+      {/* Blob teal — gauche */}
+      <div
+        className="absolute top-1/4 -left-40 w-[550px] h-[500px]"
+        style={{ background: 'radial-gradient(ellipse at center, rgba(15,167,155,0.20) 0%, transparent 65%)', filter: 'blur(70px)' }}
+      />
+
+      {/* Blob aqua — droite centre */}
+      <div
+        className="absolute top-1/2 -right-24 w-[450px] h-[400px]"
+        style={{ background: 'radial-gradient(ellipse at center, rgba(8,145,178,0.18) 0%, transparent 65%)', filter: 'blur(65px)' }}
+      />
+
+      {/* Touche d'or — bas gauche */}
+      <div
+        className="absolute -bottom-16 left-1/3 w-[400px] h-[280px]"
+        style={{ background: 'radial-gradient(ellipse at center, rgba(200,130,20,0.13) 0%, transparent 65%)', filter: 'blur(60px)' }}
+      />
+
+      {/* Reflet lumineux fin — haut */}
+      <div
+        className="absolute -top-24 right-1/3 w-[300px] h-[250px]"
+        style={{ background: 'radial-gradient(ellipse at center, rgba(6,182,212,0.12) 0%, transparent 70%)', filter: 'blur(45px)' }}
+      />
     </div>
   );
 }
-
-/* ─── Champ de formulaire ───────────────────────────────── */
-const fieldCls =
-  "w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white " +
-  "placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 " +
-  "focus:border-transparent transition-all";
 
 /* ═══════════════════════════════════════════════════════════
    COMPOSANT PRINCIPAL
@@ -45,7 +63,6 @@ export default function Login({ onLogin }) {
     if (!email || !password) { setError("Veuillez renseigner l'email et le mot de passe."); return; }
     setError("");
     setLoading(true);
-
     try {
       const res  = await fetch(`${API_URL}/api/auth/login`, {
         method:  "POST",
@@ -62,138 +79,172 @@ export default function Login({ onLogin }) {
     }
   }
 
+  const inputCls =
+    "w-full bg-white/7 border border-white/15 rounded-xl px-4 py-3.5 text-sm text-white " +
+    "placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-cyan-400/40 " +
+    "focus:border-cyan-400/35 focus:bg-white/10 transition-all";
+
   return (
-    <div className="relative min-h-screen flex items-center justify-center px-4 bg-slate-950">
-      <Background />
+    <div
+      className="relative min-h-screen flex items-center justify-center px-4"
+      style={{ background: '#030C18' }}
+    >
+      <LiquidBackground />
 
-      <div className="relative z-10 w-full max-w-sm">
+      {/* ── Sélecteur langue — haut droite ──────────────── */}
+      <div className="absolute top-6 right-6 z-20 flex items-center gap-1.5 bg-white/8 border border-white/12 rounded-full px-3 py-1.5 hover:bg-white/12 transition-all cursor-pointer">
+        <Globe size={13} className="text-white/60" />
+        <span className="text-[11px] font-semibold text-white/60 tracking-wider">FR</span>
+      </div>
 
-        {/* Logo & Titre */}
-        <div className="flex flex-col items-center mb-8 text-center">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shadow-xl shadow-blue-900/50 mb-4">
-            <Dna size={28} className="text-white" />
-          </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">MLStock</h1>
-          <p className="text-slate-400 text-sm mt-1 font-medium">Portail d'Authentification</p>
-          <p className="text-slate-600 text-xs mt-0.5">Système Fédéral de Gestion Laitière</p>
-        </div>
+      {/* ── Carte principale ─────────────────────────────── */}
+      <div className="relative z-10 w-full max-w-[400px]">
 
-        {/* Carte formulaire */}
-        <div className="bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-2xl p-7 shadow-2xl">
+        {/* Bordure lumineuse dégradée */}
+        <div
+          className="rounded-3xl p-px shadow-2xl"
+          style={{
+            background: 'linear-gradient(150deg, rgba(255,255,255,0.30) 0%, rgba(6,182,212,0.20) 45%, rgba(255,255,255,0.06) 100%)',
+            boxShadow: '0 25px 60px rgba(0,0,0,0.55), 0 0 40px rgba(6,182,212,0.08)',
+          }}
+        >
+          {/* Verre intérieur */}
+          <div
+            className="rounded-3xl px-8 pt-8 pb-7"
+            style={{
+              background: 'linear-gradient(150deg, rgba(255,255,255,0.09) 0%, rgba(255,255,255,0.03) 100%)',
+              backdropFilter: 'blur(28px)',
+              WebkitBackdropFilter: 'blur(28px)',
+            }}
+          >
 
-          <div className="mb-5">
-            <h2 className="text-base font-bold text-white">Connexion</h2>
-            <p className="text-slate-500 text-xs mt-0.5">Accès réservé aux utilisateurs habilités</p>
-          </div>
+            {/* ── Logo + Marque ──────────────────────────── */}
+            <div className="flex flex-col items-center mb-7">
+              {/* Logo sur fond blanc pour lisibilité */}
+              <div className="mb-5 bg-white/92 rounded-2xl px-4 py-2.5 shadow-xl shadow-black/30">
+                <img src={logoImg} alt="ML STOCK" className="h-9 w-auto object-contain" />
+              </div>
 
-          {/* Message d'erreur */}
-          {error && (
-            <div className="flex items-start gap-2.5 bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2.5 mb-5">
-              <AlertCircle size={14} className="text-red-400 shrink-0 mt-0.5" />
-              <p className="text-xs text-red-400 leading-snug">{error}</p>
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-3">
-            {/* Email */}
-            <div className="relative">
-              <Mail size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
-              <input
-                type="email"
-                value={email}
-                onChange={e => { setEmail(e.target.value); setError(""); }}
-                placeholder="Email professionnel"
-                autoComplete="email"
-                className={`${fieldCls} pl-10`}
-                disabled={loading}
-              />
-            </div>
-
-            {/* Mot de passe */}
-            <div className="relative">
-              <Lock size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
-              <input
-                type={showPw ? "text" : "password"}
-                value={password}
-                onChange={e => { setPassword(e.target.value); setError(""); }}
-                placeholder="Mot de passe"
-                autoComplete="current-password"
-                className={`${fieldCls} pl-10 pr-10`}
-                disabled={loading}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPw(v => !v)}
-                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
-                tabIndex={-1}
+              {/* Nom de l'application */}
+              <h1
+                className="text-[28px] font-black text-white leading-none tracking-[0.22em] uppercase"
+                style={{ textShadow: '0 0 30px rgba(6,182,212,0.35)' }}
               >
-                {showPw ? <EyeOff size={14} /> : <Eye size={14} />}
+                BOVICLOUDS
+              </h1>
+
+              {/* Slogan */}
+              <p className="text-[12px] font-light text-white/50 tracking-[0.18em] mt-2.5 uppercase">
+                Piloter. Tracer. Performer.
+              </p>
+            </div>
+
+            {/* ── Erreur ────────────────────────────────── */}
+            {error && (
+              <div className="flex items-start gap-2.5 bg-red-500/12 border border-red-400/22 rounded-xl px-3 py-2.5 mb-4">
+                <AlertCircle size={14} className="text-red-400 shrink-0 mt-0.5" />
+                <p className="text-xs text-red-300 leading-snug">{error}</p>
+              </div>
+            )}
+
+            {/* ── Formulaire ────────────────────────────── */}
+            <form onSubmit={handleSubmit} className="space-y-3">
+
+              {/* Email */}
+              <div className="relative">
+                <Mail size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/35 pointer-events-none" />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={e => { setEmail(e.target.value); setError(""); }}
+                  placeholder="Adresse e-mail"
+                  autoComplete="email"
+                  className={`${inputCls} pl-10`}
+                  disabled={loading}
+                />
+              </div>
+
+              {/* Mot de passe */}
+              <div className="relative">
+                <Lock size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/35 pointer-events-none" />
+                <input
+                  type={showPw ? "text" : "password"}
+                  value={password}
+                  onChange={e => { setPassword(e.target.value); setError(""); }}
+                  placeholder="Mot de passe"
+                  autoComplete="current-password"
+                  className={`${inputCls} pl-10 pr-10`}
+                  disabled={loading}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPw(v => !v)}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-white/35 hover:text-white/65 transition-colors"
+                  tabIndex={-1}
+                >
+                  {showPw ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              </div>
+
+              {/* Bouton Se Connecter */}
+              <button
+                type="submit"
+                disabled={loading || !email || !password}
+                className="w-full flex items-center justify-center gap-2 py-3.5 mt-2 rounded-xl text-sm font-bold text-[#03101F] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  background: 'linear-gradient(90deg, #06B6D4 0%, #0DC8E8 55%, #22D3EE 100%)',
+                  boxShadow: '0 8px 24px rgba(6,182,212,0.35), 0 2px 8px rgba(0,0,0,0.20)',
+                }}
+              >
+                {loading ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-[#03101F]/25 border-t-[#03101F] rounded-full animate-spin" />
+                    Connexion en cours…
+                  </>
+                ) : (
+                  'Se Connecter'
+                )}
               </button>
-            </div>
+            </form>
 
-            {/* Bouton connexion */}
-            <button
-              type="submit"
-              disabled={loading || !email || !password}
-              className="w-full flex items-center justify-center gap-2 py-3 mt-1 rounded-xl text-sm font-bold bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white transition-all shadow-lg shadow-blue-900/30"
-            >
-              {loading ? (
-                <>
-                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Connexion en cours…
-                </>
-              ) : (
-                <>Se connecter <ChevronRight size={14} /></>
-              )}
-            </button>
-          </form>
-
-          {/* Séparateur */}
-          <div className="relative my-5">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-white/8" />
-            </div>
-            <div className="relative flex justify-center">
-              <span className="bg-slate-900/80 px-3 text-[10px] font-bold text-slate-600 uppercase tracking-widest">
-                Comptes de démonstration
+            {/* ── Séparateur ────────────────────────────── */}
+            <div className="flex items-center gap-3 my-5">
+              <div className="flex-1 border-t border-white/10" />
+              <span className="text-[10px] font-semibold text-white/28 uppercase tracking-widest whitespace-nowrap">
+                Accès rapide démo
               </span>
+              <div className="flex-1 border-t border-white/10" />
             </div>
-          </div>
 
-          {/* Comptes démo */}
-          <div className="space-y-1.5">
-            {[
-              { email:"admin@maroclait.ma",            role:"Admin Fédéral",     dot:"bg-violet-500" },
-              { email:"magasinier@maroclait.ma",        role:"Magasinier",        dot:"bg-blue-500"   },
-              { email:"contact@taroudant-coop.ma",     role:"Responsable Unité", dot:"bg-emerald-500"},
-            ].map(u => (
-              <button
-                key={u.email}
-                type="button"
-                onClick={() => { setEmail(u.email); setPassword("123456"); setError(""); }}
-                className="w-full flex items-center gap-3 px-3 py-2 rounded-xl border border-white/8 bg-white/3 hover:bg-white/6 transition-all text-left"
-              >
-                <span className={`w-2 h-2 rounded-full ${u.dot} shrink-0`} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-[11px] font-bold text-slate-300 leading-none">{u.role}</p>
-                  <p className="text-[10px] text-slate-600 mt-0.5 font-mono truncate">{u.email}</p>
-                </div>
-                <span className="text-[10px] text-slate-700 font-mono shrink-0">123456</span>
-              </button>
-            ))}
-          </div>
+            {/* ── Comptes démo ──────────────────────────── */}
+            <div className="space-y-1.5">
+              {[
+                { email:"admin@maroclait.ma",           role:"Admin Fédéral",     dot:"bg-violet-400" },
+                { email:"magasinier@maroclait.ma",       role:"Magasinier",        dot:"bg-cyan-400"   },
+                { email:"contact@taroudant-coop.ma",    role:"Responsable Unité", dot:"bg-emerald-400"},
+              ].map(u => (
+                <button
+                  key={u.email}
+                  type="button"
+                  onClick={() => { setEmail(u.email); setPassword("123456"); setError(""); }}
+                  className="w-full flex items-center gap-3 px-3 py-2 rounded-xl border border-white/8 bg-white/3 hover:bg-white/7 transition-all text-left"
+                >
+                  <span className={`w-2 h-2 rounded-full ${u.dot} shrink-0`} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[11px] font-semibold text-white/65 leading-none">{u.role}</p>
+                    <p className="text-[10px] text-white/30 mt-0.5 font-mono truncate">{u.email}</p>
+                  </div>
+                  <span className="text-[10px] text-white/22 font-mono shrink-0">123456</span>
+                </button>
+              ))}
+            </div>
 
-          {/* Note MFA */}
-          <div className="flex items-center gap-2 mt-4 px-2">
-            <ShieldCheck size={11} className="text-slate-600 shrink-0" />
-            <p className="text-[10px] text-slate-600 leading-snug">
-              L'Admin Fédéral utilise une authentification renforcée en production.
-            </p>
           </div>
         </div>
 
-        <p className="text-center text-[10px] text-slate-700 mt-4">
-          MLstock v3.0 · © 2025 Maroc Lait · Accès réservé
+        {/* ── Pied de page ──────────────────────────────── */}
+        <p className="text-center text-[10px] text-white/18 mt-5 tracking-wide">
+          MLstock v1.0 · © 2026 Maroc Lait · Powered by Go Branding
         </p>
       </div>
     </div>

@@ -1,3 +1,4 @@
+import logoImg from './assets/logo.png';
 import { useState } from "react";
 import {
   Home, Package, User, LogOut, Moon, Sun,
@@ -197,7 +198,7 @@ function DashboardDirection() {
         {/* Semences */}
         <div className={card}>
           <div className="flex items-start justify-between">
-            <div className="p-2.5 rounded-xl bg-blue-50 dark:bg-blue-900/50"><Dna size={20} className="text-blue-600 dark:text-blue-400" /></div>
+            <div className="p-2.5 rounded-xl bg-blue-50 dark:bg-blue-900/50"><img src={logoImg} alt="Logo" className="w-10 h-auto" /></div>
             <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full text-emerald-600 bg-emerald-50 border border-emerald-100 dark:text-emerald-400 dark:bg-emerald-900/40 dark:border-emerald-800">
               <TrendingUp size={9} /> +3.2%
             </span>
@@ -434,7 +435,7 @@ export default function AppLayout() {
 
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-xl bg-slate-900 dark:bg-slate-700 flex items-center justify-center">
-                  <Dna size={16} className="text-blue-400" />
+                  <img src={logoImg} alt="Logo" className="w-10 h-auto" />
                 </div>
                 <div>
                   <p className="text-sm font-bold text-slate-900 dark:text-white leading-none">MLstock</p>

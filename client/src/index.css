@@ -1,3 +1,44 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ── Palette ML STOCK — identité visuelle officielle ── */
+:root {
+  /* Couleurs primaires */
+  --brand-navy:        #1B2D8A; /* ML STOCK navy — sidebar, titres, CTAs principaux */
+  --brand-navy-dark:   #141F61; /* hover / état pressé                               */
+  --brand-navy-light:  #2A3FA3; /* anneaux de focus, bordures                        */
+
+  /* Accent */
+  --brand-cyan:        #0DC8E8; /* liens actifs, boutons secondaires                 */
+  --brand-cyan-dark:   #0AABCA; /* hover cyan                                        */
+  --brand-cyan-light:  #E0F8FD; /* fond de carte légèrement teinté                  */
+
+  /* Statuts */
+  --brand-green:       #2BAA2B; /* succès, stock OK, validation                      */
+  --brand-green-light: #E8F8E8;
+  --brand-red:         #E61818; /* alerte critique, danger, déconnexion              */
+  --brand-red-light:   #FEE8E8;
+}
+
+/* Utilitaires globaux réutilisables */
+@layer components {
+  .btn-primary {
+    @apply bg-[#1B2D8A] hover:bg-[#141F61] text-white font-semibold rounded-xl
+           px-4 py-2.5 text-sm transition-colors shadow-sm
+           focus:outline-none focus:ring-2 focus:ring-[#0DC8E8] focus:ring-offset-2;
+  }
+  .btn-secondary {
+    @apply bg-[#0DC8E8] hover:bg-[#0AABCA] text-[#1B2D8A] font-semibold rounded-xl
+           px-4 py-2.5 text-sm transition-colors shadow-sm
+           focus:outline-none focus:ring-2 focus:ring-[#1B2D8A] focus:ring-offset-2;
+  }
+  .btn-success {
+    @apply bg-[#2BAA2B] hover:bg-[#1F8020] text-white font-semibold rounded-xl
+           px-4 py-2.5 text-sm transition-colors shadow-sm;
+  }
+  .btn-danger {
+    @apply bg-[#E61818] hover:bg-[#C51414] text-white font-semibold rounded-xl
+           px-4 py-2.5 text-sm transition-colors shadow-sm;
+  }
+}

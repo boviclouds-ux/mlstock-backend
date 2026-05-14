@@ -200,14 +200,14 @@ function AjusterModal({ row, onClose, onSave }) {
 /* ══════════════════════════════════════════════════════
    DRAWER — NOUVELLE CAMPAGNE
 ══════════════════════════════════════════════════════ */
-function NouvelleCampagneDrawer({ onClose, onCreated }) {
+function NouvelleCampagneDrawer({ onClose, onCreated, coopList = [], articleMap = {} }) {
   const now = new Date();
   const periodeDefaut = `${MOIS_FR[now.getMonth()]} ${now.getFullYear()}`;
   const monthInputDefaut = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
   const [categorieId,  setCategorieId]  = useState("semences");
   const cat = CATEGORIES[categorieId];
-  const [genetique,    setGenetique]    = useState(CATEGORIES.semences.articles[0]);
+  const [genetique,    setGenetique]    = useState((articleMap?.semences ?? [])[0] ?? '');
   const [volumeTotal,  setVolumeTotal]  = useState(1000);
   const [periode,      setPeriode]      = useState(periodeDefaut);
   const [step,         setStep]         = useState(1);
@@ -216,10 +216,10 @@ function NouvelleCampagneDrawer({ onClose, onCreated }) {
 
   function handleCategorieChange(id) {
     setCategorieId(id);
-    setGenetique(CATEGORIES[id].articles[0]);
+    setGenetique((articleMap?.[id] ?? [])[0] ?? '');
   }
-  const [dotations,   setDotations]   = useState(() => distribute(1000, COOPERATIVES.length));
-  const [locked,      setLocked]      = useState(() => Array(COOPERATIVES.length).fill(false));
+  const [dotations,   setDotations]   = useState(() => distribute(1000, coopList.length || 1));
+  const [locked,      setLocked]      = useState(() => Array(coopList.length).fill(false));
   const [recalcFlash, setRecalcFlash] = useState(false);
   const [lockFlash,   setLockFlash]   = useState(null); // index of last redistributed flash
   const [validated,   setValidated]   = useState(false);
@@ -250,9 +250,10 @@ function NouvelleCampagneDrawer({ onClose, onCreated }) {
   useEffect(() => { if (step === 2) recalculate(); }, [volumeTotal]);
 
   function goToStep2() {
-    const d = distribute(volumeTotal, COOPERATIVES.length);
+    const n = coopList.length || 1;
+    const d = distribute(volumeTotal, n);
     setDotations(d);
-    setLocked(Array(COOPERATIVES.length).fill(false));
+    setLocked(Array(coopList.length).fill(false));
     setStep(2);
   }
 
@@ -265,7 +266,7 @@ function NouvelleCampagneDrawer({ onClose, onCreated }) {
         article:     genetique,
         volumeTotal: Number(volumeTotal),
         periode,
-        lignes: COOPERATIVES.map((coop, idx) => ({
+        lignes: coopList.map((coop, idx) => ({
           cooperative: coop.name,
           region:      coop.region,
           alloue:      Number(dotations[idx]) || 0,
@@ -406,7 +407,7 @@ function NouvelleCampagneDrawer({ onClose, onCreated }) {
                 <div>
                   <p className="text-sm font-semibold text-blue-900 mb-0.5">Répartition automatique activée</p>
                   <p className="text-xs text-blue-700 leading-relaxed">
-                    Le système distribuera équitablement le volume total entre les <strong className="font-semibold">{COOPERATIVES.length} coopératives actives</strong>. Vous pourrez ajuster chaque quota individuellement à l'étape suivante.
+                    Le système distribuera équitablement le volume total entre les <strong className="font-semibold">{coopList.length} coopérative{coopList.length !== 1 ? 's' : ''} active{coopList.length !== 1 ? 's' : ''}</strong>. Vous pourrez ajuster chaque quota individuellement à l'étape suivante.
                   </p>
                 </div>
               </div>
@@ -420,7 +421,10 @@ function NouvelleCampagneDrawer({ onClose, onCreated }) {
                   <cat.icon size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                   <select value={genetique} onChange={e => setGenetique(e.target.value)}
                     className="w-full appearance-none border border-gray-200 rounded-lg pl-9 pr-9 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white hover:border-gray-300 transition-colors">
-                    {cat.articles.map(g => <option key={g}>{g}</option>)}
+                    {(articleMap?.[categorieId] ?? []).length === 0
+                      ? <option value="">— Aucun article en base —</option>
+                      : (articleMap?.[categorieId] ?? []).map(g => <option key={g}>{g}</option>)
+                    }
                   </select>
                   <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                 </div>
@@ -437,9 +441,9 @@ function NouvelleCampagneDrawer({ onClose, onCreated }) {
                     onChange={e => setVolumeTotal(Math.max(1, Number(e.target.value)))}
                     className="flex-1 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 hover:border-gray-300 transition-colors" />
                   <div className="bg-gray-50 border border-gray-100 rounded-lg px-3 py-2.5 flex items-center gap-1.5 whitespace-nowrap">
-                    <span className="text-xs text-gray-400">÷ {COOPERATIVES.length} =</span>
+                    <span className="text-xs text-gray-400">÷ {coopList.length} =</span>
                     <span className="text-sm font-bold text-gray-700 tabular-nums">
-                      ≈ {Math.floor(volumeTotal / COOPERATIVES.length)}
+                      ≈ {coopList.length > 0 ? Math.floor(volumeTotal / coopList.length) : 0}
                     </span>
                     <span className="text-xs text-gray-400">{cat.uniteParCoop}</span>
                   </div>
@@ -544,7 +548,9 @@ function NouvelleCampagneDrawer({ onClose, onCreated }) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {COOPERATIVES.map((coop, idx) => {
+                    {coopList.length === 0 ? (
+                      <tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">Aucune unité enregistrée en base.</td></tr>
+                    ) : coopList.map((coop, idx) => {
                       const val      = dotations[idx];
                       const numVal   = Number(val) || 0;
                       const pct      = volumeTotal > 0 ? ((numVal / volumeTotal) * 100).toFixed(1) : "0.0";
@@ -691,6 +697,12 @@ export default function GestionQuotas() {
   const [data,       setData]       = useState({ semences:[], consommables:[], materiel:[] });
   const [isLoading,  setIsLoading]  = useState(true);
   const [error,      setError]      = useState(null);
+  const [coopList,   setCoopList]   = useState(COOPERATIVES);
+  const [articleMap, setArticleMap] = useState({
+    semences:     CATEGORIES.semences.articles,
+    consommables: CATEGORIES.consommables.articles,
+    materiel:     CATEGORIES.materiel.articles,
+  });
 
   /* Fonction de chargement réutilisable — appelée au mount ET après chaque création */
   const fetchData = useCallback(() => {
@@ -710,6 +722,32 @@ export default function GestionQuotas() {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  useEffect(() => {
+    Promise.all([
+      api.get('/api/unites?limit=200'),
+      api.get('/api/articles?actif=true&limit=200'),
+    ]).then(([unitesRes, articlesRes]) => {
+      const unites = Array.isArray(unitesRes) ? unitesRes : (unitesRes.data ?? []);
+      if (unites.length > 0)
+        setCoopList(unites.map(u => ({ id: u._id, name: u.nom, region: u.region ?? '—' })));
+
+      const arts = Array.isArray(articlesRes) ? articlesRes : (articlesRes.data ?? []);
+      if (arts.length > 0) {
+        const m = { semences: [], consommables: [], materiel: [] };
+        arts.forEach(a => {
+          const c = (a.categorie ?? '').toLowerCase();
+          if (c.includes('semence') || c.includes('dose') || c.includes('génétique') || c.includes('genetique'))
+            m.semences.push(a.designation);
+          else if (c.includes('matériel') || c.includes('materiel') || c.includes('équip') || c.includes('equip') || c.includes('cuve'))
+            m.materiel.push(a.designation);
+          else
+            m.consommables.push(a.designation);
+        });
+        setArticleMap(m);
+      }
+    }).catch(() => {});
+  }, []);
 
   /* Filtrage : région puis période */
   const allRows  = data[activeTab];
@@ -771,6 +809,8 @@ export default function GestionQuotas() {
         <NouvelleCampagneDrawer
           onClose={() => setShowCampagne(false)}
           onCreated={() => { setShowCampagne(false); fetchData(); }}
+          coopList={coopList}
+          articleMap={articleMap}
         />
       )}
 
