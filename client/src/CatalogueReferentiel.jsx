@@ -17,12 +17,19 @@ const CATEGORIES_INIT = [
 ];
 
 const UNITES = [
-  { label: "Unité (U)",  value: "U"     },
-  { label: "Kilogramme", value: "Kg"    },
-  { label: "Litre (L)",  value: "L"     },
-  { label: "Dose",       value: "Dose"  },
-  { label: "Boîte",      value: "Boîte" },
+  { label: "Paillettes",  value: "Paillettes" },
+  { label: "Unité (U)",   value: "U"          },
+  { label: "Kilogramme",  value: "Kg"         },
+  { label: "Litre (L)",   value: "L"          },
+  { label: "Doses",       value: "Doses"      },
+  { label: "Boîte",       value: "Boîte"      },
 ];
+
+function defaultUnite(categorie) {
+  if (categorie === "Semences") return "Paillettes";
+  if (categorie === "Azote")    return "L";
+  return "U";
+}
 
 /* ─── Adaptateurs API ↔ UI ──────────────────────────────── */
 // Normalise un document MongoDB vers la forme attendue par l'UI
@@ -271,9 +278,10 @@ function ModalArticle({ article, articles, categories, onClose, onSave }) {
   // Pour les articles API, isEdit se base sur la présence du _id MongoDB
   const isEdit = Boolean(article?._id ?? article?.id);
 
+  const initialCategorie = article?.categorie ?? (categories[0]?.nom ?? "");
   const [designation, setDesignation] = useState(article?.designation ?? "");
-  const [categorie,   setCategorie]   = useState(article?.categorie   ?? (categories[0]?.nom ?? ""));
-  const [unite,       setUnite]       = useState(article?.unite       ?? "U");
+  const [categorie,   setCategorie]   = useState(initialCategorie);
+  const [unite,       setUnite]       = useState(article?.unite ?? defaultUnite(initialCategorie));
   const [prix,        setPrix]        = useState(article?.prix != null ? String(article.prix) : "");
   const [seuil,       setSeuil]       = useState(article?.seuilAlerte != null ? String(article.seuilAlerte) : "");
   const [stock,       setStock]       = useState(article?.stock       != null ? String(article.stock)       : "");

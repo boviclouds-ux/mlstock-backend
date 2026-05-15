@@ -167,7 +167,7 @@ function AppLayout({ user, userRole, onLogout }) {
             {/* ── Logistique & Stock (Magasinier + Admins) ──────── */}
             <Route path="/approvisionnements" element={guard(OPS_ROLES, <ApprovisionnementsFournisseurs userRole={userRole} />)} />
             <Route path="/receptions"         element={guard(OPS_ROLES, <ReceptionsImportations />)} />
-            <Route path="/magasinier"         element={guard(OPS_ROLES, <MagasinierCentral />)} />
+            <Route path="/magasinier"         element={guard(OPS_ROLES, <MagasinierCentral userRole={userRole} />)} />
             <Route path="/expeditions"        element={guard(OPS_ROLES, <PreparationsExpeditions />)} />
 
             {/* ── Pilotage & Contrôle (Admins uniquement) ────────── */}

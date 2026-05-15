@@ -6,16 +6,8 @@ import {
   ChevronDown, X, Snowflake, QrCode, Calendar, MapPin,
   Layers, Clock, Dna, FlaskConical, Wrench, BadgeCheck,
   ChevronRight, Plus, Trash2, ScanLine, Lock, FileText,
-  Shield, Package, Zap
+  Shield, Package, Zap, Pencil, PlusCircle, Settings2
 } from "lucide-react";
-
-/* ─── Données ──────────────────────────────────────── */
-const CUVES = [
-  { id:"A", label:"Cuve Principale A-01", desc:"Multi-races · Holstein, Montbéliarde",    volume:800,  capacite:1000, temp:-196, statut:"ok"       },
-  { id:"B", label:"Cuve Mobile B-02",     desc:"Remplissage en cours",                   volume:150,  capacite:1000, temp:-194, statut:"critique"  },
-  { id:"C", label:"Tank Azote C-03",      desc:"Multi-races · Normande, Pie Rouge",       volume:620,  capacite:1000, temp:-196, statut:"ok"        },
-  { id:"D", label:"Cuve Quarantaine D-04",desc:"Lots en attente validation Admin",        volume:380,  capacite:1000, temp:-195, statut:"alerte"    },
-];
 
 
 const joursRestants = ds => Math.round((new Date(ds) - new Date()) / 86400000);
@@ -46,37 +38,173 @@ const STATUT_UI = {
 function statutExp(s) { return STATUT_UI[s] ?? { label: s, bg:'bg-gray-50', text:'text-gray-500', border:'border-gray-200', dot:'bg-gray-400' }; }
 
 /* ─── Carte Cuve ────────────────────────────────────── */
-function CuveCard({cuve}) {
-  const pct=Math.round((cuve.volume/cuve.capacite)*100);
-  const isCrit=cuve.statut==="critique", isAl=cuve.statut==="alerte";
-  const barC=isCrit?"bg-red-500":isAl?"bg-amber-400":"bg-cyan-500";
-  const bgC=isCrit?"bg-red-50/40 border-red-200":isAl?"bg-amber-50/40 border-amber-200":"bg-white border-gray-100";
+function CuveCard({ cuve, onEdit, isAdmin }) {
+  const pct     = Math.min(Math.round(((cuve.niveauActuel ?? 0) / (cuve.capacite || 1)) * 100), 100);
+  const isCrit  = cuve.statut === "critique", isAl = cuve.statut === "alerte";
+  const barC    = isCrit ? "bg-red-500" : isAl ? "bg-amber-400" : "bg-cyan-500";
+  const bgC     = isCrit ? "bg-red-50/40 border-red-200" : isAl ? "bg-amber-50/40 border-amber-200" : "bg-white border-gray-100";
   return (
     <div className={`rounded-2xl border p-4 flex flex-col gap-3 ${bgC}`}>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className={`p-1.5 rounded-lg ${isCrit?"bg-red-100":isAl?"bg-amber-100":"bg-cyan-50"}`}>
-            <Snowflake size={14} className={isCrit?"text-red-500":isAl?"text-amber-500":"text-cyan-600"}/>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className={`p-1.5 rounded-lg shrink-0 ${isCrit ? "bg-red-100" : isAl ? "bg-amber-100" : "bg-cyan-50"}`}>
+            <Snowflake size={14} className={isCrit ? "text-red-500" : isAl ? "text-amber-500" : "text-cyan-600"} />
           </div>
-          <div>
-            <p className="text-sm font-bold text-gray-800 leading-tight">{cuve.label}</p>
-            <p className="text-[10px] text-gray-400 font-mono">{cuve.temp}°C</p>
-            <p className="text-[10px] text-gray-400 mt-0.5 leading-tight">{cuve.desc}</p>
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-gray-800 leading-tight truncate">{cuve.nom}</p>
+            <p className="text-[10px] text-gray-400 mt-0.5 leading-tight truncate">{cuve.description || "—"}</p>
           </div>
         </div>
-        {(isCrit||isAl)&&<span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isCrit?"bg-red-100 text-red-700":"bg-amber-100 text-amber-700"}`}>{isCrit?"CRITIQUE":"ALERTE"}</span>}
+        <div className="flex items-center gap-1 shrink-0">
+          {(isCrit || isAl) && (
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isCrit ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
+              {isCrit ? "CRITIQUE" : "ALERTE"}
+            </span>
+          )}
+          {isAdmin && (
+            <button onClick={() => onEdit(cuve)} title="Modifier"
+              className="p-1 rounded-lg text-gray-300 hover:text-blue-500 hover:bg-blue-50 transition-colors">
+              <Pencil size={11} />
+            </button>
+          )}
+        </div>
       </div>
       <div className="flex items-end gap-3">
-        <div className="relative w-7 rounded-lg overflow-hidden bg-gray-100 shrink-0" style={{height:72}}>
-          <div className={`absolute bottom-0 left-0 right-0 rounded-b-lg transition-all duration-700 ${barC}`} style={{height:`${pct}%`}}/>
+        <div className="relative w-7 rounded-lg overflow-hidden bg-gray-100 shrink-0" style={{ height: 72 }}>
+          <div className={`absolute bottom-0 left-0 right-0 rounded-b-lg transition-all duration-700 ${barC}`} style={{ height: `${pct}%` }} />
         </div>
         <div className="flex-1">
-          <p className={`text-2xl font-bold tabular-nums ${isCrit?"text-red-600":isAl?"text-amber-600":"text-gray-900"}`}>{pct}%</p>
-          <p className="text-xs text-gray-400">{cuve.volume.toLocaleString()} / {cuve.capacite.toLocaleString()} L</p>
+          <p className={`text-2xl font-bold tabular-nums ${isCrit ? "text-red-600" : isAl ? "text-amber-600" : "text-gray-900"}`}>{pct}%</p>
+          <p className="text-xs text-gray-400">{(cuve.niveauActuel ?? 0).toLocaleString()} / {cuve.capacite.toLocaleString()} L</p>
         </div>
       </div>
       <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-        <div className={`h-full rounded-full transition-all duration-700 ${barC}`} style={{width:`${pct}%`}}/>
+        <div className={`h-full rounded-full transition-all duration-700 ${barC}`} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+/* ─── Modal Cuve (Add / Edit) ───────────────────────── */
+function ModalCuve({ cuve, onClose, onSave }) {
+  const isEdit = Boolean(cuve?._id);
+  const [nom,          setNom]          = useState(cuve?.nom          ?? "");
+  const [capacite,     setCapacite]     = useState(cuve?.capacite     != null ? String(cuve.capacite)     : "");
+  const [niveauActuel, setNiveauActuel] = useState(cuve?.niveauActuel != null ? String(cuve.niveauActuel) : "0");
+  const [description,  setDescription]  = useState(cuve?.description  ?? "");
+  const [saving,       setSaving]       = useState(false);
+  const [err,          setErr]          = useState("");
+
+  const pct = capacite && Number(capacite) > 0
+    ? Math.min(Math.round((Number(niveauActuel) / Number(capacite)) * 100), 100)
+    : 0;
+  const statut = pct < 15 ? "critique" : pct < 30 ? "alerte" : "ok";
+  const valid  = nom.trim() && Number(capacite) > 0 && Number(niveauActuel) >= 0 && Number(niveauActuel) <= Number(capacite);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!valid) return;
+    setSaving(true); setErr("");
+    try {
+      await onSave({
+        _id:          cuve?._id,
+        nom:          nom.trim(),
+        capacite:     Number(capacite),
+        niveauActuel: Number(niveauActuel),
+        description:  description.trim(),
+        statut,
+      });
+      onClose();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const inp = "w-full bg-white border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-cyan-400 hover:border-gray-300 placeholder:text-gray-300 transition-colors";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        {/* En-tête */}
+        <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-cyan-50 border border-cyan-200 flex items-center justify-center">
+              <Snowflake size={16} className="text-cyan-500" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-gray-900">{isEdit ? "Modifier la cuve" : "Nouvelle Cuve"}</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">Infrastructure d'azote liquide</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors"><X size={18} /></button>
+        </div>
+
+        {/* Formulaire */}
+        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
+          {err && (
+            <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+              <AlertTriangle size={13} className="text-red-500 shrink-0" />
+              <p className="text-xs text-red-600">{err}</p>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Nom de la cuve</label>
+            <input value={nom} onChange={e => setNom(e.target.value)} placeholder="ex: Cuve Principale A-01" className={inp} required />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Capacité (L)</label>
+              <input type="number" min="1" value={capacite} onChange={e => setCapacite(e.target.value)} placeholder="1000" className={inp} required />
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Niveau actuel (L)</label>
+              <input type="number" min="0" max={capacite || undefined} value={niveauActuel} onChange={e => setNiveauActuel(e.target.value)} placeholder="0" className={inp} required />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Description <span className="font-normal normal-case text-gray-300">(optionnel)</span></label>
+            <input value={description} onChange={e => setDescription(e.target.value)} placeholder="ex: Multi-races · Holstein" className={inp} />
+          </div>
+
+          {/* Aperçu niveau */}
+          {capacite && Number(capacite) > 0 && (
+            <div className="bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 flex items-center gap-3">
+              <div className="flex-1">
+                <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${statut === "critique" ? "bg-red-500" : statut === "alerte" ? "bg-amber-400" : "bg-cyan-500"}`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+              </div>
+              <span className={`text-sm font-bold tabular-nums ${statut === "critique" ? "text-red-600" : statut === "alerte" ? "text-amber-600" : "text-cyan-600"}`}>
+                {pct}%
+              </span>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${statut === "critique" ? "bg-red-100 text-red-700" : statut === "alerte" ? "bg-amber-100 text-amber-700" : "bg-cyan-50 text-cyan-700"}`}>
+                {statut === "critique" ? "CRITIQUE" : statut === "alerte" ? "ALERTE" : "OK"}
+              </span>
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex gap-2.5 pt-1">
+            <button type="button" onClick={onClose}
+              className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-500 text-xs font-semibold hover:bg-gray-50 transition-all">
+              Annuler
+            </button>
+            <button type="submit" disabled={!valid || saving}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 text-white text-xs font-bold transition-all">
+              {saving
+                ? <><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />Enregistrement…</>
+                : isEdit ? <><Pencil size={12} /> Enregistrer</> : <><PlusCircle size={12} /> Créer la cuve</>}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
@@ -269,13 +397,17 @@ function fromApiLot(l) {
    COMPOSANT PRINCIPAL
 ══════════════════════════════════════════════════════ */
 const Zap2 = Zap; // alias pour éviter le conflit
-export default function MagasinierCentral() {
+export default function MagasinierCentral({ userRole = null }) {
+  const isAdmin = ['ADMIN_FEDERAL', 'ADMIN'].includes(userRole);
+
   const [activeTab,    setActiveTab]    = useState("chambre");
   const [pickingCmd,   setPickingCmd]   = useState(null);
   const [transportCmd, setTransportCmd] = useState(null);
   const [commandes,    setCommandes]    = useState([]);
   const [loadingCmd,   setLoadingCmd]   = useState(false);
   const [errorCmd,     setErrorCmd]     = useState(null);
+  const [cuves,        setCuves]        = useState([]);
+  const [cuveEdit,     setCuveEdit]     = useState(null);   // null | {} (new) | {_id, ...} (edit)
   const [lots,         setLots]         = useState([]);
   const [lotsLoading,  setLotsLoading]  = useState(false);
   const [lotsError,    setLotsError]    = useState(null);
@@ -301,6 +433,13 @@ export default function MagasinierCentral() {
       .finally(() => setLoadingCmd(false));
   }, []);
 
+  /* ─ Récupération des cuves au montage ────────────── */
+  useEffect(() => {
+    api.get("/api/cuves")
+      .then(data => setCuves(Array.isArray(data) ? data : []))
+      .catch(() => {}); // silence : état vide si pas de cuves
+  }, []);
+
   /* ─ Récupération des lots au montage ─────────────── */
   useEffect(() => {
     setLotsLoading(true);
@@ -309,6 +448,19 @@ export default function MagasinierCentral() {
       .catch(err => setLotsError(err.message))
       .finally(() => setLotsLoading(false));
   }, []);
+
+  /* ─ Sauvegarde cuve (POST ou PUT) ────────────────── */
+  async function handleSaveCuve(data) {
+    if (data._id) {
+      const updated = await api.put(`/api/cuves/${data._id}`, data);
+      setCuves(prev => prev.map(c => c._id === updated._id ? updated : c));
+      showToast(true, `${updated.nom} — niveau mis à jour.`);
+    } else {
+      const created = await api.post('/api/cuves', data);
+      setCuves(prev => [...prev, created]);
+      showToast(true, `${created.nom} — cuve créée.`);
+    }
+  }
 
   /* Sceller = soumettre les lots + passer en "Validé" (prêt au départ) */
   function handleSceller(id, lots) {
@@ -352,6 +504,13 @@ export default function MagasinierCentral() {
     <div className="space-y-6">
       {pickingCmd&&<PickingDrawer commande={pickingCmd} inventaire={lots} onClose={()=>setPickingCmd(null)} onSceller={handleSceller}/>}
       {transportCmd&&<TransporteurModal commande={transportCmd} onClose={()=>setTransportCmd(null)} onConfirm={handleExpedition}/>}
+      {cuveEdit !== null && (
+        <ModalCuve
+          cuve={cuveEdit._id ? cuveEdit : null}
+          onClose={() => setCuveEdit(null)}
+          onSave={handleSaveCuve}
+        />
+      )}
 
       {/* Toast confirmation action */}
       {toast && (
@@ -385,8 +544,33 @@ export default function MagasinierCentral() {
       {activeTab==="chambre"&&(
         <div className="space-y-6">
           <div>
-            <div className="flex items-center gap-2 mb-3"><Snowflake size={14} className="text-cyan-500"/><h2 className="text-sm font-bold text-gray-700">Cuves d'Azote Liquide</h2><span className="text-xs text-gray-400 ml-auto">Cible : −196°C</span></div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">{CUVES.map(c=><CuveCard key={c.id} cuve={c}/>)}</div>
+            <div className="flex items-center gap-2 mb-3">
+              <Snowflake size={14} className="text-cyan-500"/>
+              <h2 className="text-sm font-bold text-gray-700">Cuves d'Azote Liquide</h2>
+              <span className="text-xs text-gray-400 ml-auto">Cible : −196°C</span>
+              {isAdmin && (
+                <button
+                  onClick={() => setCuveEdit({})}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-[11px] font-bold transition-all shadow-sm">
+                  <Settings2 size={11}/> Gérer les infrastructures
+                </button>
+              )}
+            </div>
+            {cuves.length > 0 ? (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {cuves.map(c => (
+                  <CuveCard key={c._id} cuve={c} isAdmin={isAdmin} onEdit={cuve => setCuveEdit(cuve)} />
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center gap-2 py-8 bg-white border border-gray-100 rounded-2xl text-center">
+                <Snowflake size={24} className="text-gray-200"/>
+                <p className="text-sm font-semibold text-gray-400">Aucune cuve configurée</p>
+                <p className="text-xs text-gray-300">
+                  {isAdmin ? "Cliquez sur « Gérer les infrastructures » pour ajouter la première cuve." : "Les cuves apparaîtront ici une fois enregistrées."}
+                </p>
+              </div>
+            )}
           </div>
           <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
