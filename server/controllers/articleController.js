@@ -21,7 +21,7 @@ const getAllArticles = async (req, res) => {
     }
 
     const articles = await Article.find(filter).sort({ designation: 1 });
-    res.json(articles);
+    res.status(200).json(articles);
   } catch (err) {
     console.error('[Article] getAllArticles :', err.message);
     res.status(500).json({ message: err.message });

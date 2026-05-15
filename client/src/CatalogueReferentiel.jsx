@@ -465,7 +465,8 @@ export default function CatalogueReferentiel({ userRole }) {
   const [articles,    setArticles]    = useState([]);
   const [categories,  setCategories]  = useState(CATEGORIES_INIT);
   const [loading,     setLoading]     = useState(true);
-  const [apiError,    setApiError]    = useState(null);
+  const [fetchError,  setFetchError]  = useState(null); // erreurs GET uniquement
+  const [apiError,    setApiError]    = useState(null); // erreurs POST/PUT/DELETE
   const [recherche,   setRecherche]   = useState("");
   const [catFiltre,   setCatFiltre]   = useState("Toutes");
   const [modalEdit,   setModalEdit]   = useState(null);
@@ -477,13 +478,15 @@ export default function CatalogueReferentiel({ userRole }) {
   /* ─ Chargement initial depuis l'API ─────────────────────── */
   async function fetchArticles() {
     setLoading(true);
+    setFetchError(null);
     setApiError(null);
     try {
       const data = await api.get("/api/articles?actif=true");
-      setArticles(data.map(fromApi));
+      const liste = Array.isArray(data) ? data : [];
+      setArticles(liste.map(fromApi));
 
       // Synchronise les catégories avec celles présentes dans la DB
-      const cats = [...new Set(data.map(a => a.categorie))].filter(Boolean).sort();
+      const cats = [...new Set(liste.map(a => a.categorie))].filter(Boolean).sort();
       const merged = CATEGORIES_INIT.map(c => c.nom);
       const extras = cats.filter(c => !merged.includes(c));
       if (extras.length) {
@@ -493,7 +496,7 @@ export default function CatalogueReferentiel({ userRole }) {
         ]);
       }
     } catch (err) {
-      setApiError(err.message);
+      setFetchError(err.message);
     } finally {
       setLoading(false);
     }
@@ -648,7 +651,24 @@ export default function CatalogueReferentiel({ userRole }) {
         </div>
       </div>
 
-      {/* Bandeau erreur API */}
+      {/* Bandeau erreur chargement */}
+      {fetchError && (
+        <div className="flex items-center justify-between gap-3 bg-red-50 border border-red-200 rounded-2xl px-5 py-3">
+          <div className="flex items-center gap-2.5">
+            <AlertTriangle size={15} className="text-red-500 shrink-0" />
+            <div>
+              <p className="text-xs font-bold text-red-700">Impossible de charger le catalogue</p>
+              <p className="text-[11px] text-red-500 mt-0.5">{fetchError}</p>
+            </div>
+          </div>
+          <button onClick={fetchArticles}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-100 hover:bg-red-200 text-red-700 text-[11px] font-bold transition-all shrink-0">
+            <RefreshCw size={11} /> Réessayer
+          </button>
+        </div>
+      )}
+
+      {/* Bandeau erreur synchronisation (POST/PUT/DELETE uniquement) */}
       {apiError && (
         <div className="flex items-center justify-between gap-3 bg-red-50 border border-red-200 rounded-2xl px-5 py-3">
           <div className="flex items-center gap-2.5">
@@ -658,9 +678,9 @@ export default function CatalogueReferentiel({ userRole }) {
               <p className="text-[11px] text-red-500 mt-0.5">{apiError}</p>
             </div>
           </div>
-          <button onClick={fetchArticles}
+          <button onClick={() => setApiError(null)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-100 hover:bg-red-200 text-red-700 text-[11px] font-bold transition-all shrink-0">
-            <RefreshCw size={11} /> Réessayer
+            <X size={11} /> Fermer
           </button>
         </div>
       )}
@@ -686,10 +706,10 @@ export default function CatalogueReferentiel({ userRole }) {
             <div className="py-16 text-center">
               <Package size={28} className="text-slate-300 mx-auto mb-3" />
               <p className="text-sm font-semibold text-slate-500">
-                {apiError ? "Impossible de charger le catalogue" : "Aucun article trouvé"}
+                {fetchError ? "Impossible de charger le catalogue" : "Aucun article dans le catalogue"}
               </p>
               <p className="text-xs text-slate-400 mt-1">
-                {apiError ? "Vérifiez que le serveur est démarré." : "Modifiez vos filtres ou ajoutez un article."}
+                {fetchError ? "Vérifiez que le serveur est démarré." : "Modifiez vos filtres ou ajoutez un article."}
               </p>
             </div>
           ) : filtres.map(article => (

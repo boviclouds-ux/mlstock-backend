@@ -22,10 +22,10 @@ async function apiFetch(path, options = {}) {
   };
 
   const res  = await fetch(`${BASE_URL}${path}`, { ...options, headers });
-  const data = await res.json().catch(() => ({}));
+  const data = await res.json().catch(() => null);
 
   if (!res.ok) {
-    throw new Error(data.message ?? `Erreur ${res.status} — ${res.statusText}`);
+    throw new Error((data && data.message) ?? `Erreur ${res.status} — ${res.statusText}`);
   }
 
   return data;
