@@ -17,30 +17,6 @@ const CUVES = [
   { id:"D", label:"Cuve Quarantaine D-04",desc:"Lots en attente validation Admin",        volume:380,  capacite:1000, temp:-195, statut:"alerte"    },
 ];
 
-const LOTS = [
-  { id:"LOT-2025-0041", article:"Holstein – BENNER JESUALDO", type:"semence", cuve:"A-01", rack:"Rack 2", qte:320, peremption:"2026-01-10" },
-  { id:"LOT-2025-0042", article:"Montbéliarde – ALPAGA RF",   type:"semence", cuve:"A-01", rack:"Rack 4", qte:180, peremption:"2025-08-05" },
-  { id:"LOT-2025-0043", article:"Normande – OLIVIER ET",      type:"semence", cuve:"C-03", rack:"Rack 1", qte:400, peremption:"2025-07-20" },
-  { id:"LOT-2025-0044", article:"Prim'Holstein – JACKPOT",    type:"semence", cuve:"C-03", rack:"Rack 3", qte:95,  peremption:"2025-06-28" },
-  { id:"LOT-2025-0045", article:"Azote liquide",              type:"azote",   cuve:"B-02", rack:"—",      qte:150, peremption:"2025-12-31" },
-  { id:"LOT-2025-0046", article:"Azote liquide",              type:"azote",   cuve:"D-04", rack:"—",      qte:380, peremption:"2025-12-31" },
-  { id:"LOT-2025-0047", article:"Cathéters jetables",         type:"materiel",cuve:"—",    rack:"Étagère F3", qte:2400, peremption:"2027-03-15" },
-  { id:"LOT-2025-0048", article:"Gants insémination",         type:"materiel",cuve:"—",    rack:"Étagère F1", qte:1200, peremption:"2025-06-21" },
-];
-
-const COMMANDES_EXP = [
-  { id:"ORD-2025-0041", origine:"admin",  destinataire:"Coopérative Sakia Al Hamra", region:"Laâyoune-Sakia",
-    articles:[{label:"Holstein – BENNER JESUALDO",qte:500,unite:"doses",type:"semence"},{label:"Azote liquide",qte:10,unite:"litres",type:"azote"}],
-    statut:"En attente", origineNote:"Répartition suite à l'arrivage Alta Genetics · CMD-891" },
-  { id:"REQ-2025-0091", origine:"region", destinataire:"Coopérative Tadla Azilal", region:"Béni Mellal-Khénifra",
-    articles:[{label:"Montbéliarde – ALPAGA RF",qte:200,unite:"doses",type:"semence"},{label:"Cathéters jetables",qte:500,unite:"unités",type:"materiel"}],
-    statut:"Validé",
-    lotsScelles:[{numLot:"LOT-2025-0042",article:"Montbéliarde – ALPAGA RF",qteRetire:200,unite:"doses",cuve:"A-01"},{numLot:"LOT-2025-0047",article:"Cathéters jetables",qteRetire:500,unite:"unités",cuve:"—"}] },
-  { id:"ORD-2025-0042", origine:"admin",  destinataire:"Coopérative Gharb Chrarda", region:"Rabat-Salé-Kénitra",
-    articles:[{label:"Normande – OLIVIER ET",qte:150,unite:"doses",type:"semence"}],
-    statut:"Validé",
-    lotsScelles:[{numLot:"LOT-2025-0043",article:"Normande – OLIVIER ET",qteRetire:150,unite:"doses",cuve:"C-03"}] },
-];
 
 const joursRestants = ds => Math.round((new Date(ds) - new Date()) / 86400000);
 
@@ -107,7 +83,7 @@ function CuveCard({cuve}) {
 }
 
 /* ─── Drawer Picking ────────────────────────────────── */
-function PickingDrawer({commande,onClose,onSceller}) {
+function PickingDrawer({commande,inventaire,onClose,onSceller}) {
   const [scan,setScan]=useState(""); const [lots,setLots]=useState([]); const [err,setErr]=useState(""); const [done,setDone]=useState(false);
   const ref=useRef();
   const totalDem=commande.articles.reduce((s,a)=>s+a.qte,0);
@@ -116,7 +92,7 @@ function PickingDrawer({commande,onClose,onSceller}) {
   function handleScan(e){
     e.preventDefault(); const val=scan.trim().toUpperCase();
     if(!val)return;
-    const lot=LOTS.find(l=>l.id===val||l.id.endsWith(val));
+    const lot=(inventaire ?? []).find(l=>l.id===val||l.id.endsWith(val));
     if(!lot){setErr(`Lot "${val}" introuvable.`);return;}
     if(lots.find(l=>l.numLot===lot.id)){setErr("Lot déjà ajouté.");return;}
     setErr(""); setLots(p=>[...p,{numLot:lot.id,article:lot.article,qteRetire:lot.qte,unite:lot.type==="semence"?"doses":lot.type==="azote"?"litres":"unités",cuve:lot.cuve}]); setScan(""); ref.current?.focus();
@@ -276,6 +252,19 @@ function fromApiTransaction(t) {
   };
 }
 
+/* ─── Adaptateur API Lot → format UI Chambre Froide ──── */
+function fromApiLot(l) {
+  return {
+    id:         l.numLot,
+    article:    l.articleId?.designation ?? '—',
+    type:       l.type,
+    cuve:       '—',
+    rack:       l.rack ?? '—',
+    qte:        l.qteDisponible ?? 0,
+    peremption: l.peremption ? new Date(l.peremption).toISOString().slice(0, 10) : '—',
+  };
+}
+
 /* ══════════════════════════════════════════════════════
    COMPOSANT PRINCIPAL
 ══════════════════════════════════════════════════════ */
@@ -284,9 +273,12 @@ export default function MagasinierCentral() {
   const [activeTab,    setActiveTab]    = useState("chambre");
   const [pickingCmd,   setPickingCmd]   = useState(null);
   const [transportCmd, setTransportCmd] = useState(null);
-  const [commandes,    setCommandes]    = useState(COMMANDES_EXP);
+  const [commandes,    setCommandes]    = useState([]);
   const [loadingCmd,   setLoadingCmd]   = useState(false);
   const [errorCmd,     setErrorCmd]     = useState(null);
+  const [lots,         setLots]         = useState([]);
+  const [lotsLoading,  setLotsLoading]  = useState(false);
+  const [lotsError,    setLotsError]    = useState(null);
   const [toast,        setToast]        = useState(null);  // { ok, msg }
 
   function showToast(ok, msg) {
@@ -297,21 +289,25 @@ export default function MagasinierCentral() {
   /* ─ Récupération des transactions au montage ──────── */
   useEffect(() => {
     setLoadingCmd(true);
-    // Récupère tous les flux actifs (EXPEDITION + ORDRE_ADMIN)
     api.get("/api/transactions?limit=100")
       .then(res => {
-        // getAllTransactions renvoie { data: [...], total } ou un tableau direct
         const list = Array.isArray(res) ? res : (res.data ?? []);
         const mapped = list
           .filter(t => ['EXPEDITION','ORDRE_ADMIN'].includes(t.type))
           .map(fromApiTransaction);
         setCommandes(mapped);
       })
-      .catch(err => {
-        setErrorCmd(err.message);
-        // Fallback : les données statiques COMMANDES_EXP restent
-      })
+      .catch(err => setErrorCmd(err.message))
       .finally(() => setLoadingCmd(false));
+  }, []);
+
+  /* ─ Récupération des lots au montage ─────────────── */
+  useEffect(() => {
+    setLotsLoading(true);
+    api.get("/api/lots")
+      .then(data => setLots(Array.isArray(data) ? data.map(fromApiLot) : []))
+      .catch(err => setLotsError(err.message))
+      .finally(() => setLotsLoading(false));
   }, []);
 
   /* Sceller = soumettre les lots + passer en "Validé" (prêt au départ) */
@@ -354,7 +350,7 @@ export default function MagasinierCentral() {
   const actives = commandes.filter(c => c.statut !== 'Expédié' && c.statut !== 'Réceptionné');
   return (
     <div className="space-y-6">
-      {pickingCmd&&<PickingDrawer commande={pickingCmd} onClose={()=>setPickingCmd(null)} onSceller={handleSceller}/>}
+      {pickingCmd&&<PickingDrawer commande={pickingCmd} inventaire={lots} onClose={()=>setPickingCmd(null)} onSceller={handleSceller}/>}
       {transportCmd&&<TransporteurModal commande={transportCmd} onClose={()=>setTransportCmd(null)} onConfirm={handleExpedition}/>}
 
       {/* Toast confirmation action */}
@@ -394,7 +390,7 @@ export default function MagasinierCentral() {
           </div>
           <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
-              <div className="flex items-center gap-2"><Layers size={15} className="text-gray-400"/><div><h2 className="text-sm font-bold text-gray-800">Registre des Lots</h2><p className="text-xs text-gray-400 mt-0.5">{LOTS.length} lots actifs</p></div></div>
+              <div className="flex items-center gap-2"><Layers size={15} className="text-gray-400"/><div><h2 className="text-sm font-bold text-gray-800">Registre des Lots</h2><p className="text-xs text-gray-400 mt-0.5">{lotsLoading ? "Chargement…" : `${lots.length} lot${lots.length !== 1 ? "s" : ""} actif${lots.length !== 1 ? "s" : ""}`}</p></div></div>
               <div className="flex items-center gap-3 text-[10px] text-gray-400">
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400 inline-block"/>≤14j</span>
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block"/>≤45j</span>
@@ -404,7 +400,13 @@ export default function MagasinierCentral() {
               <table className="w-full">
                 <thead><tr className="bg-gray-50/80 border-b border-gray-100">{["N° de Lot","Article","Emplacement","Qté","Péremption"].map(h=><th key={h} className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide px-4 py-3 whitespace-nowrap">{h}</th>)}</tr></thead>
                 <tbody className="divide-y divide-gray-50">
-                  {LOTS.map(lot=>{
+                  {lotsError && (
+                    <tr><td colSpan={5} className="px-4 py-6 text-center text-xs text-red-500">{lotsError}</td></tr>
+                  )}
+                  {!lotsError && lots.length === 0 && !lotsLoading && (
+                    <tr><td colSpan={5} className="px-4 py-10 text-center text-xs text-gray-400">Aucun lot en stock</td></tr>
+                  )}
+                  {lots.map(lot=>{
                     const pm=peremptionMeta(lot.peremption);
                     return (
                       <tr key={lot.id} className={`hover:bg-gray-50/60 transition-colors ${pm.urgent?"bg-red-50/20":""}`}>
