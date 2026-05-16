@@ -16,7 +16,6 @@ const uniteSchema = new mongoose.Schema(
     code: {
       type:      String,
       required:  [true, 'Le code unité est requis'],
-      unique:    true,
       uppercase: true,
       trim:      true,
     },
@@ -52,6 +51,14 @@ const uniteSchema = new mongoose.Schema(
     toJSON:    { virtuals: true },
     toObject:  { virtuals: true },
   }
+);
+
+/* ─── Index unique partiel : code unique seulement sur les unités actives ──
+   Permet de recréer une unité avec le même code après soft-delete (actif: false).
+   syncIndexes() dans server.js supprime l'ancien index global et crée celui-ci. */
+uniteSchema.index(
+  { code: 1 },
+  { unique: true, partialFilterExpression: { actif: true } }
 );
 
 /* ─── Index texte pour la recherche ────────────────────── */

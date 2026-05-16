@@ -18,18 +18,6 @@ const ROLES = [
   { key:"UNITE",         label:"Responsable Unité", badge:"bg-emerald-100 text-emerald-700 border-emerald-300"},
 ];
 
-const ENTITES = [
-  "Direction · Siège Rabat",
-  "Stock Central · Agadir",
-  "Unité Sakia Al Hamra",
-  "Unité Aït Si Salem",
-  "Unité Tadla Azilal",
-  "Unité Gharb Chrarda",
-  "Unité Chaouia Ouardigha",
-  "Unité Doukkala Abda",
-  "Ferme Agro-Atlas",
-];
-
 // Entité par défaut pour les rôles administratifs / logistiques (non-Unité)
 const HUB_CENTRAL = "Maroc Lait — Hub Central";
 // Rôles rattachés automatiquement au Hub (pas de choix d'unité)
@@ -83,15 +71,17 @@ function ModalConfirm({ icon: Icon, iconCls, titre, message, labelConfirm, btnCl
 /* ══════════════════════════════════════════════════════════
    MODAL MODIFIER RÔLE
 ══════════════════════════════════════════════════════════ */
-function ModalModifierRole({ user, onClose, onSave }) {
+function ModalModifierRole({ user, unites, onClose, onSave }) {
+  const firstUnite = unites[0]?.nom ?? "";
+
   const [roleKey, setRoleKey] = useState(user.roleKey);
   const [entite,  setEntite]  = useState(
-    isHubRole(user.roleKey) ? HUB_CENTRAL : (user.entite ?? ENTITES[0])
+    isHubRole(user.roleKey) ? HUB_CENTRAL : (user.entite ?? firstUnite)
   );
 
   function handleRoleChange(newKey) {
     setRoleKey(newKey);
-    setEntite(isHubRole(newKey) ? HUB_CENTRAL : ENTITES[0]);
+    setEntite(isHubRole(newKey) ? HUB_CENTRAL : firstUnite);
   }
 
   return (
@@ -122,7 +112,7 @@ function ModalModifierRole({ user, onClose, onSave }) {
             </div>
           </div>
 
-          {/* Entité — verrouillée si rôle Hub, dropdown actif si Unité */}
+          {/* Entité — verrouillée si rôle Hub, dropdown dynamique si Unité */}
           <div>
             <label className={lbl}>Entité rattachée</label>
             {isHubRole(roleKey) ? (
@@ -133,8 +123,16 @@ function ModalModifierRole({ user, onClose, onSave }) {
               </div>
             ) : (
               <div className="relative">
-                <select value={entite} onChange={e => setEntite(e.target.value)} className={`${inp} appearance-none`}>
-                  {ENTITES.map(e => <option key={e} value={e} className="bg-slate-800">{e}</option>)}
+                <select value={entite} onChange={e => setEntite(e.target.value)} className={`${inp} appearance-none`} disabled={unites.length === 0}>
+                  {unites.length === 0 ? (
+                    <option value="" className="bg-slate-800">Chargement des unités…</option>
+                  ) : (
+                    unites.map(u => (
+                      <option key={u._id} value={u.nom} className="bg-slate-800">
+                        {u.nom}{u.region ? ` · ${u.region}` : ""}
+                      </option>
+                    ))
+                  )}
                 </select>
                 <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none"/>
               </div>
@@ -143,6 +141,12 @@ function ModalModifierRole({ user, onClose, onSave }) {
               <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-slate-500 leading-snug">
                 <Info size={10} className="shrink-0 mt-0.5"/>
                 Le personnel administratif et logistique est rattaché par défaut au siège national.
+              </p>
+            )}
+            {!isHubRole(roleKey) && unites.length === 0 && (
+              <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-amber-400 leading-snug">
+                <AlertTriangle size={10} className="shrink-0 mt-0.5"/>
+                Aucune unité dans la base. Créez d'abord une unité dans Réseau & Acteurs.
               </p>
             )}
           </div>
@@ -170,19 +174,21 @@ function ModalModifierRole({ user, onClose, onSave }) {
 /* ══════════════════════════════════════════════════════════
    MODAL NOUVEL UTILISATEUR
 ══════════════════════════════════════════════════════════ */
-function ModalNouvelUtilisateur({ onClose, onSave }) {
+function ModalNouvelUtilisateur({ unites, onClose, onSave }) {
+  const firstUnite = unites[0]?.nom ?? "";
+
   const [prenom,  setPrenom]  = useState("");
   const [nom,     setNom]     = useState("");
   const [email,   setEmail]   = useState("");
   const [roleKey, setRoleKey] = useState("MAGASINIER");
-  const [entite,  setEntite]  = useState(ENTITES[0]);
+  const [entite,  setEntite]  = useState(firstUnite);
 
-  const hubRole       = isHubRole(roleKey);
-  const entiteFinale  = hubRole ? HUB_CENTRAL : entite;
+  const hubRole      = isHubRole(roleKey);
+  const entiteFinale = hubRole ? HUB_CENTRAL : entite;
 
   function handleRoleChange(newKey) {
     setRoleKey(newKey);
-    if (!isHubRole(newKey)) setEntite(ENTITES[0]);
+    if (!isHubRole(newKey)) setEntite(firstUnite);
   }
 
   const valid = prenom.trim() && nom.trim() && email.includes("@");
@@ -241,8 +247,16 @@ function ModalNouvelUtilisateur({ onClose, onSave }) {
               </div>
             ) : (
               <div className="relative">
-                <select value={entite} onChange={e => setEntite(e.target.value)} className={`${inp} appearance-none`}>
-                  {ENTITES.map(e => <option key={e} value={e} className="bg-slate-800">{e}</option>)}
+                <select value={entite} onChange={e => setEntite(e.target.value)} className={`${inp} appearance-none`} disabled={unites.length === 0}>
+                  {unites.length === 0 ? (
+                    <option value="" className="bg-slate-800">Aucune unité disponible</option>
+                  ) : (
+                    unites.map(u => (
+                      <option key={u._id} value={u.nom} className="bg-slate-800">
+                        {u.nom}{u.region ? ` · ${u.region}` : ""}
+                      </option>
+                    ))
+                  )}
                 </select>
                 <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none"/>
               </div>
@@ -251,6 +265,12 @@ function ModalNouvelUtilisateur({ onClose, onSave }) {
               <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-slate-500 leading-snug">
                 <Info size={10} className="shrink-0 mt-0.5"/>
                 Le personnel administratif et logistique est rattaché par défaut au siège national.
+              </p>
+            )}
+            {!hubRole && unites.length === 0 && (
+              <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-amber-400 leading-snug">
+                <AlertTriangle size={10} className="shrink-0 mt-0.5"/>
+                Aucune unité dans la base. Créez d'abord une unité dans Réseau & Acteurs.
               </p>
             )}
           </div>
@@ -325,6 +345,7 @@ export default function UtilisateursAcces({ userRole }) {
   const [activeTab,      setActiveTab]      = useState("annuaire");
   const [users,          setUsers]          = useState([]);
   const [demandes,       setDemandes]       = useState([]);
+  const [unites,         setUnites]         = useState([]);
   const [isLoading,      setIsLoading]      = useState(true);
   const [error,          setError]          = useState(null);
   const [apiError,       setApiError]       = useState(null);  // erreurs mutations
@@ -347,11 +368,13 @@ export default function UtilisateursAcces({ userRole }) {
     Promise.all([
       api.get("/api/users"),
       api.get("/api/users/demandes"),
+      api.get("/api/unites?actif=true").catch(() => []),
     ])
-      .then(([usersData, demandesData]) => {
+      .then(([usersData, demandesData, unitesData]) => {
         if (cancelled) return;
         setUsers(Array.isArray(usersData) ? usersData : []);
         setDemandes(Array.isArray(demandesData) ? demandesData : []);
+        setUnites(Array.isArray(unitesData) ? unitesData : []);
       })
       .catch(err => {
         if (cancelled) return;
@@ -723,6 +746,7 @@ export default function UtilisateursAcces({ userRole }) {
       {/* ─── Modals ──────────────────────────────────────── */}
       {modalAdd && (
         <ModalNouvelUtilisateur
+          unites={unites}
           onClose={() => setModalAdd(false)}
           onSave={handleAddUser}
         />
@@ -730,6 +754,7 @@ export default function UtilisateursAcces({ userRole }) {
       {modalRole && (
         <ModalModifierRole
           user={modalRole}
+          unites={unites}
           onClose={() => setModalRole(null)}
           onSave={handleModifierRole}
         />

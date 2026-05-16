@@ -418,20 +418,26 @@ export default function MagasinierCentral({ userRole = null }) {
     setTimeout(() => setToast(null), 3500);
   }
 
-  /* ─ Récupération des transactions au montage ──────── */
-  useEffect(() => {
+  /* ─ Récupération des transactions ────────────────── */
+  async function fetchCommandes() {
     setLoadingCmd(true);
-    api.get("/api/transactions?limit=100")
-      .then(res => {
-        const list = Array.isArray(res) ? res : (res.data ?? []);
-        const mapped = list
-          .filter(t => ['EXPEDITION','ORDRE_ADMIN'].includes(t.type))
-          .map(fromApiTransaction);
-        setCommandes(mapped);
-      })
-      .catch(err => setErrorCmd(err.message))
-      .finally(() => setLoadingCmd(false));
-  }, []);
+    setErrorCmd(null);
+    try {
+      const res = await api.get("/api/transactions?limit=100");
+      const list = Array.isArray(res) ? res : (res.data ?? []);
+      setCommandes(
+        list
+          .filter(t => ['EXPEDITION', 'ORDRE_ADMIN'].includes(t.type))
+          .map(fromApiTransaction)
+      );
+    } catch (err) {
+      setErrorCmd(err.message);
+    } finally {
+      setLoadingCmd(false);
+    }
+  }
+
+  useEffect(() => { fetchCommandes(); }, []);
 
   /* ─ Récupération des cuves au montage ────────────── */
   useEffect(() => {
@@ -489,6 +495,8 @@ export default function MagasinierCentral({ userRole = null }) {
     try {
       await api.put(`/api/transactions/${target._id}/statut`, { statut: nouveauStatut });
       showToast(true, `Commande ${cmdId} — "${nouveauStatut}" enregistré en base.`);
+      // Re-fetch depuis la DB pour garantir l'affichage cohérent après F5
+      fetchCommandes();
     } catch (err) {
       console.error('[MagasinierCentral] handleUpdateStatut failed:', err);
       // Rollback si l'API échoue

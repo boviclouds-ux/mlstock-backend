@@ -47,6 +47,8 @@ require('./models/Cooperative');  // utilisé via ref dans Dotation + PinSession
 require('./models/Campagne');     // utilisé via ref dans Dotation
 require('./models/Lot');
 require('./models/Cuve');
+require('./models/Transporteur');
+require('./models/Approvisionnement');
 require('./models/Dotation');
 require('./models/Transaction');
 
@@ -56,7 +58,10 @@ const articleRoutes      = require('./routes/articles');
 const transactionRoutes  = require('./routes/transactions');
 const lotRoutes          = require('./routes/lots');
 const cuveRoutes         = require('./routes/cuves');
-const usersRoutes        = require('./routes/users');
+const fournisseurRoutes      = require('./routes/fournisseurs');
+const transporteurRoutes     = require('./routes/transporteurs');
+const approvisionnementRoutes = require('./routes/approvisionnements');
+const usersRoutes            = require('./routes/users');
 const dashboardRoutes    = require('./routes/dashboard');
 const quotasRoutes       = require('./routes/quotas');
 
@@ -70,7 +75,10 @@ app.use('/api/articles',     articleRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/lots',         lotRoutes);
 app.use('/api/cuves',        cuveRoutes);
-app.use('/api/users',        usersRoutes);
+app.use('/api/fournisseurs',       fournisseurRoutes);
+app.use('/api/transporteurs',      transporteurRoutes);
+app.use('/api/approvisionnements', approvisionnementRoutes);
+app.use('/api/users',              usersRoutes);
 app.use('/api/dashboard',    dashboardRoutes);
 app.use('/api/quotas',       quotasRoutes);
 
@@ -78,10 +86,31 @@ const PORT = process.env.PORT || 5000;
 
 mongoose
   .connect(process.env.MONGO_URI)
-  .then(() => {
-app.listen(PORT, () => {
-  console.log(`🚀 Serveur Backend MLStock démarré avec succès sur le port ${PORT}`);
-});  })
+  .then(async () => {
+    /* Synchronise les index MongoDB :
+       - Supprime les anciens index unique GLOBAUX sur Article.code et Unite.code
+       - Crée les nouveaux index PARTIELS (uniquement sur { actif: true })
+       Ceci permet le soft-delete + recréation avec le même code. */
+    const Article      = require('./models/Article');
+    const Unite        = require('./models/Unite');
+    const Fournisseur  = require('./models/Fournisseur');
+    const Transporteur = require('./models/Transporteur');
+    try {
+      await Promise.all([
+        Article.syncIndexes(),
+        Unite.syncIndexes(),
+        Fournisseur.syncIndexes(),
+        Transporteur.syncIndexes(),
+      ]);
+      console.log('✅ Index partiels synchronisés (Article, Unite, Fournisseur, Transporteur)');
+    } catch (e) {
+      console.warn('⚠ syncIndexes :', e.message);
+    }
+
+    app.listen(PORT, () => {
+      console.log(`🚀 Serveur Backend MLStock démarré avec succès sur le port ${PORT}`);
+    });
+  })
   .catch((err) => {
     console.error('Échec de la connexion MongoDB :', err.message);
     process.exit(1);

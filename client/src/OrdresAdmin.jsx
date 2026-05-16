@@ -58,10 +58,11 @@ function typeIcon(type, sz = 11) {
 
 /* Mapping DB statut → badge (clés = valeurs Mongoose enum) */
 const STATUT_UI = {
-  "Validé":      { label:"En attente Magasinier", bg:"bg-amber-50",   text:"text-amber-700",   dot:"bg-amber-500"   },
-  "Expédié":     { label:"Expédié",               bg:"bg-blue-50",    text:"text-blue-700",    dot:"bg-blue-500"    },
-  "Réceptionné": { label:"Réceptionné",           bg:"bg-emerald-50", text:"text-emerald-700", dot:"bg-emerald-500" },
-  "En attente":  { label:"En attente",            bg:"bg-gray-50",    text:"text-gray-500",    dot:"bg-gray-400"    },
+  "En attente":  { label:"En attente Magasinier", bg:"bg-amber-50",   text:"text-amber-700",   dot:"bg-amber-500"   },
+  "Validé":      { label:"En préparation",        bg:"bg-blue-50",    text:"text-blue-700",    dot:"bg-blue-500"    },
+  "Expédié":     { label:"En transit",            bg:"bg-indigo-50",  text:"text-indigo-700",  dot:"bg-indigo-500"  },
+  "Réceptionné": { label:"Réceptionné ✓",         bg:"bg-emerald-50", text:"text-emerald-700", dot:"bg-emerald-500" },
+  "Rejeté":      { label:"Rejeté",                bg:"bg-red-50",     text:"text-red-700",     dot:"bg-red-500"     },
 };
 
 function StatutBadge({ statut }) {
@@ -161,7 +162,7 @@ export default function OrdresAdmin() {
 
     const payload = {
       type:       "ORDRE_ADMIN",
-      statut:     "Validé",
+      statut:     "En attente",  // Magasinier doit préparer → workflow picking complet
       motif,
       uniteCible,
       lignes: lignes.map(l => ({ article: l.articleId, quantite: Number(l.qte) })),

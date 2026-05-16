@@ -58,9 +58,10 @@ router.get('/stats', protect, authorize(...ADMIN_ROLES), async (req, res) => {
     const totalConso  = dotAgg[0]?.totalConso  ?? 0;
     const quotaPct    = totalAlloue > 0 ? Math.round((totalConso / totalAlloue) * 100) : null;
 
+    // null = aucun lot en DB (≠ 0 qui signifie stock réellement épuisé)
     const stocks = {
-      semences: semAgg[0]?.total  ?? 0,
-      azote:    azoteAgg[0]?.total ?? 0,
+      semences: semAgg.length   > 0 ? semAgg[0].total   : null,
+      azote:    azoteAgg.length > 0 ? azoteAgg[0].total : null,
       quotaPct,
     };
 
@@ -104,6 +105,8 @@ router.get('/stats', protect, authorize(...ADMIN_ROLES), async (req, res) => {
         delta:  formatDelta(t.createdAt),
         action: TX_TO_ACTION[t.type] ?? t.type,
         detail,
+        statut: t.statut ?? null,
+        reference: t.reference,
       };
     });
 

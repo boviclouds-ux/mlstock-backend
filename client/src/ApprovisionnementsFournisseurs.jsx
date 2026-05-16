@@ -9,61 +9,32 @@ import {
   ChevronDown,
 } from "lucide-react";
 
-/* ─── Référentiels ─────────────────────────────────────── */
-const FOURNISSEURS = [
-  { nom: "Alta Genetics France", pays: "France",     pavillon: "🇫🇷" },
-  { nom: "Sunnylodge B.V.",      pays: "Pays-Bas",   pavillon: "🇳🇱" },
-  { nom: "Nedap Livestock Mgmt.",pays: "Pays-Bas",   pavillon: "🇳🇱" },
-  { nom: "CryoBio France",       pays: "France",     pavillon: "🇫🇷" },
-  { nom: "Semex Alliance",       pays: "Canada",     pavillon: "🇨🇦" },
-  { nom: "Al Amine Logistique",  pays: "Maroc",      pavillon: "🇲🇦" },
-];
-
-const CATALOGUE = [
-  { label: "Holstein – BENNER JESUALDO",   unite: "doses",  type: "semence"  },
-  { label: "Montbéliarde – ALPAGA RF",     unite: "doses",  type: "semence"  },
-  { label: "Normande – OLIVIER ET",        unite: "doses",  type: "semence"  },
-  { label: "Prim'Holstein – JACKPOT",      unite: "doses",  type: "semence"  },
-  { label: "Holstein – DESTINED P",        unite: "doses",  type: "semence"  },
-  { label: "Azote liquide industriel",     unite: "litres", type: "azote"    },
-  { label: "Cathéters d'insémination",     unite: "unités", type: "materiel" },
-  { label: "Gants insémination",           unite: "unités", type: "materiel" },
-  { label: "Paillettes de congélation",    unite: "boîtes", type: "materiel" },
-];
+/* Mapping catégorie API → type icône */
+const CAT_TO_TYPE = { Semences: 'semence', Azote: 'azote' };
 
 const LIEU_STOCKAGE_DEFAUT = "Magasin Central National · Agadir";
 
-/* ─── Adaptateur Transaction API → Bon de Commande ─────── */
-const STATUT_BC_MAP = {
-  'Brouillon':   'prevu',
-  'En attente':  'en_transit',
-  'Validé':      'a_quai',
-  'Expédié':     'conforme',
-  'Réceptionné': 'conforme',
-  'Rejeté':      'non_conforme',
-};
-
-function fromApiToBC(t) {
-  const catToType = { Semences:'semence', Azote:'azote' };
+/* ─── Adaptateur Approvisionnement API → Bon de Commande ── */
+function fromApiAppro(a) {
   return {
-    _id:         t._id,
-    id:          t.reference,
-    fournisseur: t.fournisseurCible?.nom  ?? '—',
-    pays:        t.fournisseurCible?.pays ?? '—',
-    pavillon:    '🌍',
-    articles: (t.lignes ?? []).map(l => ({
-      label: l.article?.designation ?? '—',
-      qte:   l.quantite,
-      unite: l.article?.uniteMesure  ?? '—',
-      type:  catToType[l.article?.categorie] ?? 'materiel',
+    _id:          a._id,
+    id:           a.numeroCommande,
+    fournisseur:  a.fournisseurNom,
+    pays:         a.fournisseurPays     ?? '—',
+    pavillon:     a.fournisseurPavillon ?? '🌍',
+    articles:     (a.lignes ?? []).map(l => ({
+      label: l.label,
+      qte:   l.qte,
+      unite: l.unite,
+      type:  l.type,
     })),
-    dateCommande: (t.createdAt ?? '').slice(0, 10),
-    dateArrivee:  null,
-    statut:       STATUT_BC_MAP[t.statut] ?? 'prevu',
-    transporteur: '—',
-    ref_bl:       null,
-    conformite:   null,
-    lieuStockage: LIEU_STOCKAGE_DEFAUT,
+    dateCommande: (a.createdAt ?? '').slice(0, 10),
+    dateArrivee:  a.dateArriveePrevu ? a.dateArriveePrevu.slice(0, 10) : null,
+    statut:       a.statut ?? 'prevu',
+    transporteur: a.transporteur ?? '—',
+    ref_bl:       a.refBL ?? null,
+    conformite:   a.conformite?.resultat ? a.conformite : null,
+    lieuStockage: a.lieuStockage,
   };
 }
 
@@ -101,44 +72,73 @@ function dateRelative(ds) {
   return { label: new Date(ds).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" }), urgent: false, past: false };
 }
 
-function nextBcId(bons) {
-  const nums = bons.map(b => parseInt(b.id.split("-")[2], 10)).filter(n => !isNaN(n));
-  const max  = nums.length ? Math.max(...nums) : 0;
-  return `BC-${new Date().getFullYear()}-${String(max + 1).padStart(4, "0")}`;
-}
 
 /* ─── Champ de formulaire stylisé (dark) ────────────────── */
 const labelCls  = "text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 block";
 const inputCls  = "w-full bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all appearance-none";
 
 /* ─── Modal Nouvelle Commande (Admin Fédéral) ───────────── */
-function ModalNouvelleCommande({ onClose, onAjouter, nextId }) {
-  const [fournisseurNom, setFournisseurNom] = useState("");
-  const [articleLabel,   setArticleLabel]   = useState("");
-  const [qte,            setQte]            = useState("");
-  const [dateArrivee,    setDateArrivee]     = useState("");
+function ModalNouvelleCommande({ onClose, onAjouter }) {
+  /* ── Listes dynamiques ── */
+  const [fournisseurs,  setFournisseurs]  = useState([]);
+  const [articles,      setArticles]      = useState([]);
+  const [loadingLists,  setLoadingLists]  = useState(true);
+  const [listError,     setListError]     = useState(null);
 
-  const fournisseurObj = FOURNISSEURS.find(f => f.nom === fournisseurNom);
-  const articleObj     = CATALOGUE.find(a => a.label === articleLabel);
-  const valid          = fournisseurNom && articleLabel && qte > 0 && dateArrivee;
+  useEffect(() => {
+    Promise.all([
+      api.get("/api/fournisseurs?actif=true").catch(() => []),
+      api.get("/api/articles?actif=true").catch(() => []),
+    ]).then(([f, a]) => {
+      setFournisseurs(Array.isArray(f) ? f : []);
+      setArticles(Array.isArray(a) ? a : []);
+    }).catch(err => setListError(err.message))
+      .finally(() => setLoadingLists(false));
+  }, []);
 
-  function handleSubmit() {
-    if (!valid) return;
-    onAjouter({
-      id:            nextId,
-      fournisseur:   fournisseurObj.nom,
-      pays:          fournisseurObj.pays,
-      pavillon:      fournisseurObj.pavillon,
-      articles:      [{ label: articleObj.label, qte: Number(qte), unite: articleObj.unite, type: articleObj.type }],
-      dateCommande:  new Date().toISOString().slice(0, 10),
-      dateArrivee,
-      statut:        "prevu",
-      transporteur:  "À confirmer",
-      ref_bl:        null,
-      conformite:    null,
-      lieuStockage:  LIEU_STOCKAGE_DEFAUT,
-    });
-    onClose();
+  /* ── Saisie formulaire ── */
+  const [fournisseurId, setFournisseurId] = useState("");
+  const [articleId,     setArticleId]     = useState("");
+  const [qte,           setQte]           = useState("");
+  const [dateArrivee,   setDateArrivee]   = useState("");
+
+  const fournisseurObj = fournisseurs.find(f => f._id === fournisseurId) ?? null;
+  const articleObj     = articles.find(a => a._id === articleId) ?? null;
+  const articleType    = articleObj ? (CAT_TO_TYPE[articleObj.categorie] ?? 'materiel') : null;
+  const valid          = fournisseurId && articleId && Number(qte) > 0 && dateArrivee;
+
+  /* Catégories uniques pour les optgroups */
+  const categoriesUniques = [...new Set(articles.map(a => a.categorie))].sort();
+
+  const [saving,      setSaving]      = useState(false);
+  const [submitError, setSubmitError] = useState(null);
+
+  async function handleSubmit(e) {
+    e?.preventDefault();
+    if (!valid || !fournisseurObj || !articleObj || saving) return;
+    setSaving(true);
+    setSubmitError(null);
+    try {
+      await onAjouter({
+        fournisseurId:       fournisseurObj._id  ?? null,
+        fournisseurNom:      fournisseurObj.nom,
+        fournisseurPays:     fournisseurObj.pays     ?? '',
+        fournisseurPavillon: fournisseurObj.pavillon ?? '🌍',
+        lignes: [{
+          articleId: articleObj._id ?? null,
+          label:     articleObj.designation,
+          qte:       Number(qte),
+          unite:     articleObj.uniteMesure,
+          type:      articleType ?? 'materiel',
+        }],
+        dateArriveePrevu: dateArrivee || null,
+        lieuStockage:     LIEU_STOCKAGE_DEFAUT,
+      });
+      onClose();
+    } catch (err) {
+      setSubmitError(err.message);
+      setSaving(false);
+    }
   }
 
   return (
@@ -153,7 +153,7 @@ function ModalNouvelleCommande({ onClose, onAjouter, nextId }) {
             </div>
             <div>
               <p className="text-sm font-bold text-white">Nouvelle Commande Fournisseur</p>
-              <p className="text-[11px] text-slate-500 mt-0.5">Réf. <span className="font-mono text-slate-400">{nextId}</span> · Direction Générale</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">Réf. <span className="font-mono text-slate-400">BC-{new Date().getFullYear()}-auto</span> · Direction Générale</p>
             </div>
           </div>
           <button onClick={onClose} className="text-slate-500 hover:text-slate-300 transition-colors mt-0.5">
@@ -164,14 +164,30 @@ function ModalNouvelleCommande({ onClose, onAjouter, nextId }) {
         {/* Formulaire */}
         <div className="px-6 py-5 space-y-5">
 
+          {/* Erreurs */}
+          {(listError || submitError) && (
+            <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2">
+              <span className="text-xs text-red-400">{submitError ?? listError}</span>
+            </div>
+          )}
+
           {/* Fournisseur */}
           <div>
             <label className={labelCls}>Fournisseur</label>
             <div className="relative">
-              <select value={fournisseurNom} onChange={e => setFournisseurNom(e.target.value)} className={inputCls}>
-                <option value="" className="bg-slate-800">— Sélectionner un fournisseur —</option>
-                {FOURNISSEURS.map(f => (
-                  <option key={f.nom} value={f.nom} className="bg-slate-800">{f.pavillon} {f.nom} · {f.pays}</option>
+              <select
+                value={fournisseurId}
+                onChange={e => setFournisseurId(e.target.value)}
+                disabled={loadingLists}
+                className={inputCls}
+              >
+                <option value="" className="bg-slate-800">
+                  {loadingLists ? "Chargement…" : fournisseurs.length === 0 ? "Aucun fournisseur enregistré" : "— Sélectionner un fournisseur —"}
+                </option>
+                {fournisseurs.map(f => (
+                  <option key={f._id} value={f._id} className="bg-slate-800">
+                    {f.nom}{f.pays ? ` · ${f.pays}` : ""}
+                  </option>
                 ))}
               </select>
               <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
@@ -182,26 +198,31 @@ function ModalNouvelleCommande({ onClose, onAjouter, nextId }) {
           <div>
             <label className={labelCls}>Article / Équipement</label>
             <div className="relative">
-              <select value={articleLabel} onChange={e => setArticleLabel(e.target.value)} className={inputCls}>
-                <option value="" className="bg-slate-800">— Sélectionner dans le catalogue —</option>
-                {["semence", "azote", "materiel"].map(cat => {
-                  const items = CATALOGUE.filter(a => a.type === cat);
-                  const titre = cat === "semence" ? "Semences bovines" : cat === "azote" ? "Azote" : "Matériel";
-                  return (
-                    <optgroup key={cat} label={titre} className="bg-slate-800 text-slate-400">
-                      {items.map(a => (
-                        <option key={a.label} value={a.label} className="bg-slate-800 text-white">{a.label}</option>
-                      ))}
-                    </optgroup>
-                  );
-                })}
+              <select
+                value={articleId}
+                onChange={e => setArticleId(e.target.value)}
+                disabled={loadingLists}
+                className={inputCls}
+              >
+                <option value="" className="bg-slate-800">
+                  {loadingLists ? "Chargement…" : articles.length === 0 ? "Aucun article dans le catalogue" : "— Sélectionner dans le catalogue —"}
+                </option>
+                {categoriesUniques.map(cat => (
+                  <optgroup key={cat} label={cat} className="bg-slate-800 text-slate-400">
+                    {articles.filter(a => a.categorie === cat).map(a => (
+                      <option key={a._id} value={a._id} className="bg-slate-800 text-white">
+                        {a.designation}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
               </select>
               <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
             </div>
             {articleObj && (
               <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-slate-500">
-                {typeIcon(articleObj.type, 10)}
-                <span>Unité : <span className="text-slate-400 font-medium">{articleObj.unite}</span></span>
+                {typeIcon(articleType, 10)}
+                <span>Unité : <span className="text-slate-400 font-medium">{articleObj.uniteMesure}</span></span>
               </div>
             )}
           </div>
@@ -212,7 +233,7 @@ function ModalNouvelleCommande({ onClose, onAjouter, nextId }) {
               <label className={labelCls}>Quantité</label>
               <input
                 type="number" min="1" value={qte} onChange={e => setQte(e.target.value)}
-                placeholder={`ex: 500 ${articleObj?.unite ?? "unités"}`}
+                placeholder={`ex: 500 ${articleObj?.uniteMesure ?? "unités"}`}
                 className={inputCls}
               />
             </div>
@@ -240,16 +261,16 @@ function ModalNouvelleCommande({ onClose, onAjouter, nextId }) {
         </div>
 
         {/* Récapitulatif si formulaire valide */}
-        {valid && (
+        {valid && fournisseurObj && articleObj && (
           <div className="mx-6 mb-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-4 py-3">
             <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider mb-1.5">Récapitulatif commande</p>
             <div className="flex items-center gap-2 text-xs text-emerald-300">
-              {typeIcon(articleObj?.type, 11)}
-              <span className="flex-1">{articleLabel}</span>
-              <span className="font-mono font-bold">{Number(qte).toLocaleString()} {articleObj?.unite}</span>
+              {typeIcon(articleType, 11)}
+              <span className="flex-1">{articleObj.designation}</span>
+              <span className="font-mono font-bold">{Number(qte).toLocaleString()} {articleObj.uniteMesure}</span>
             </div>
             <p className="text-[11px] text-emerald-400/70 mt-1">
-              {fournisseurObj?.pavillon} {fournisseurNom} · Arrivée le {new Date(dateArrivee).toLocaleDateString("fr-FR")}
+              🌍 {fournisseurObj.nom} · Arrivée le {new Date(dateArrivee).toLocaleDateString("fr-FR")}
             </p>
           </div>
         )}
@@ -261,10 +282,14 @@ function ModalNouvelleCommande({ onClose, onAjouter, nextId }) {
           </button>
           <button
             onClick={handleSubmit}
-            disabled={!valid}
+            disabled={!valid || loadingLists || saving}
             className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
           >
-            <PlusCircle size={13} /> Créer la commande
+            {saving
+              ? <><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />Enregistrement…</>
+              : loadingLists
+              ? <><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />Chargement…</>
+              : <><PlusCircle size={13} /> Créer la commande</>}
           </button>
         </div>
       </div>
@@ -355,25 +380,32 @@ export default function ApprovisionnementsFournisseurs({ userRole }) {
   const [showNouveau, setShowNouveau] = useState(false);
 
   useEffect(() => {
-    api.get("/api/transactions?type=RECEPTION&limit=100")
-      .then(res => {
-        const list = Array.isArray(res) ? res : (res.data ?? []);
-        setBons(list.map(fromApiToBC));
-      })
-      .catch(err => { setApiError(err.message); setBons([]); })
+    api.get("/api/approvisionnements?limit=100")
+      .then(res => setBons(Array.isArray(res) ? res.map(fromApiAppro) : []))
+      .catch(err => setApiError(err.message))
       .finally(() => setLoading(false));
   }, []);
 
   const isAdmin = userRole === "ADMIN_FEDERAL";
 
-  function handleSave(id, resultat, note) {
+  /* ─ Conformité — PUT + optimistic update ─────────────── */
+  async function handleSave(id, resultat, note) {
     setBons(prev => prev.map(bc =>
       bc.id !== id ? bc : { ...bc, statut: resultat, conformite: { resultat, note } }
     ));
+    const target = bons.find(bc => bc.id === id);
+    if (target?._id) {
+      api.put(`/api/approvisionnements/${target._id}`, {
+        statut:     resultat,
+        conformite: { resultat, note },
+      }).catch(err => setApiError(err.message));
+    }
   }
 
-  function handleAjouter(nouveauBc) {
-    setBons(prev => [nouveauBc, ...prev]);
+  /* ─ Ajout — POST réel, lève une exception si échec ────── */
+  async function handleAjouter(payload) {
+    const created = await api.post('/api/approvisionnements', payload);
+    setBons(prev => [fromApiAppro(created), ...prev]);
   }
 
   const counts = {
@@ -535,7 +567,6 @@ export default function ApprovisionnementsFournisseurs({ userRole }) {
       {/* Modal nouvelle commande */}
       {showNouveau && (
         <ModalNouvelleCommande
-          nextId={nextBcId(bons)}
           onClose={() => setShowNouveau(false)}
           onAjouter={handleAjouter}
         />

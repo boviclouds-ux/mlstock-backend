@@ -59,10 +59,15 @@ const createTransaction = async (req, res) => {
 const getAllTransactions = async (req, res) => {
   try {
     const filter = {};
-    if (req.query.type)          filter.type          = req.query.type;
-    if (req.query.statut)        filter.statut        = req.query.statut;
-    if (req.query.uniteCible)    filter.uniteCible    = req.query.uniteCible;
-    if (req.query.initiatedBy)   filter.initiatedBy   = req.query.initiatedBy;
+    if (req.query.type)  filter.type = req.query.type;
+    if (req.query.statut) {
+      // Supporte une valeur unique (?statut=Expédié)
+      // OU plusieurs valeurs séparées par virgule (?statut=Expédié,Réceptionné)
+      const vals = req.query.statut.split(',').map(s => s.trim()).filter(Boolean);
+      filter.statut = vals.length === 1 ? vals[0] : { $in: vals };
+    }
+    if (req.query.uniteCible)  filter.uniteCible  = req.query.uniteCible;
+    if (req.query.initiatedBy) filter.initiatedBy = req.query.initiatedBy;
 
     const page  = Math.max(1, parseInt(req.query.page)  || 1);
     const limit = Math.min(100, parseInt(req.query.limit) || 50);
@@ -106,11 +111,22 @@ const getTransactionById = async (req, res) => {
    PUT /api/transactions/:id/statut
    Corps : { statut: 'Expédié' }
    runValidators: true — Mongoose vérifie l'enum du modèle.
+
+   Règle métier :
+   - OPS (Admin, Magasinier) : tout changement de statut autorisé
+   - UNITE                   : uniquement 'Réceptionné' (confirmation de réception physique)
 ═══════════════════════════════════════════════════════════ */
 const updateTransactionStatut = async (req, res) => {
   try {
     const { statut } = req.body;
     if (!statut) return res.status(400).json({ message: 'Le champ "statut" est requis.' });
+
+    // Restriction métier : le rôle UNITE ne peut que confirmer la réception
+    if (req.user?.role === 'UNITE' && statut !== 'Réceptionné') {
+      return res.status(403).json({
+        message: 'En tant que Responsable Unité, vous ne pouvez positionner que le statut "Réceptionné".',
+      });
+    }
 
     const transaction = await Transaction.findByIdAndUpdate(
       req.params.id,

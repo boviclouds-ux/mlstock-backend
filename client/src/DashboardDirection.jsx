@@ -26,6 +26,31 @@ function enrichActivite(evt) {
   return { ...evt, ...s };
 }
 
+const STATUT_BADGE = {
+  'Brouillon':   'bg-gray-100 text-gray-600',
+  'En attente':  'bg-blue-50 text-blue-700',
+  'Validé':      'bg-emerald-50 text-emerald-700',
+  'Expédié':     'bg-indigo-50 text-indigo-700',
+  'Réceptionné': 'bg-teal-50 text-teal-700',
+  'Rejeté':      'bg-red-50 text-red-600',
+};
+const STATUT_LABEL = {
+  'Brouillon':   'Brouillon',
+  'En attente':  'À préparer',
+  'Validé':      'Prêt au départ',
+  'Expédié':     'Expédié',
+  'Réceptionné': 'Réceptionné',
+  'Rejeté':      'Rejeté',
+};
+function StatutBadgeTiny({ statut }) {
+  const cls = STATUT_BADGE[statut] ?? 'bg-gray-100 text-gray-500';
+  return (
+    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${cls}`}>
+      {STATUT_LABEL[statut] ?? statut}
+    </span>
+  );
+}
+
 function barColor(pct, statut) {
   if (statut==="critique") return "bg-red-500";
   if (statut==="alerte"||pct>=80) return "bg-amber-400";
@@ -47,25 +72,27 @@ export default function DashboardDirection() {
   const [regions,    setRegions]    = useState([]);
   const [activite,   setActivite]   = useState([]);
   const [lotsAlerte, setLotsAlerte] = useState([]);
+  const [cuves,      setCuves]      = useState([]);
 
   useEffect(() => {
     let cancelled = false;
     setIsLoading(true);
     setError(null);
 
-    api.get("/api/dashboard/stats")
-      .then(data => {
-        if (cancelled) return;
-        setStocks(data.stocks ?? {});
-        setRegions(data.regions ?? []);
-        setActivite((data.activite ?? []).map(enrichActivite));
-        setLotsAlerte(data.alertes?.lots ?? []);
-      })
-      .catch(err => {
-        if (cancelled) return;
-        setError(err.message ?? "Impossible de charger les données.");
-      })
-      .finally(() => { if (!cancelled) setIsLoading(false); });
+    Promise.all([
+      api.get("/api/dashboard/stats"),
+      api.get("/api/cuves").catch(() => []),
+    ]).then(([data, cuvesData]) => {
+      if (cancelled) return;
+      setStocks(data.stocks ?? {});
+      setRegions(data.regions ?? []);
+      setActivite((data.activite ?? []).map(enrichActivite));
+      setLotsAlerte(data.alertes?.lots ?? []);
+      setCuves(Array.isArray(cuvesData) ? cuvesData : []);
+    }).catch(err => {
+      if (cancelled) return;
+      setError(err.message ?? "Impossible de charger les données.");
+    }).finally(() => { if (!cancelled) setIsLoading(false); });
 
     return () => { cancelled = true; };
   }, []);
@@ -115,12 +142,17 @@ export default function DashboardDirection() {
   }
 
   /* ── Calculs KPI ─────────────────────────────────────────── */
+  // > 0 : alerte seulement si le stock existe et est sous le seuil.
+  // Couvre les deux backends : null (nouveau) et 0 (ancien) signifient tous les deux "aucune donnée".
   const alertesSeuils = [];
-  if ((stocks.semences ?? Infinity) < SEUILS.semences)
+  if (stocks.semences > 0 && stocks.semences < SEUILS.semences)
     alertesSeuils.push(`Semences : ${stocks.semences.toLocaleString()} doses (seuil ${SEUILS.semences.toLocaleString()})`);
-  if ((stocks.azote ?? Infinity) < SEUILS.azote)
+  if (stocks.azote > 0 && stocks.azote < SEUILS.azote)
     alertesSeuils.push(`Azote : ${stocks.azote.toLocaleString()} L (seuil ${SEUILS.azote.toLocaleString()} L)`);
   const totalAlertes = alertesSeuils.length + lotsAlerte.length;
+
+  // Cuve la plus critique pour l'indicateur de la carte Azote
+  const cuveEnAlerte = cuves.find(c => c.statut === 'critique') ?? cuves.find(c => c.statut === 'alerte');
 
   return (
     <div className="space-y-6">
@@ -177,8 +209,19 @@ export default function DashboardDirection() {
             <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">litres · Seuil alerte : {SEUILS.azote.toLocaleString()} L</p>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
-            <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400">Surveiller Cuve B-02</span>
+            {cuveEnAlerte ? (
+              <>
+                <span className={`w-2 h-2 rounded-full shrink-0 ${cuveEnAlerte.statut === 'critique' ? 'bg-red-500 animate-pulse' : 'bg-amber-400'}`} />
+                <span className={`text-[10px] font-semibold ${cuveEnAlerte.statut === 'critique' ? 'text-red-600 dark:text-red-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                  Surveiller {cuveEnAlerte.nom}
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">Niveaux nominaux</span>
+              </>
+            )}
           </div>
         </div>
 
@@ -328,7 +371,10 @@ export default function DashboardDirection() {
                           <p className="text-xs font-bold text-slate-800 dark:text-slate-100">{evt.action}</p>
                           <span className="text-[10px] text-slate-400 dark:text-slate-500 whitespace-nowrap shrink-0">{evt.delta}</span>
                         </div>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">{evt.detail}</p>
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">{evt.detail}</p>
+                          {evt.statut && <StatutBadgeTiny statut={evt.statut} />}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -338,7 +384,9 @@ export default function DashboardDirection() {
           </div>
 
           <div className="px-5 py-3 border-t border-slate-100 dark:border-slate-700">
-            <button className="w-full flex items-center justify-center gap-1.5 py-1 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:opacity-75 transition-opacity">
+            <button
+              onClick={() => navigate('/tracabilite')}
+              className="w-full flex items-center justify-center gap-1.5 py-1 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:opacity-75 transition-opacity">
               Voir l'historique complet <ChevronRight size={12}/>
             </button>
           </div>

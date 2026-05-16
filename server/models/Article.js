@@ -5,7 +5,6 @@ const articleSchema = new mongoose.Schema(
     code: {
       type:      String,
       required:  [true, 'Le code article est requis'],
-      unique:    true,
       uppercase: true,
       trim:      true,
     },
@@ -55,6 +54,14 @@ const articleSchema = new mongoose.Schema(
 articleSchema.virtual('subventionne').get(function () {
   return this.valeurEstimee == null;
 });
+
+/* ─── Index unique partiel : code unique seulement sur les articles actifs ─
+   Permet de recréer un article avec le même code après soft-delete (actif: false).
+   syncIndexes() dans server.js supprime l'ancien index global et crée celui-ci. */
+articleSchema.index(
+  { code: 1 },
+  { unique: true, partialFilterExpression: { actif: true } }
+);
 
 /* ─── Index texte pour la recherche ────────────────────── */
 articleSchema.index({ designation: 'text', categorie: 'text' });

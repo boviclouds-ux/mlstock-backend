@@ -22,7 +22,7 @@ const lotSchema = new mongoose.Schema(
     },
     articleId: { type: mongoose.Schema.Types.ObjectId, ref: 'Article', required: true },
     cuveId: { type: mongoose.Schema.Types.ObjectId, ref: 'Cuve', default: null },
-    fournisseurId: { type: mongoose.Schema.Types.ObjectId, ref: 'Fournisseur', required: true },
+    fournisseurId: { type: mongoose.Schema.Types.ObjectId, ref: 'Fournisseur', default: null },
     rack: { type: String, trim: true },
     qteDisponible: { type: Number, required: true, default: 0 },
     peremption: { type: Date, default: null },

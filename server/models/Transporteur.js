@@ -9,33 +9,23 @@ const contactSchema = new mongoose.Schema(
   { _id: false }
 );
 
-const fournisseurSchema = new mongoose.Schema(
+const transporteurSchema = new mongoose.Schema(
   {
     code: {
       type:      String,
-      required:  [true, 'Le code fournisseur est requis'],
+      required:  [true, 'Le code transporteur est requis'],
       uppercase: true,
       trim:      true,
     },
     nom: {
       type:     String,
-      required: [true, 'Le nom du fournisseur est requis'],
+      required: [true, 'Le nom du transporteur est requis'],
       trim:     true,
     },
-    pays: {
+    type: {
       type:    String,
-      trim:    true,
-      default: '',
-    },
-    pavillon: {
-      type:    String,
-      trim:    true,
-      default: '🌍',
-    },
-    specialite: {
-      type:    String,
-      trim:    true,
-      default: 'Autres',
+      enum:    ['Prestataire Externe', 'Interne Maroc Lait'],
+      default: 'Prestataire Externe',
     },
     contact: {
       type:    contactSchema,
@@ -49,10 +39,10 @@ const fournisseurSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-/* Index unique partiel : code unique seulement sur les fournisseurs actifs */
-fournisseurSchema.index(
+/* Index unique partiel : code unique seulement sur les transporteurs actifs */
+transporteurSchema.index(
   { code: 1 },
   { unique: true, partialFilterExpression: { actif: true } }
 );
 
-module.exports = mongoose.model('Fournisseur', fournisseurSchema);
+module.exports = mongoose.model('Transporteur', transporteurSchema);

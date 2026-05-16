@@ -94,22 +94,63 @@ function toApiUnite(code, form) {
   };
 }
 
-const FOURNISSEURS_INIT = [
-  { id:"FOU-001", nom:"Alta Genetics France",      pays:"France",     pavillon:"🇫🇷", specialite:"Semences",    responsable:"Jean-Pierre Moreau",    tel:"+33 3 81 47 20 10",  email:"jp.moreau@alta-genetics.fr"  },
-  { id:"FOU-002", nom:"Sunnylodge B.V.",            pays:"Pays-Bas",   pavillon:"🇳🇱", specialite:"Semences",    responsable:"Hendrik van der Berg",  tel:"+31 73 654 32 10",   email:"h.vanderberg@sunnylodge.nl"  },
-  { id:"FOU-003", nom:"Nedap Livestock Mgmt.",      pays:"Pays-Bas",   pavillon:"🇳🇱", specialite:"Équipement",  responsable:"Lars Dijkstra",         tel:"+31 544 471 111",    email:"l.dijkstra@nedap.com"        },
-  { id:"FOU-004", nom:"CryoBio France",             pays:"France",     pavillon:"🇫🇷", specialite:"Équipement",  responsable:"Sophie Renard",         tel:"+33 4 72 85 41 00",  email:"s.renard@cryobio.fr"         },
-  { id:"FOU-005", nom:"Semex Alliance",             pays:"Canada",     pavillon:"🇨🇦", specialite:"Semences",    responsable:"Robert Lafleur",        tel:"+1 519 821 1091",    email:"r.lafleur@semex.com"         },
-  { id:"FOU-006", nom:"Pharma Veto Maroc",          pays:"Maroc",      pavillon:"🇲🇦", specialite:"Médicaments", responsable:"Dr. Leila Amrani",      tel:"+212 5 22 45 67 89", email:"l.amrani@pharmaveto.ma"      },
-];
+/* ─── Adaptateurs Fournisseur ─────────────────────────── */
+function fromApiFournisseur(f) {
+  return {
+    _id:         f._id,
+    id:          f.code,
+    code:        f.code,
+    nom:         f.nom,
+    pays:        f.pays        ?? "",
+    pavillon:    f.pavillon    ?? "🌍",
+    specialite:  f.specialite  ?? "Autres",
+    responsable: f.contact?.nom       ?? "",
+    tel:         f.contact?.telephone ?? "",
+    email:       f.contact?.email     ?? "",
+    actif:       f.actif ?? true,
+  };
+}
+function toApiFournisseur(code, form) {
+  return {
+    code,
+    nom:       form.nom,
+    pays:      form.pays      ?? "",
+    pavillon:  form.pavillon  ?? "🌍",
+    specialite: form.specialite,
+    contact: {
+      nom:       form.responsable ?? "",
+      telephone: form.tel         ?? "",
+      email:     form.email       ?? "",
+    },
+  };
+}
 
-const TRANSPORTEURS_INIT = [
-  { id:"TRP-001", nom:"SDTM Maroc",            type:"Prestataire Externe",  responsable:"Omar Ziani",         tel:"+212 5 22 24 35 46", email:"o.ziani@sdtm.ma"              },
-  { id:"TRP-002", nom:"Trans-Atlas",            type:"Prestataire Externe",  responsable:"Youssef Belkadi",    tel:"+212 6 61 23 45 67", email:"y.belkadi@trans-atlas.ma"     },
-  { id:"TRP-003", nom:"Ghazala Transport",      type:"Prestataire Externe",  responsable:"Hassan Ghazali",     tel:"+212 6 72 34 56 78", email:"h.ghazali@ghazala-transport.ma"},
-  { id:"TRP-004", nom:"Al Amine Logistique",    type:"Prestataire Externe",  responsable:"Abdelhamid Amine",   tel:"+212 6 83 45 67 89", email:"a.amine@alamine-log.ma"       },
-  { id:"TRP-005", nom:"Flotte Interne — Agadir",type:"Interne Maroc Lait",  responsable:"Karim Benali",       tel:"+212 5 28 24 00 10", email:"flotte.agadir@marocl.ma"      },
-];
+/* ─── Adaptateurs Transporteur ───────────────────────── */
+function fromApiTransporteur(t) {
+  return {
+    _id:         t._id,
+    id:          t.code,
+    code:        t.code,
+    nom:         t.nom,
+    type:        t.type        ?? "Prestataire Externe",
+    responsable: t.contact?.nom       ?? "",
+    tel:         t.contact?.telephone ?? "",
+    email:       t.contact?.email     ?? "",
+    actif:       t.actif ?? true,
+  };
+}
+function toApiTransporteur(code, form) {
+  return {
+    code,
+    nom:  form.nom,
+    type: form.type,
+    contact: {
+      nom:       form.responsable ?? "",
+      telephone: form.tel         ?? "",
+      email:     form.email       ?? "",
+    },
+  };
+}
 
 /* ─── Helpers ──────────────────────────────────────────── */
 function nextId(data, prefix) {
@@ -351,92 +392,130 @@ function TableTransporteurs({ data, isAdmin, onEdit, onDelete }) {
 export default function ReseauGlobal({ userRole }) {
   const [activeTab,     setActiveTab]     = useState("unites");
 
-  // Unités — données API
-  const [unites,        setUnites]        = useState([]);
-  const [loadingUnites, setLoadingUnites] = useState(true);
-  const [errorUnites,   setErrorUnites]   = useState(null);
+  // Unités
+  const [unites,             setUnites]             = useState([]);
+  const [loadingUnites,      setLoadingUnites]      = useState(true);
+  const [errorUnites,        setErrorUnites]        = useState(null);
 
-  // Fournisseurs & Transporteurs — données statiques (câblage API futur)
-  const [fournisseurs,  setFournisseurs]  = useState(FOURNISSEURS_INIT);
-  const [transporteurs, setTransporteurs] = useState(TRANSPORTEURS_INIT);
+  // Fournisseurs
+  const [fournisseurs,       setFournisseurs]       = useState([]);
+  const [loadingFournisseurs, setLoadingFournisseurs] = useState(true);
+  const [errorFournisseurs,   setErrorFournisseurs]   = useState(null);
 
-  const [recherche,     setRecherche]     = useState("");
-  const [modalSaisie,   setModalSaisie]   = useState(null);
-  const [modalSuppr,    setModalSuppr]    = useState(null);
+  // Transporteurs
+  const [transporteurs,      setTransporteurs]      = useState([]);
+  const [loadingTransporteurs, setLoadingTransporteurs] = useState(true);
+  const [errorTransporteurs,   setErrorTransporteurs]   = useState(null);
+
+  const [recherche,   setRecherche]   = useState("");
+  const [modalSaisie, setModalSaisie] = useState(null);
+  const [modalSuppr,  setModalSuppr]  = useState(null);
+  const [syncError,   setSyncError]   = useState(null);  // erreurs POST/PUT
 
   const isAdmin = userRole === "ADMIN_FEDERAL";
 
-  /* ─ Chargement initial des Unités ────────────────────── */
+  /* ─ Chargements initiaux ─────────────────────────────── */
   async function fetchUnites() {
-    setLoadingUnites(true);
-    setErrorUnites(null);
-    try {
-      const data = await api.get("/api/unites?actif=true");
-      setUnites(data.map(fromApiUnite));
-    } catch (err) {
-      setErrorUnites(err.message);
-    } finally {
-      setLoadingUnites(false);
-    }
+    setLoadingUnites(true); setErrorUnites(null);
+    try   { const d = await api.get("/api/unites?actif=true"); setUnites(Array.isArray(d) ? d.map(fromApiUnite) : []); }
+    catch (err) { setErrorUnites(err.message); }
+    finally     { setLoadingUnites(false); }
+  }
+  async function fetchFournisseurs() {
+    setLoadingFournisseurs(true); setErrorFournisseurs(null);
+    try   { const d = await api.get("/api/fournisseurs?actif=true"); setFournisseurs(Array.isArray(d) ? d.map(fromApiFournisseur) : []); }
+    catch (err) { setErrorFournisseurs(err.message); }
+    finally     { setLoadingFournisseurs(false); }
+  }
+  async function fetchTransporteurs() {
+    setLoadingTransporteurs(true); setErrorTransporteurs(null);
+    try   { const d = await api.get("/api/transporteurs?actif=true"); setTransporteurs(Array.isArray(d) ? d.map(fromApiTransporteur) : []); }
+    catch (err) { setErrorTransporteurs(err.message); }
+    finally     { setLoadingTransporteurs(false); }
   }
 
-  useEffect(() => { fetchUnites(); }, []);
+  useEffect(() => {
+    fetchUnites();
+    fetchFournisseurs();
+    fetchTransporteurs();
+  }, []);
 
-  /* ─ Maps courants ─────────────────────────────────────── */
-  const dataMap = { unites, fournisseurs, transporteurs };
-  const setMap  = { fournisseurs: setFournisseurs, transporteurs: setTransporteurs };
-  const current = dataMap[activeTab];
+  /* ─ Données / loading / erreur selon onglet actif ─────── */
+  const dataMap    = { unites, fournisseurs, transporteurs };
+  const loadingMap = { unites: loadingUnites, fournisseurs: loadingFournisseurs, transporteurs: loadingTransporteurs };
+  const errorMap   = { unites: errorUnites,   fournisseurs: errorFournisseurs,   transporteurs: errorTransporteurs   };
+  const refetchMap = { unites: fetchUnites,   fournisseurs: fetchFournisseurs,   transporteurs: fetchTransporteurs   };
+
+  const current       = dataMap[activeTab];
+  const isLoadingTab  = loadingMap[activeTab];
+  const errorTab      = errorMap[activeTab];
 
   const filtered = useMemo(() => {
     const q = recherche.toLowerCase();
     return q ? current.filter(d =>
-      d.nom?.toLowerCase().includes(q)        ||
+      d.nom?.toLowerCase().includes(q)         ||
       d.responsable?.toLowerCase().includes(q) ||
       d.region?.toLowerCase().includes(q)      ||
       d.pays?.toLowerCase().includes(q)
     ) : current;
   }, [current, recherche]);
 
-  /* ─ Sauvegarde (dispatch API / local selon onglet) ─────── */
+  /* ─ Sauvegarde (POST / PUT selon onglet) ─────────────── */
   async function handleSave(item) {
-    if (activeTab === "unites") {
-      setErrorUnites(null);
-      try {
+    setSyncError(null);
+    try {
+      if (activeTab === "unites") {
         if (item._id) {
-          // Modification
           const updated = await api.put(`/api/unites/${item._id}`, toApiUnite(item.id, item));
           setUnites(prev => prev.map(u => u._id === updated._id ? fromApiUnite(updated) : u));
         } else {
-          // Création (item.id = code généré par nextId dans la modal)
           const created = await api.post("/api/unites", toApiUnite(item.id, item));
           setUnites(prev => [fromApiUnite(created), ...prev]);
         }
-      } catch (err) {
-        setErrorUnites(err.message);
+      } else if (activeTab === "fournisseurs") {
+        if (item._id) {
+          const updated = await api.put(`/api/fournisseurs/${item._id}`, toApiFournisseur(item.id, item));
+          setFournisseurs(prev => prev.map(f => f._id === updated._id ? fromApiFournisseur(updated) : f));
+        } else {
+          const created = await api.post("/api/fournisseurs", toApiFournisseur(item.id, item));
+          setFournisseurs(prev => [fromApiFournisseur(created), ...prev]);
+        }
+      } else {
+        if (item._id) {
+          const updated = await api.put(`/api/transporteurs/${item._id}`, toApiTransporteur(item.id, item));
+          setTransporteurs(prev => prev.map(t => t._id === updated._id ? fromApiTransporteur(updated) : t));
+        } else {
+          const created = await api.post("/api/transporteurs", toApiTransporteur(item.id, item));
+          setTransporteurs(prev => [fromApiTransporteur(created), ...prev]);
+        }
       }
-    } else {
-      setMap[activeTab](prev => {
-        const idx = prev.findIndex(d => d.id === item.id);
-        if (idx >= 0) { const n = [...prev]; n[idx] = item; return n; }
-        return [item, ...prev];
-      });
+    } catch (err) {
+      setSyncError(err.message);
     }
   }
 
-  /* ─ Suppression (soft-delete API / local selon onglet) ─── */
+  /* ─ Suppression (soft-delete PUT actif:false) ─────────── */
   async function handleDelete(id) {
-    if (activeTab === "unites") {
-      const target = unites.find(u => u.id === id);
-      if (!target?._id) return;
-      setErrorUnites(null);
-      try {
+    setSyncError(null);
+    try {
+      if (activeTab === "unites") {
+        const target = unites.find(u => u.id === id);
+        if (!target?._id) return;
         await api.put(`/api/unites/${target._id}`, { actif: false });
         setUnites(prev => prev.filter(u => u.id !== id));
-      } catch (err) {
-        setErrorUnites(err.message);
+      } else if (activeTab === "fournisseurs") {
+        const target = fournisseurs.find(f => f.id === id);
+        if (!target?._id) return;
+        await api.put(`/api/fournisseurs/${target._id}`, { actif: false });
+        setFournisseurs(prev => prev.filter(f => f.id !== id));
+      } else {
+        const target = transporteurs.find(t => t.id === id);
+        if (!target?._id) return;
+        await api.put(`/api/transporteurs/${target._id}`, { actif: false });
+        setTransporteurs(prev => prev.filter(t => t.id !== id));
       }
-    } else {
-      setMap[activeTab](prev => prev.filter(d => d.id !== id));
+    } catch (err) {
+      setSyncError(err.message);
     }
   }
 
@@ -498,19 +577,36 @@ export default function ReseauGlobal({ userRole }) {
         </div>
       </div>
 
-      {/* Bandeau erreur Unités */}
-      {activeTab === "unites" && errorUnites && (
+      {/* Bandeau erreur chargement (onglet actif) */}
+      {errorTab && (
         <div className="flex items-center justify-between gap-3 bg-red-50 border border-red-200 rounded-2xl px-5 py-3">
           <div className="flex items-center gap-2.5">
             <AlertTriangle size={15} className="text-red-500 shrink-0" />
             <div>
               <p className="text-xs font-bold text-red-700">Erreur de chargement</p>
-              <p className="text-[11px] text-red-500 mt-0.5">{errorUnites}</p>
+              <p className="text-[11px] text-red-500 mt-0.5">{errorTab}</p>
             </div>
           </div>
-          <button onClick={fetchUnites}
+          <button onClick={refetchMap[activeTab]}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-100 hover:bg-red-200 text-red-700 text-[11px] font-bold transition-all shrink-0">
             <RefreshCw size={11} /> Réessayer
+          </button>
+        </div>
+      )}
+
+      {/* Bandeau erreur synchronisation (POST/PUT/DELETE) */}
+      {syncError && (
+        <div className="flex items-center justify-between gap-3 bg-red-50 border border-red-200 rounded-2xl px-5 py-3">
+          <div className="flex items-center gap-2.5">
+            <AlertTriangle size={15} className="text-red-500 shrink-0" />
+            <div>
+              <p className="text-xs font-bold text-red-700">Erreur de synchronisation</p>
+              <p className="text-[11px] text-red-500 mt-0.5">{syncError}</p>
+            </div>
+          </div>
+          <button onClick={() => setSyncError(null)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-100 hover:bg-red-200 text-red-700 text-[11px] font-bold transition-all shrink-0">
+            <X size={11} /> Fermer
           </button>
         </div>
       )}
@@ -529,21 +625,21 @@ export default function ReseauGlobal({ userRole }) {
       {/* Tableau actif */}
       <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
 
-        {/* Spinner — uniquement pour l'onglet Unités pendant le chargement API */}
-        {activeTab === "unites" && loadingUnites ? (
+        {/* Spinner — commun aux 3 onglets */}
+        {isLoadingTab ? (
           <div className="py-16 text-center">
             <div className="w-8 h-8 border-2 border-blue-200 border-t-blue-500 rounded-full animate-spin mx-auto mb-3" />
-            <p className="text-sm font-semibold text-slate-500">Chargement des unités…</p>
+            <p className="text-sm font-semibold text-slate-500">Chargement des {TAB_CONFIG[activeTab].label.toLowerCase()}…</p>
             <p className="text-xs text-slate-400 mt-1">Connexion à la base de données</p>
           </div>
         ) : filtered.length === 0 ? (
           <div className="py-16 text-center">
             <Network size={28} className="text-slate-300 mx-auto mb-3"/>
-            <p className="text-sm font-semibold text-slate-500">Aucun résultat</p>
+            <p className="text-sm font-semibold text-slate-500">
+              {errorTab ? "Impossible de charger les données" : `Aucun ${TAB_CONFIG[activeTab].label.slice(0,-1).toLowerCase()} enregistré`}
+            </p>
             <p className="text-xs text-slate-400 mt-1">
-              {activeTab === "unites" && errorUnites
-                ? "Vérifiez que le serveur est démarré."
-                : "Modifiez votre recherche ou ajoutez un enregistrement."}
+              {errorTab ? "Vérifiez que le serveur est démarré." : "Modifiez votre recherche ou ajoutez un enregistrement."}
             </p>
           </div>
         ) : (
@@ -556,15 +652,10 @@ export default function ReseauGlobal({ userRole }) {
 
         <div className="px-5 py-2.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
           <p className="text-[11px] text-slate-400">
-            {activeTab === "unites" && loadingUnites ? "Chargement…" : (
-              `${filtered.length} enregistrement${filtered.length > 1 ? "s" : ""}${recherche ? ` · filtrés sur ${current.length}` : ""}`
-            )}
+            {isLoadingTab ? "Chargement…" : `${filtered.length} enregistrement${filtered.length > 1 ? "s" : ""}${recherche ? ` · filtrés sur ${current.length}` : ""}`}
           </p>
-          {activeTab === "unites" && !loadingUnites && (
+          {!isLoadingTab && (
             <span className="text-[10px] text-slate-400 font-mono">API MongoDB</span>
-          )}
-          {activeTab !== "unites" && (
-            <span className="text-[10px] text-slate-400">Données statiques — câblage API à venir</span>
           )}
         </div>
       </div>

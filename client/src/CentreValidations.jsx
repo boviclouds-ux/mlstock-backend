@@ -238,27 +238,77 @@ function NouvelOrdreModal({onClose,onSubmit}){
    COMPOSANT PRINCIPAL
 ══════════════════════════════════════════════════════ */
 export default function CentreValidations(){
-  const [requetes,  setRequetes]  = useState([]);
-  const [loading,   setLoading]   = useState(true);
-  const [drawerDero,setDrawerDero]=useState(null); const [drawerRec,setDrawerRec]=useState(null); const [showOrdre,setShowOrdre]=useState(false);
-  const [flashId,setFlashId]=useState(null); const [filterType,setFilterType]=useState("tous");
-  const [ordresEmis,setOrdresEmis]=useState([]);
+  const [requetes,    setRequetes]    = useState([]);
+  const [loading,     setLoading]     = useState(true);
+  const [actionError, setActionError] = useState(null);
+  const [drawerDero,  setDrawerDero]  = useState(null);
+  const [drawerRec,   setDrawerRec]   = useState(null);
+  const [showOrdre,   setShowOrdre]   = useState(false);
+  const [flashId,     setFlashId]     = useState(null);
+  const [filterType,  setFilterType]  = useState("tous");
+  const [ordresEmis,  setOrdresEmis]  = useState([]);
 
   useEffect(() => {
     api.get("/api/transactions?statut=En%20attente&limit=100")
       .then(res => {
         const list = Array.isArray(res) ? res : (res.data ?? []);
-        setRequetes(list.map(fromApiToRequete));
+        // ORDRE_ADMIN est auto-approuvé à la création par l'Admin Fédéral :
+        // il ne doit PAS apparaître ici pour une seconde validation circulaire.
+        setRequetes(list.filter(t => t.type !== 'ORDRE_ADMIN').map(fromApiToRequete));
       })
       .catch(() => setRequetes([]))
       .finally(() => setLoading(false));
   }, []);
 
-  const stats={receptions:requetes.filter(r=>r.type==="reception"&&r.statut==="en_attente").length, expeditions:requetes.filter(r=>r.type==="expedition"&&r.statut==="en_attente").length, depassements:requetes.filter(r=>r.type==="depassement"&&r.statut==="en_attente").length};
+  const stats = {
+    receptions:   requetes.filter(r => r.type === "reception"   && r.statut === "en_attente").length,
+    expeditions:  requetes.filter(r => r.type === "expedition"  && r.statut === "en_attente").length,
+    depassements: requetes.filter(r => r.type === "depassement" && r.statut === "en_attente").length,
+  };
 
-  function handleDecision(id,dec){setRequetes(p=>p.map(r=>r.id===id?{...r,statut:dec}:r));flash(id);}
-  function handleQuick(id,dec){flash(id);setTimeout(()=>setRequetes(p=>p.map(r=>r.id===id?{...r,statut:dec}:r)),500);}
-  function flash(id){setFlashId(id);setTimeout(()=>setFlashId(null),800);}
+  /* Mapping décision UI → statut Mongoose selon le type de requête */
+  function resolveStatutApi(type, dec) {
+    if (dec === 'refuse') return 'Rejeté';
+    return type === 'reception' ? 'Réceptionné' : 'Validé';
+  }
+
+  /* Décision via drawer (Dérogation ou Réception) — update state APRÈS succès API */
+  async function handleDecision(id, dec) {
+    setActionError(null);
+    const target = requetes.find(r => r.id === id);
+    if (target?._id) {
+      try {
+        await api.put(`/api/transactions/${target._id}/statut`, {
+          statut: resolveStatutApi(target.type, dec),
+        });
+      } catch (err) {
+        setActionError(err.message);
+        return; // ne pas mettre à jour l'UI si l'API échoue
+      }
+    }
+    setRequetes(p => p.map(r => r.id === id ? { ...r, statut: dec } : r));
+    flash(id);
+  }
+
+  /* Approbation / refus rapide inline — update state APRÈS succès API */
+  async function handleQuick(id, dec) {
+    setActionError(null);
+    const target = requetes.find(r => r.id === id);
+    if (target?._id) {
+      try {
+        await api.put(`/api/transactions/${target._id}/statut`, {
+          statut: resolveStatutApi(target.type, dec),
+        });
+      } catch (err) {
+        setActionError(err.message);
+        return;
+      }
+    }
+    flash(id);
+    setRequetes(p => p.map(r => r.id === id ? { ...r, statut: dec } : r));
+  }
+
+  function flash(id) { setFlashId(id); setTimeout(() => setFlashId(null), 800); }
   function handleNouvelOrdre(data){setOrdresEmis(p=>[{id:`ORD-2025-${String(p.length+42).padStart(4,"0")}`,dest:data.dest,urgent:data.urgent,motif:data.motif,lignes:data.lignes,statut:"transmis",date:new Date().toLocaleString("fr-FR",{hour:"2-digit",minute:"2-digit"})}, ...p]);}
 
   const filtered=filterType==="tous"?requetes:requetes.filter(r=>r.type===filterType);
@@ -285,6 +335,19 @@ export default function CentreValidations(){
           </div>
         </div>
       </div>
+
+      {/* Bandeau erreur action */}
+      {actionError && (
+        <div className="flex items-center justify-between gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+          <div className="flex items-center gap-2.5">
+            <AlertTriangle size={14} className="text-red-500 shrink-0" />
+            <p className="text-xs font-semibold text-red-700">{actionError}</p>
+          </div>
+          <button onClick={() => setActionError(null)} className="text-red-400 hover:text-red-600 shrink-0">
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       {/* KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">

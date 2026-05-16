@@ -36,11 +36,12 @@ function fromApiToReception(t) {
 /* ─── Helpers ───────────────────────────────────────── */
 function statutCmd(s){
   return {
-    en_attente:    {label:"En attente Admin", bg:"bg-gray-100",   text:"text-gray-600",   border:"border-gray-200",   dot:"bg-gray-400",   pulse:false},
-    approuve:      {label:"Approuvé",         bg:"bg-blue-50",    text:"text-blue-700",   border:"border-blue-200",   dot:"bg-blue-500",   pulse:false},
-    en_preparation:{label:"En préparation",   bg:"bg-amber-50",   text:"text-amber-700",  border:"border-amber-200",  dot:"bg-amber-500",  pulse:true },
-    livre:         {label:"Livré",            bg:"bg-emerald-50", text:"text-emerald-700",border:"border-emerald-200",dot:"bg-emerald-500",pulse:false},
-  }[s]??{};
+    en_attente:    {label:"En attente",       bg:"bg-gray-100",    text:"text-gray-600",    border:"border-gray-200",   dot:"bg-gray-400",    pulse:false, clos:false},
+    approuve:      {label:"Approuvé",         bg:"bg-blue-50",     text:"text-blue-700",    border:"border-blue-200",   dot:"bg-blue-500",    pulse:false, clos:false},
+    en_preparation:{label:"En préparation",   bg:"bg-amber-50",    text:"text-amber-700",   border:"border-amber-200",  dot:"bg-amber-500",   pulse:true,  clos:false},
+    livre:         {label:"Réceptionné ✓",    bg:"bg-emerald-50",  text:"text-emerald-700", border:"border-emerald-200",dot:"bg-emerald-500", pulse:false, clos:true },
+    rejete:        {label:"Rejeté",           bg:"bg-red-50",      text:"text-red-700",     border:"border-red-200",    dot:"bg-red-500",     pulse:false, clos:true },
+  }[s]??{label:s, bg:"bg-gray-100", text:"text-gray-600", border:"border-gray-200", dot:"bg-gray-400", pulse:false, clos:false};
 }
 
 function articleIcon(type,sz=12){
@@ -267,7 +268,7 @@ const STATUT_CMD_MAP = {
   'Validé':      'approuve',
   'Expédié':     'en_preparation',
   'Réceptionné': 'livre',
-  'Rejeté':      'en_attente',
+  'Rejeté':      'rejete',
 };
 const CAT_TYPE_MAP = { Semences:'semence', Azote:'azote' };
 
@@ -275,6 +276,7 @@ function fromApiToCommande(t) {
   return {
     _id:       t._id,
     id:        t.reference,
+    type:      t.type,
     date:      t.createdAt ? t.createdAt.slice(0, 10) : new Date().toISOString().slice(0, 10),
     articles:  (t.lignes ?? []).map(l => ({
       label: l.article?.designation ?? '—',
@@ -308,16 +310,32 @@ export default function EspaceCooperative({ user }){
   // Type normalisé pour les contrôles de quota (quota.semences / quota.azote)
   const CAT_TYPE = { Semences:'semence', Azote:'azote' };
 
-  /* ─ Réceptions : expéditions vers cette unité ─────────── */
-  useEffect(() => {
-    api.get("/api/transactions?type=EXPEDITION&statut=Expédi%C3%A9&limit=50")
-      .then(res => {
-        const list = Array.isArray(res) ? res : (res.data ?? []);
-        setReceptions(list.map(fromApiToReception));
-      })
-      .catch(() => setReceptions([]))
-      .finally(() => setLoadingReceptions(false));
-  }, []);
+  /* ─ Réceptions : Expédié (en transit) + Réceptionné (historique récent) ─
+     Les deux statuts sont nécessaires :
+     - Expédié     → enTransit (bouton "Valider la Réception")
+     - Réceptionné → receptionnees (historique ORDRE_ADMIN dans "Mes Commandes")
+  ─────────────────────────────────────────────────────────────────────── */
+  async function fetchReceptions() {
+    setLoadingReceptions(true);
+    try {
+      const res = await api.get(
+        "/api/transactions?statut=Expédi%C3%A9%2CR%C3%A9ceptionn%C3%A9&limit=100"
+        // décodé : ?statut=Expédié,Réceptionné
+      );
+      const list = Array.isArray(res) ? res : (res.data ?? []);
+      setReceptions(
+        list
+          .filter(t => ['EXPEDITION', 'ORDRE_ADMIN'].includes(t.type))
+          .map(fromApiToReception)
+      );
+    } catch {
+      setReceptions([]);
+    } finally {
+      setLoadingReceptions(false);
+    }
+  }
+
+  useEffect(() => { fetchReceptions(); }, []);
 
   /* ─ Quotas : consommation de cette coopérative ─────────── */
   useEffect(() => {
@@ -385,7 +403,22 @@ export default function EspaceCooperative({ user }){
 
   useEffect(() => { fetchCommandes(); }, []);
 
-  function validerReception(id,conformite){setReceptions(p=>p.map(r=>r.id===id?{...r,statut:"receptionne",conformite}:r));}
+  async function validerReception(id, conformite) {
+    const target = receptions.find(r => r.id === id);
+    if (!target?._id) return;
+
+    // Optimistic : retire immédiatement la livraison de la file "en_transit"
+    setReceptions(p => p.map(r => r.id === id ? { ...r, statut: 'receptionne', conformite } : r));
+
+    try {
+      await api.put(`/api/transactions/${target._id}/statut`, { statut: 'Réceptionné' });
+      // Re-fetch les deux sources : cohérence "Réceptions" ET "Mes Commandes" après F5
+      await Promise.all([fetchReceptions(), fetchCommandes()]);
+    } catch {
+      // Rollback visuel si l'API échoue
+      setReceptions(p => p.map(r => r.id === id ? { ...r, statut: 'en_transit', conformite: null } : r));
+    }
+  }
 
   async function nouvelleCommande({ article, articleId, qte, unite, derogation, motif }) {
     setCommandeError(null);
@@ -442,7 +475,7 @@ export default function EspaceCooperative({ user }){
         </div>
       )}
 
-      {/* Header */}
+      {/* Header — données dynamiques issues du JWT (user.unite, user.email, user.nom) */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-3 flex-wrap">
@@ -454,8 +487,8 @@ export default function EspaceCooperative({ user }){
             </span>
           </div>
           <p className="text-sm text-gray-400 mt-1">
-            {user?.role ?? 'Responsable Unité'}
-            {user?.email ? <> · <span className="font-mono">{user.email}</span></> : null}
+            {user?.nom ?? user?.role ?? 'Responsable Unité'}
+            {user?.email ? <> · <span className="font-mono text-xs">{user.email}</span></> : null}
           </p>
         </div>
         <button onClick={()=>setShowCommande(true)} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold px-5 py-2.5 rounded-xl transition-colors shadow-sm whitespace-nowrap">
@@ -471,7 +504,12 @@ export default function EspaceCooperative({ user }){
 
       {/* Tabs */}
       <div className="grid grid-cols-2 gap-2 bg-white border border-gray-100 rounded-2xl p-1.5">
-        {[{id:"receptions",label:"Réceptions & Conformité",icon:ClipboardCheck,count:enTransit.length},{id:"commandes",label:"Mes Commandes",icon:History,count:commandes.filter(c=>["en_attente","approuve"].includes(c.statut)).length}].map(({id,label,icon:Icon,count})=>(
+        {[
+          {id:"receptions", label:"Réceptions & Conformité", icon:ClipboardCheck,
+           count: enTransit.length},
+          {id:"commandes",  label:"Mes Commandes",           icon:History,
+           count: commandes.filter(c => !statutCmd(c.statut).clos).length},
+        ].map(({id,label,icon:Icon,count})=>(
           <button key={id} onClick={()=>setActiveTab(id)}
             className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-semibold text-sm transition-all ${activeTab===id?"bg-blue-600 text-white shadow-sm":"text-gray-500 hover:text-gray-700 hover:bg-gray-50"}`}>
             <Icon size={15}/>{label}
@@ -540,58 +578,138 @@ export default function EspaceCooperative({ user }){
         </div>
       )}
 
-      {/* Onglet Commandes */}
-      {activeTab==="commandes"&&(
-        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <History size={14} className="text-gray-400"/>
-              <h2 className="text-sm font-bold text-gray-800">Mes Commandes & Historique</h2>
-              {loadingCommandes&&<span className="w-3.5 h-3.5 border-2 border-blue-200 border-t-blue-500 rounded-full animate-spin"/>}
-            </div>
-            <button onClick={()=>setShowCommande(true)} className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors border border-blue-200"><Plus size={12}/>Nouvelle demande</button>
-          </div>
+      {/* Onglet Commandes — Registre historique complet */}
+      {activeTab==="commandes"&&(()=>{
+        /* ─ Fusionner demandes propres + livraisons ORDRE_ADMIN reçues ─ */
+        const ordrAdminRecus = receptionnees
+          .filter(r => r.statut === 'receptionne')
+          .map(r => ({
+            id:        r.id,
+            type:      'ORDRE_ADMIN',
+            date:      r.dateEnvoi,
+            articles:  r.articles,
+            statut:    'livre',
+            derogation: false,
+            source:    'ordre_admin',
+          }));
+        const demandesIds = new Set(commandes.map(c => c.id));
+        const extras = ordrAdminRecus.filter(o => !demandesIds.has(o.id));
+        const historique = [...commandes, ...extras]
+          .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''));
 
-          {/* Bandeau erreur API */}
-          {errorCommandes&&(
-            <div className="flex items-center justify-between gap-3 bg-amber-50 border-b border-amber-200 px-5 py-2.5">
-              <div className="flex items-center gap-2 text-xs text-amber-700">
-                <AlertCircle size={12} className="shrink-0"/>
-                Données locales (API indisponible) — {errorCommandes}
+        const actives  = historique.filter(c => !statutCmd(c.statut).clos);
+        const clotured = historique.filter(c =>  statutCmd(c.statut).clos);
+
+        return (
+          <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+            {/* En-tête */}
+            <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <History size={14} className="text-gray-400"/>
+                <h2 className="text-sm font-bold text-gray-800">Registre des Commandes</h2>
+                {loadingCommandes&&<span className="w-3.5 h-3.5 border-2 border-blue-200 border-t-blue-500 rounded-full animate-spin"/>}
               </div>
-              <button onClick={fetchCommandes} className="text-[11px] font-bold text-amber-700 hover:underline shrink-0">Réessayer</button>
+              <button onClick={()=>setShowCommande(true)} className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors border border-blue-200">
+                <Plus size={12}/>Nouvelle demande
+              </button>
             </div>
-          )}
 
-          <div className="overflow-x-auto"><div className="min-w-[580px]">
-            <table className="w-full">
-              <thead><tr className="bg-gray-50/80 border-b border-gray-100">{["N° Commande","Date","Articles","Statut","Dérogation"].map(h=><th key={h} className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide px-4 py-3 whitespace-nowrap">{h}</th>)}</tr></thead>
-              <tbody className="divide-y divide-gray-50">
-                {loadingCommandes&&commandes.length===0?(
-                  <tr><td colSpan={5} className="text-center py-8 text-xs text-gray-400">Chargement de l'historique…</td></tr>
-                ):commandes.length===0?(
-                  <tr><td colSpan={5} className="text-center py-8 text-xs text-gray-400">Aucune commande trouvée.</td></tr>
-                ):commandes.map(cmd=>{
-                  const sm=statutCmd(cmd.statut);
-                  return (
-                    <tr key={cmd.id} className="hover:bg-gray-50/60 transition-colors">
-                      <td className="px-4 py-3.5"><span className="text-xs font-mono font-semibold text-gray-600">{cmd.id}</span></td>
-                      <td className="px-4 py-3.5"><span className="text-xs text-gray-500 flex items-center gap-1"><Calendar size={10} className="text-gray-300"/>{cmd.date}</span></td>
-                      <td className="px-4 py-3.5 max-w-[200px]">{cmd.articles.map((a,i)=><div key={i} className="flex items-center gap-1 text-xs text-gray-700">{articleIcon(a.type,10)}<span className="font-semibold tabular-nums">{a.qte}</span><span className="text-gray-400">{a.unite}</span><span className="truncate">{a.label}</span></div>)}</td>
-                      <td className="px-4 py-3.5"><span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${sm.bg} ${sm.text} ${sm.border}`}><span className={`w-1.5 h-1.5 rounded-full ${sm.dot} ${sm.pulse?"animate-pulse":""}`}/>{sm.label}</span></td>
-                      <td className="px-4 py-3.5">{cmd.derogation?<span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full"><AlertTriangle size={9}/>Dérogation</span>:<span className="text-[10px] text-gray-300">—</span>}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div></div>
-          <div className="px-5 py-3 border-t border-gray-100 flex justify-between">
-            <span className="text-xs text-gray-400">{commandes.length} commandes au total</span>
-            <span className="text-xs text-gray-400">{commandes.filter(c=>c.derogation).length} avec dérogation</span>
+            {/* Bandeau erreur API */}
+            {errorCommandes&&(
+              <div className="flex items-center justify-between gap-3 bg-amber-50 border-b border-amber-200 px-5 py-2.5">
+                <div className="flex items-center gap-2 text-xs text-amber-700"><AlertCircle size={12} className="shrink-0"/>API indisponible — {errorCommandes}</div>
+                <button onClick={fetchCommandes} className="text-[11px] font-bold text-amber-700 hover:underline shrink-0">Réessayer</button>
+              </div>
+            )}
+
+            {/* Section : commandes actives */}
+            {actives.length > 0 && (
+              <>
+                <div className="px-5 pt-4 pb-1 flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse inline-block"/>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{actives.length} en cours</p>
+                </div>
+                <div className="overflow-x-auto"><div className="min-w-[580px]">
+                  <table className="w-full">
+                    <thead><tr className="bg-slate-50/60 border-b border-gray-100">{["N° Référence","Date","Articles","Statut",""].map(h=><th key={h} className="text-left text-[10px] font-bold text-gray-400 uppercase tracking-wide px-4 py-2.5 whitespace-nowrap">{h}</th>)}</tr></thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {actives.map(cmd=>{
+                        const sm=statutCmd(cmd.statut);
+                        return (
+                          <tr key={cmd.id} className="hover:bg-blue-50/30 transition-colors">
+                            <td className="px-4 py-3.5">
+                              <div className="flex items-center gap-2">
+                                {cmd.type==='ORDRE_ADMIN'&&<span className="text-[9px] font-bold bg-purple-50 text-purple-600 border border-purple-200 px-1.5 py-0.5 rounded-full">Ordre Admin</span>}
+                                <span className="text-xs font-mono font-semibold text-gray-700">{cmd.id}</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3.5"><span className="text-xs text-gray-500 flex items-center gap-1"><Calendar size={10} className="text-gray-300"/>{cmd.date}</span></td>
+                            <td className="px-4 py-3.5 max-w-[220px]">{cmd.articles.map((a,i)=><div key={i} className="flex items-center gap-1 text-xs text-gray-700">{articleIcon(a.type,10)}<span className="font-semibold tabular-nums">{a.qte}</span><span className="text-gray-400 mr-0.5">{a.unite}</span><span className="truncate">{a.label}</span></div>)}</td>
+                            <td className="px-4 py-3.5"><span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${sm.bg} ${sm.text} ${sm.border}`}><span className={`w-1.5 h-1.5 rounded-full ${sm.dot} ${sm.pulse?"animate-pulse":""}`}/>{sm.label}</span></td>
+                            <td className="px-4 py-3.5">{cmd.derogation&&<span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full"><AlertTriangle size={9}/>Dérogation</span>}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div></div>
+              </>
+            )}
+
+            {/* Section : historique clôturé — toujours ouvert */}
+            {clotured.length > 0 && (
+              <div className={actives.length > 0 ? "border-t border-gray-100" : ""}>
+                <div className="flex items-center gap-2 px-5 py-3 bg-gray-50/60">
+                  <CheckCircle size={11} className="text-emerald-400 shrink-0"/>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                    {clotured.length} transaction{clotured.length>1?"s":""} clôturée{clotured.length>1?"s":""}
+                  </p>
+                </div>
+                <div className="overflow-x-auto"><div className="min-w-[580px]">
+                  <table className="w-full">
+                    <tbody className="divide-y divide-gray-50">
+                      {clotured.map(cmd=>{
+                        const sm=statutCmd(cmd.statut);
+                        return (
+                          <tr key={cmd.id} className={`transition-colors ${sm.clos?"bg-emerald-50/20 hover:bg-emerald-50/40":"hover:bg-red-50/20"}`}>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                {cmd.type==='ORDRE_ADMIN'&&<span className="text-[9px] font-bold bg-purple-50 text-purple-600 border border-purple-200 px-1.5 py-0.5 rounded-full">Ordre Admin</span>}
+                                <span className="text-xs font-mono font-semibold text-gray-500">{cmd.id}</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3"><span className="text-xs text-gray-400 flex items-center gap-1"><Calendar size={10}/>{cmd.date}</span></td>
+                            <td className="px-4 py-3 max-w-[220px]">{cmd.articles.map((a,i)=><div key={i} className="flex items-center gap-1 text-xs text-gray-500">{articleIcon(a.type,10)}<span className="font-semibold tabular-nums">{a.qte}</span><span className="text-gray-400 mr-0.5">{a.unite}</span><span className="truncate">{a.label}</span></div>)}</td>
+                            <td className="px-4 py-3"><span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${sm.bg} ${sm.text} ${sm.border}`}><span className={`w-1.5 h-1.5 rounded-full ${sm.dot}`}/>{sm.label}</span></td>
+                            <td className="px-4 py-3">{cmd.derogation&&<span className="text-[10px] text-amber-600">Dérogation</span>}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div></div>
+              </div>
+            )}
+
+            {/* État vide */}
+            {historique.length === 0 && !loadingCommandes && (
+              <div className="py-12 text-center">
+                <History size={28} className="mx-auto mb-2 text-gray-200"/>
+                <p className="text-sm font-semibold text-gray-400">Aucune commande pour le moment</p>
+                <p className="text-xs text-gray-300 mt-1">Vos demandes apparaîtront ici dès leur création.</p>
+              </div>
+            )}
+
+            {/* Pied */}
+            {historique.length > 0 && (
+              <div className="px-5 py-2.5 bg-gray-50 border-t border-gray-100 flex justify-between items-center">
+                <span className="text-[11px] text-gray-400">{historique.length} transaction{historique.length>1?"s":""} au total</span>
+                <span className="text-[11px] text-emerald-600 font-semibold">{clotured.filter(c=>c.statut==='livre').length} réceptionnée{clotured.filter(c=>c.statut==='livre').length>1?"s":""}</span>
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

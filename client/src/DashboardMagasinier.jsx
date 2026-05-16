@@ -9,19 +9,7 @@ import {
 } from "lucide-react";
 import Spinner from "./components/Spinner.jsx";
 
-/* ─── Données statiques cuves (pas encore d'endpoint /api/cuves) ── */
-const CUVES = [
-  { id:"A", label:"Cuve A-01", desc:"Multi-races · Holstein, Montbéliarde", volume:800,  capacite:1000, temp:-196, statut:"ok"       },
-  { id:"B", label:"Cuve B-02", desc:"Remplissage en cours",                 volume:150,  capacite:1000, temp:-194, statut:"critique"  },
-  { id:"C", label:"Cuve C-03", desc:"Multi-races · Normande, Pie Rouge",    volume:620,  capacite:1000, temp:-196, statut:"ok"        },
-  { id:"D", label:"Cuve D-04", desc:"Lots en attente validation Admin",     volume:380,  capacite:1000, temp:-195, statut:"alerte"    },
-];
-
-const LOTS_ALERTE = [
-  { id:"LOT-2025-0044", article:"Prim'Holstein – JACKPOT",  jours:14, type:"semence"  },
-  { id:"LOT-2025-0043", article:"Normande – OLIVIER ET",    jours:36, type:"semence"  },
-  { id:"LOT-2025-0048", article:"Gants insémination",        jours:7,  type:"materiel" },
-];
+const HORIZON_ALERTE_JOURS = 45; // lots périmant dans moins de N jours
 
 function typeIcon(type) {
   if (type === "semence")  return <Dna size={11} className="text-blue-400 shrink-0" />;
@@ -44,26 +32,45 @@ export default function DashboardMagasinier() {
     weekday:"long", day:"numeric", month:"long", year:"numeric"
   });
 
-  const [commandes,  setCommandes]  = useState([]);
-  const [isLoading,  setIsLoading]  = useState(true);
-  const [error,      setError]      = useState(null);
+  const [commandes,   setCommandes]   = useState([]);
+  const [cuves,       setCuves]       = useState([]);
+  const [lotsAlerte,  setLotsAlerte]  = useState([]);
+  const [totalLots,   setTotalLots]   = useState(0);
+  const [isLoading,   setIsLoading]   = useState(true);
+  const [error,       setError]       = useState(null);
 
   useEffect(() => {
-    api.get("/api/transactions?limit=20")
-      .then(res => {
-        const list = Array.isArray(res) ? res : (res.data ?? []);
-        setCommandes(list.filter(t => ['EXPEDITION','ORDRE_ADMIN'].includes(t.type)));
-      })
-      .catch(err => setError(err.message))
+    const now = Date.now();
+    Promise.all([
+      api.get("/api/transactions?limit=20"),
+      api.get("/api/cuves").catch(() => []),
+      api.get("/api/lots").catch(() => []),
+    ]).then(([txRes, cuvesData, lotsData]) => {
+      const list = Array.isArray(txRes) ? txRes : (txRes.data ?? []);
+      setCommandes(list.filter(t => ['EXPEDITION','ORDRE_ADMIN'].includes(t.type)));
+      setCuves(Array.isArray(cuvesData) ? cuvesData : []);
+      setTotalLots(Array.isArray(lotsData) ? lotsData.length : 0);
+
+      const horizon = now + HORIZON_ALERTE_JOURS * 86400000;
+      const alertes = (Array.isArray(lotsData) ? lotsData : [])
+        .filter(l => l.peremption && new Date(l.peremption).getTime() <= horizon)
+        .map(l => ({
+          id:      l.numLot,
+          article: l.articleId?.designation ?? '—',
+          jours:   Math.ceil((new Date(l.peremption).getTime() - now) / 86400000),
+          type:    l.type,
+        }))
+        .sort((a, b) => a.jours - b.jours);
+      setLotsAlerte(alertes);
+    }).catch(err => setError(err.message))
       .finally(() => setIsLoading(false));
   }, []);
 
   /* ── KPIs ─────────────────────────────────────────────── */
   const enAttente  = commandes.filter(c => c.statut === 'En attente' || c.statut === 'Brouillon').length;
   const prets      = commandes.filter(c => c.statut === 'Validé').length;
-  const cuvesOk    = CUVES.filter(c => c.statut === "ok").length;
-  const cuvesAlert = CUVES.filter(c => c.statut !== "ok").length;
-  const totalLots  = 8; // à remplacer par count API quand /api/lots sera disponible
+  const cuvesOk    = cuves.filter(c => c.statut === 'ok').length;
+  const cuvesAlert = cuves.filter(c => c.statut !== 'ok').length;
 
   const card = "rounded-2xl border bg-white border-slate-100 shadow-sm p-5 flex flex-col gap-3";
 
@@ -100,7 +107,7 @@ export default function DashboardMagasinier() {
         <div className="flex items-center gap-1.5 self-start sm:self-auto text-xs font-semibold
           text-emerald-600 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-full">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />
-          Hub actif · {CUVES.length} cuves
+          Hub actif · {cuves.length} cuve{cuves.length !== 1 ? 's' : ''}
         </div>
       </div>
 
@@ -140,7 +147,7 @@ export default function DashboardMagasinier() {
           </div>
           <div>
             <p className="text-xs text-slate-400 font-medium">Cuves d'azote</p>
-            <p className="text-2xl font-bold text-slate-900 tabular-nums mt-0.5 leading-none">{CUVES.length}</p>
+            <p className="text-2xl font-bold text-slate-900 tabular-nums mt-0.5 leading-none">{cuves.length}</p>
             <div className="flex items-center gap-2 mt-0.5">
               <span className="text-xs text-emerald-600 font-semibold">{cuvesOk} OK</span>
               {cuvesAlert > 0 && (
@@ -175,14 +182,14 @@ export default function DashboardMagasinier() {
         </div>
 
         {/* Alertes péremption */}
-        <div className={LOTS_ALERTE.length > 0
+        <div className={lotsAlerte.length > 0
           ? "rounded-2xl border bg-white border-red-100 shadow-sm shadow-red-50 p-5 flex flex-col gap-3"
           : card}>
           <div className="flex items-start justify-between">
             <div className="p-2.5 rounded-xl bg-red-50 w-fit">
               <AlertTriangle size={20} className="text-red-500" />
             </div>
-            {LOTS_ALERTE.length > 0 && (
+            {lotsAlerte.length > 0 && (
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse text-red-600 bg-red-100">
                 Action requise
               </span>
@@ -190,8 +197,8 @@ export default function DashboardMagasinier() {
           </div>
           <div>
             <p className="text-xs text-slate-400 font-medium">Lots proches péremption</p>
-            <p className="text-2xl font-bold text-red-600 tabular-nums mt-0.5 leading-none">{LOTS_ALERTE.length}</p>
-            <p className="text-xs text-slate-400 mt-0.5">dans les 45 prochains jours</p>
+            <p className="text-2xl font-bold text-red-600 tabular-nums mt-0.5 leading-none">{lotsAlerte.length}</p>
+            <p className="text-xs text-slate-400 mt-0.5">dans les {HORIZON_ALERTE_JOURS} prochains jours</p>
           </div>
           <button onClick={() => navigate('/magasinier')}
             className="flex items-center gap-1 text-[10px] font-semibold text-red-500 hover:opacity-75 transition-opacity">
@@ -215,33 +222,39 @@ export default function DashboardMagasinier() {
             </div>
           </div>
           <div className="px-5 py-5 space-y-3">
-            {CUVES.map(c => {
-              const pct    = Math.round((c.volume / c.capacite) * 100);
+            {cuves.length === 0 ? (
+              <div className="py-8 text-center">
+                <Snowflake size={24} className="mx-auto mb-2 text-slate-200" />
+                <p className="text-sm text-slate-400 font-medium">Aucune cuve configurée</p>
+                <p className="text-xs text-slate-300 mt-1">Les cuves apparaîtront ici dès leur enregistrement.</p>
+              </div>
+            ) : cuves.map(c => {
+              const pct    = Math.min(Math.round(((c.niveauActuel ?? 0) / (c.capacite || 1)) * 100), 100);
               const isCrit = c.statut === "critique";
               const isAl   = c.statut === "alerte";
               const barC   = isCrit ? "bg-red-500" : isAl ? "bg-amber-400" : "bg-cyan-500";
               const textC  = isCrit ? "text-red-600" : isAl ? "text-amber-600" : "text-slate-700";
               return (
-                <div key={c.id} className="space-y-1.5">
+                <div key={c._id} className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className={`w-2 h-2 rounded-full shrink-0 ${isCrit ? "bg-red-500 animate-pulse" : isAl ? "bg-amber-400" : "bg-emerald-500"}`} />
-                      <span className="text-xs font-semibold text-slate-700">{c.label}</span>
+                      <span className="text-xs font-semibold text-slate-700">{c.nom}</span>
                       {(isCrit || isAl) && (
                         <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${isCrit ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
                           {isCrit ? "CRITIQUE" : "ALERTE"}
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-2 text-[10px] text-slate-400">
-                      <span>{c.temp}°C</span>
-                      <span className={`font-bold tabular-nums ${textC}`}>{pct}%</span>
-                    </div>
+                    <span className={`text-xs font-bold tabular-nums ${textC}`}>{pct}%</span>
                   </div>
                   <div className="h-2 rounded-full overflow-hidden bg-slate-100">
                     <div className={`h-full rounded-full transition-all duration-700 ${barC}`} style={{ width: `${pct}%` }} />
                   </div>
-                  <p className="text-[10px] text-slate-400">{c.volume.toLocaleString()} / {c.capacite.toLocaleString()} L · {c.desc}</p>
+                  <p className="text-[10px] text-slate-400">
+                    {(c.niveauActuel ?? 0).toLocaleString()} / {c.capacite.toLocaleString()} L
+                    {c.description ? ` · ${c.description}` : ''}
+                  </p>
                 </div>
               );
             })}
@@ -316,7 +329,11 @@ export default function DashboardMagasinier() {
               <h2 className="text-sm font-bold text-slate-800">Lots proches péremption</h2>
             </div>
             <div className="px-5 py-3 space-y-2">
-              {LOTS_ALERTE.map(l => (
+              {lotsAlerte.length === 0 ? (
+                <div className="py-4 text-center">
+                  <p className="text-xs text-slate-400 font-medium">Aucune alerte de péremption</p>
+                </div>
+              ) : lotsAlerte.map(l => (
                 <div key={l.id} className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5 min-w-0">
                     {typeIcon(l.type)}

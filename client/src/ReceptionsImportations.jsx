@@ -5,38 +5,41 @@ import {
   Truck, Snowflake, FlaskConical, Wrench, Dna,
   PackageCheck, ClipboardCheck, AlertTriangle, CheckCircle,
   XCircle, X, Clock, MapPin, ChevronRight, Archive,
-  ScanLine, ShieldCheck,
+  ScanLine, ShieldCheck, ChevronLeft, TriangleAlert,
 } from "lucide-react";
 
-/* ─── Adaptateur Transaction API → Camion Réception ───── */
-const STATUT_CAMION_MAP = {
-  'Brouillon':   'en_attente',
-  'En attente':  'en_cours',
-  'Validé':      'controle',
-  'Expédié':     'en_stock',
-  'Réceptionné': 'en_stock',
-  'Rejeté':      'incident',
+/* ─── Adaptateur Approvisionnement API → Camion Réception ─ */
+const STATUT_APPRO_MAP = {
+  prevu:              'en_attente',
+  en_transit:         'en_cours',
+  a_quai:             'controle',
+  conforme:           'en_stock',
+  partiel:            'litige',
+  retour_fournisseur: 'retour',
+  non_conforme:       'incident',
 };
 
-function fromApiToCamion(t) {
-  const catToType = { Semences:'semence', Azote:'azote' };
+function fromApiApproToCamion(a) {
   return {
-    _id:          t._id,
-    id:           t.reference,
-    matricule:    '—',
-    transporteur: '—',
-    origine:      t.fournisseurCible?.nom ? `Transit ${t.fournisseurCible.nom}` : '—',
-    quai:         'Quai A',
-    heureArrivee: new Date(t.createdAt).toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' }),
-    ref_bc:       t.reference,
-    chargement:   (t.lignes ?? []).map(l => ({
-      label: l.article?.designation ?? '—',
-      qte:   l.quantite,
-      unite: l.article?.uniteMesure  ?? '—',
-      type:  catToType[l.article?.categorie] ?? 'materiel',
+    _id:          a._id,
+    id:           a.numeroCommande,
+    matricule:    a.transporteur ?? '—',
+    transporteur: `${a.fournisseurPavillon ?? '🌍'} ${a.fournisseurNom}`,
+    origine:      `${a.fournisseurNom}${a.fournisseurPays ? ' · ' + a.fournisseurPays : ''}`,
+    quai:         a.lieuStockage ?? 'Magasin Central',
+    heureArrivee: a.dateArriveePrevu
+      ? new Date(a.dateArriveePrevu).toLocaleDateString('fr-FR')
+      : '—',
+    ref_bc:   a.numeroCommande,
+    chargement: (a.lignes ?? []).map(l => ({
+      label:     l.label,
+      qte:       l.qte,
+      unite:     l.unite,
+      type:      l.type,
+      articleId: l.articleId,
     })),
-    statut:   STATUT_CAMION_MAP[t.statut] ?? 'en_attente',
-    controle: null,
+    statut:   STATUT_APPRO_MAP[a.statut] ?? 'en_attente',
+    controle: a.conformite?.resultat ? a.conformite : null,
   };
 }
 
@@ -48,11 +51,13 @@ function typeIcon(type, sz = 11) {
 }
 
 const STATUT_META = {
-  en_attente: { label: "En attente",        bg: "bg-slate-100",    text: "text-slate-600",   dot: "bg-slate-400"   },
-  en_cours:   { label: "Déchargement",      bg: "bg-blue-50",      text: "text-blue-700",    dot: "bg-blue-500"    },
-  controle:   { label: "À contrôler",       bg: "bg-amber-50",     text: "text-amber-700",   dot: "bg-amber-500"   },
-  en_stock:   { label: "Mis en stock",      bg: "bg-emerald-50",   text: "text-emerald-700", dot: "bg-emerald-500" },
-  incident:   { label: "Incident",          bg: "bg-red-50",       text: "text-red-700",     dot: "bg-red-500"     },
+  en_attente: { label: "En attente",         bg: "bg-slate-100",   text: "text-slate-600",   dot: "bg-slate-400"   },
+  en_cours:   { label: "Déchargement",       bg: "bg-blue-50",     text: "text-blue-700",    dot: "bg-blue-500"    },
+  controle:   { label: "À contrôler",        bg: "bg-amber-50",    text: "text-amber-700",   dot: "bg-amber-500"   },
+  en_stock:   { label: "Mis en stock",       bg: "bg-emerald-50",  text: "text-emerald-700", dot: "bg-emerald-500" },
+  litige:     { label: "Litige — Partiel",   bg: "bg-orange-50",   text: "text-orange-700",  dot: "bg-orange-500"  },
+  retour:     { label: "Retour Fournisseur", bg: "bg-red-50",      text: "text-red-700",     dot: "bg-red-400"     },
+  incident:   { label: "Incident",           bg: "bg-red-50",      text: "text-red-700",     dot: "bg-red-500"     },
 };
 
 function StatutBadge({ statut }) {
@@ -75,92 +80,232 @@ const CHECKLIST = [
 ];
 
 function ModalControle({ camion, onClose, onValider }) {
-  const [checks, setChecks] = useState(Array(CHECKLIST.length).fill(false));
-  const [note,   setNote]   = useState("");
-  const [result, setResult] = useState(null);
+  const totalQteAttendue = camion.chargement.reduce((s, c) => s + c.qte, 0);
+  const unite            = camion.chargement[0]?.unite ?? '';
 
-  const allOk = checks.every(Boolean);
+  /* ── États ── */
+  const [phase,    setPhase]    = useState('checklist'); // 'checklist' | 'litige'
+  const [checks,   setChecks]   = useState(Array(CHECKLIST.length).fill(false));
+  const [note,     setNote]     = useState('');
+  const [decision, setDecision] = useState('partiel');   // 'partiel' | 'retour'
+  const [qteRecue, setQteRecue] = useState(String(totalQteAttendue));
 
-  function valider(res) {
-    setResult(res);
-    onValider(camion.id, res, note);
+  const allOk      = checks.every(Boolean);
+  const qteValide  = Number(qteRecue) > 0 && Number(qteRecue) <= totalQteAttendue;
+  const ecart      = totalQteAttendue - Number(qteRecue || 0);
+
+  function confirmerConforme() {
+    onValider(camion.id, { decision: 'conforme', note });
     onClose();
   }
 
+  function confirmerLitige() {
+    if (!qteValide) return;
+    onValider(camion.id, { decision, note, quantiteRecue: Number(qteRecue) });
+    onClose();
+  }
+
+  const inp = "w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-400 hover:border-slate-300 transition-colors";
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-        {/* En-tête modal */}
-        <div className="flex items-start justify-between gap-4 px-6 pt-5 pb-4 border-b border-slate-100">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden">
+
+        {/* En-tête */}
+        <div className="flex items-start justify-between gap-4 px-6 pt-5 pb-4 border-b border-slate-100 shrink-0">
           <div>
             <div className="flex items-center gap-2 mb-0.5">
-              <ClipboardCheck size={16} className="text-blue-600" />
-              <p className="text-sm font-bold text-slate-800">Contrôle Réception</p>
+              {phase === 'litige'
+                ? <><AlertTriangle size={16} className="text-amber-500" /><p className="text-sm font-bold text-slate-800">Litige / Écart de Réception</p></>
+                : <><ClipboardCheck size={16} className="text-blue-600" /><p className="text-sm font-bold text-slate-800">Contrôle Réception</p></>}
             </div>
-            <p className="text-xs text-slate-500 font-mono">{camion.id} · {camion.matricule}</p>
+            <p className="text-xs text-slate-500 font-mono">{camion.id} · {camion.origine}</p>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700 transition-colors mt-0.5">
             <X size={18} />
           </button>
         </div>
 
-        {/* Chargement */}
-        <div className="px-6 py-3 bg-slate-50 border-b border-slate-100">
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Articles à contrôler</p>
+        {/* Chargement (toujours visible) */}
+        <div className="px-6 py-3 bg-slate-50 border-b border-slate-100 shrink-0">
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Articles commandés</p>
           <div className="space-y-1">
             {camion.chargement.map((c, i) => (
               <div key={i} className="flex items-center gap-2 text-xs text-slate-700">
                 {typeIcon(c.type, 12)}
                 <span className="font-medium">{c.label}</span>
-                <span className="ml-auto font-mono text-slate-500">{c.qte.toLocaleString()} {c.unite}</span>
+                <span className="ml-auto font-mono text-slate-500 font-semibold">{c.qte.toLocaleString()} {c.unite}</span>
               </div>
             ))}
           </div>
         </div>
 
-        {/* Checklist */}
-        <div className="px-6 py-4 space-y-3">
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Checklist terrain</p>
-          {CHECKLIST.map((item, i) => (
-            <label key={i} className="flex items-start gap-3 cursor-pointer group">
-              <div
-                onClick={() => setChecks(p => { const n=[...p]; n[i]=!n[i]; return n; })}
-                className={`w-4 h-4 mt-0.5 rounded flex items-center justify-center shrink-0 border-2 transition-all cursor-pointer
-                  ${checks[i] ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300 group-hover:border-emerald-400'}`}
-              >
-                {checks[i] && <CheckCircle size={10} className="text-white" strokeWidth={3} />}
-              </div>
-              <span className={`text-xs leading-relaxed ${checks[i] ? 'text-slate-500 line-through' : 'text-slate-700'}`}>{item}</span>
-            </label>
-          ))}
-        </div>
+        {/* Corps scrollable */}
+        <div className="flex-1 overflow-y-auto">
 
-        {/* Note */}
-        <div className="px-6 pb-4">
-          <textarea
-            value={note}
-            onChange={e => setNote(e.target.value)}
-            placeholder="Observations (optionnel) — écart de quantité, anomalie visuelle…"
-            className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-blue-400 text-slate-700 placeholder:text-slate-400"
-            rows={2}
-          />
+          {/* ── Phase checklist ── */}
+          {phase === 'checklist' && (
+            <>
+              <div className="px-6 py-4 space-y-3">
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Checklist terrain</p>
+                {CHECKLIST.map((item, i) => (
+                  <label key={i} className="flex items-start gap-3 cursor-pointer group">
+                    <div
+                      onClick={() => setChecks(p => { const n = [...p]; n[i] = !n[i]; return n; })}
+                      className={`w-4 h-4 mt-0.5 rounded flex items-center justify-center shrink-0 border-2 transition-all cursor-pointer
+                        ${checks[i] ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300 group-hover:border-emerald-400'}`}
+                    >
+                      {checks[i] && <CheckCircle size={10} className="text-white" strokeWidth={3} />}
+                    </div>
+                    <span className={`text-xs leading-relaxed ${checks[i] ? 'text-slate-500 line-through' : 'text-slate-700'}`}>{item}</span>
+                  </label>
+                ))}
+              </div>
+              <div className="px-6 pb-4">
+                <textarea value={note} onChange={e => setNote(e.target.value)}
+                  placeholder="Observations (optionnel) — anomalie visuelle, remarque…"
+                  className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-blue-400 text-slate-700 placeholder:text-slate-400"
+                  rows={2}
+                />
+              </div>
+            </>
+          )}
+
+          {/* ── Phase litige ── */}
+          {phase === 'litige' && (
+            <div className="px-6 py-5 space-y-5">
+
+              {/* Bandeau contexte */}
+              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-3">
+                <AlertTriangle size={15} className="text-amber-500 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-bold text-amber-800 mb-0.5">Écart de réception détecté</p>
+                  <p className="text-xs text-amber-700 leading-relaxed">
+                    Indiquez la quantité réellement reçue et choisissez l'action à appliquer sur le stock.
+                  </p>
+                </div>
+              </div>
+
+              {/* Quantité reçue */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-2">
+                  Quantité réellement reçue
+                  <span className="ml-2 font-normal text-slate-400">(commandé : {totalQteAttendue} {unite})</span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number" min="0" max={totalQteAttendue}
+                    value={qteRecue}
+                    onChange={e => setQteRecue(e.target.value)}
+                    className={`${inp} text-right font-mono font-semibold ${!qteValide && qteRecue !== '' ? 'border-red-300 focus:ring-red-400' : ''}`}
+                  />
+                  <span className="text-sm text-slate-500 shrink-0">{unite}</span>
+                </div>
+                {qteValide && ecart > 0 && (
+                  <p className="text-xs text-amber-600 mt-1.5 flex items-center gap-1">
+                    <AlertTriangle size={11} />
+                    Écart : <strong>{ecart} {unite} manquant{ecart > 1 ? 's' : ''}</strong> ({Math.round((ecart / totalQteAttendue) * 100)}%)
+                  </p>
+                )}
+                {!qteValide && qteRecue !== '' && (
+                  <p className="text-xs text-red-500 mt-1.5">La quantité doit être entre 1 et {totalQteAttendue}.</p>
+                )}
+              </div>
+
+              {/* Choix d'action */}
+              <div>
+                <p className="text-xs font-semibold text-slate-700 mb-2">Action sur le stock</p>
+                <div className="space-y-2">
+                  {[
+                    {
+                      val: 'partiel',
+                      label: 'Stocker la quantité reçue — Créer un Litige',
+                      sub: 'Les articles reçus sont mis en stock. Un litige est ouvert pour l\'écart.',
+                      color: 'emerald',
+                    },
+                    {
+                      val: 'retour',
+                      label: 'Refuser la livraison — Retour Fournisseur',
+                      sub: 'Aucun article n\'est stocké. La commande entière est renvoyée.',
+                      color: 'red',
+                    },
+                  ].map(opt => (
+                    <button
+                      key={opt.val}
+                      onClick={() => setDecision(opt.val)}
+                      className={`w-full flex items-start gap-3 p-3.5 rounded-xl border-2 text-left transition-all
+                        ${decision === opt.val
+                          ? opt.color === 'emerald' ? 'border-emerald-500 bg-emerald-50' : 'border-red-500 bg-red-50'
+                          : 'border-slate-200 bg-white hover:border-slate-300'}`}
+                    >
+                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center mt-0.5 shrink-0 transition-all
+                        ${decision === opt.val
+                          ? opt.color === 'emerald' ? 'border-emerald-500 bg-emerald-500' : 'border-red-500 bg-red-500'
+                          : 'border-slate-300'}`}>
+                        {decision === opt.val && <span className="w-1.5 h-1.5 rounded-full bg-white inline-block" />}
+                      </div>
+                      <div>
+                        <p className={`text-xs font-bold ${decision === opt.val
+                          ? opt.color === 'emerald' ? 'text-emerald-800' : 'text-red-800'
+                          : 'text-slate-700'}`}>{opt.label}</p>
+                        <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">{opt.sub}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Observations */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-2">Observations / Référence du litige</label>
+                <textarea value={note} onChange={e => setNote(e.target.value)}
+                  placeholder="Ex: BL indique 500 doses, réception physique 450 · Colis n°3 absent à l'ouverture"
+                  className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-amber-400 text-slate-700 placeholder:text-slate-400"
+                  rows={3}
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Actions */}
-        <div className="px-6 pb-5 flex gap-2">
-          <button
-            onClick={() => valider("non_conforme")}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-red-200 bg-red-50 text-red-700 text-xs font-bold hover:bg-red-100 transition-all"
-          >
-            <XCircle size={13} /> Non conforme
-          </button>
-          <button
-            onClick={() => valider("conforme")}
-            disabled={!allOk}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-          >
-            <CheckCircle size={13} /> Conforme — Valider
-          </button>
+        <div className="px-6 py-4 border-t border-slate-100 shrink-0">
+          {phase === 'checklist' ? (
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setPhase('litige'); }}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-amber-300 bg-amber-50 text-amber-700 text-xs font-bold hover:bg-amber-100 transition-all"
+              >
+                <XCircle size={13} /> Non conforme / Écart
+              </button>
+              <button
+                onClick={confirmerConforme}
+                disabled={!allOk}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+              >
+                <CheckCircle size={13} /> Conforme — Valider
+              </button>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPhase('checklist')}
+                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-xs font-semibold hover:bg-slate-50 transition-all shrink-0"
+              >
+                <ChevronLeft size={13} /> Retour
+              </button>
+              <button
+                onClick={confirmerLitige}
+                disabled={decision === 'partiel' && !qteValide}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-white text-xs font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed
+                  ${decision === 'retour' ? 'bg-red-600 hover:bg-red-500' : 'bg-amber-600 hover:bg-amber-500'}`}
+              >
+                {decision === 'retour'
+                  ? <><XCircle size={13} /> Confirmer le Retour Fournisseur</>
+                  : <><PackageCheck size={13} /> Stocker {qteValide ? Number(qteRecue).toLocaleString() : '…'} {unite} & Créer le Litige</>}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -175,10 +320,10 @@ export default function ReceptionsImportations() {
   const [modal,    setModal]    = useState(null);
 
   useEffect(() => {
-    api.get("/api/transactions?type=RECEPTION&limit=100")
+    api.get("/api/approvisionnements?statut=prevu,en_transit,a_quai&limit=100")
       .then(res => {
-        const list = Array.isArray(res) ? res : (res.data ?? []);
-        setCamions(list.map(fromApiToCamion));
+        const list = Array.isArray(res) ? res : [];
+        setCamions(list.map(fromApiApproToCamion));
       })
       .catch(err => { setApiError(err.message); setCamions([]); })
       .finally(() => setLoading(false));
@@ -191,21 +336,45 @@ export default function ReceptionsImportations() {
     incidents:  camions.filter(c => c.statut === "incident").length,
   };
 
-  function handleValider(id, resultat, note) {
-    setCamions(prev => prev.map(c => {
-      if (c.id !== id) return c;
-      return {
-        ...c,
-        controle: { resultat, note },
-        statut: resultat === "conforme" ? "en_stock" : "incident",
-      };
-    }));
+  /* ─ Validation après contrôle (checklist ou litige) ─── */
+  async function handleValider(id, { decision, note = '', quantiteRecue } = {}) {
+    const target = camions.find(c => c.id === id);
+    if (!target?._id) return;
+    setApiError(null);
+    try {
+      await api.put(`/api/approvisionnements/${target._id}/reception`, {
+        decision,
+        note,
+        ...(quantiteRecue != null ? { quantiteRecue } : {}),
+      });
+      // Statut UI selon la décision
+      const statutUi = { conforme: 'en_stock', partiel: 'litige', retour: 'retour' }[decision] ?? 'incident';
+      setCamions(prev => prev.map(c =>
+        c.id !== id ? c : { ...c, controle: { resultat: decision, note }, statut: statutUi }
+      ));
+    } catch (err) {
+      setApiError(err.message);
+    }
   }
 
-  function mettreEnStock(id) {
-    setCamions(prev => prev.map(c =>
-      c.id === id ? { ...c, statut: "en_stock", controle: { resultat: "conforme", note: "Mise en stock directe." } } : c
-    ));
+  /* ─ Mise en stock directe (sans checklist) ──────────── */
+  async function mettreEnStock(id) {
+    const target = camions.find(c => c.id === id);
+    if (!target?._id) return;
+    setApiError(null);
+    try {
+      await api.put(`/api/approvisionnements/${target._id}/reception`, {
+        note: 'Mise en stock directe.',
+      });
+      // Mise à jour UI après succès API
+      setCamions(prev => prev.map(c =>
+        c.id === id
+          ? { ...c, statut: 'en_stock', controle: { resultat: 'conforme', note: 'Mise en stock directe.' } }
+          : c
+      ));
+    } catch (err) {
+      setApiError(err.message);
+    }
   }
 
   return (
@@ -245,6 +414,19 @@ export default function ReceptionsImportations() {
         </div>
       </div>
 
+      {/* Bandeau erreur API */}
+      {apiError && (
+        <div className="flex items-center justify-between gap-3 bg-red-50 border border-red-200 rounded-2xl px-5 py-3">
+          <div className="flex items-center gap-2.5">
+            <AlertTriangle size={14} className="text-red-500 shrink-0" />
+            <p className="text-xs font-semibold text-red-700">{apiError}</p>
+          </div>
+          <button onClick={() => setApiError(null)} className="text-red-400 hover:text-red-600 shrink-0">
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
       {/* Liste des camions */}
       <div className="space-y-3">
         {loading ? (
@@ -255,8 +437,8 @@ export default function ReceptionsImportations() {
         ) : camions.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-14 text-center bg-white rounded-2xl border border-slate-100">
             <Archive size={32} className="text-slate-200 mb-3" />
-            <p className="text-sm font-semibold text-slate-600">Aucune réception en cours</p>
-            <p className="text-xs text-slate-400 mt-1">Les arrivages du jour apparaîtront ici dès leur enregistrement.</p>
+            <p className="text-sm font-semibold text-slate-600">Aucune commande en attente de réception</p>
+            <p className="text-xs text-slate-400 mt-1">Les commandes fournisseurs au statut "Prévu" ou "En transit" apparaîtront ici.</p>
             {apiError && <p className="text-xs text-red-400 mt-2">{apiError}</p>}
           </div>
         ) : camions.map(camion => {
