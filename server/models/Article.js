@@ -24,7 +24,7 @@ const articleSchema = new mongoose.Schema(
       type:     String,
       required: [true, "L'unité de mesure est requise"],
       enum: {
-        values:  ['Unité', 'Kg', 'L', 'Dose', 'Boîte'],
+        values:  ['U', 'Unité', 'Paillettes', 'Doses', 'Dose', 'Kg', 'L', 'Boîte'],
         message: 'Unité de mesure invalide : {VALUE}',
       },
     },

@@ -46,6 +46,7 @@ require('./models/Article');
 require('./models/Cooperative');  // utilisé via ref dans Dotation + PinSession
 require('./models/Campagne');     // utilisé via ref dans Dotation
 require('./models/Lot');
+require('./models/Cuve');
 require('./models/Dotation');
 require('./models/Transaction');
 
@@ -54,6 +55,7 @@ const uniteRoutes        = require('./routes/unites');
 const articleRoutes      = require('./routes/articles');
 const transactionRoutes  = require('./routes/transactions');
 const lotRoutes          = require('./routes/lots');
+const cuveRoutes         = require('./routes/cuves');
 const usersRoutes        = require('./routes/users');
 const dashboardRoutes    = require('./routes/dashboard');
 const quotasRoutes       = require('./routes/quotas');
@@ -67,6 +69,7 @@ app.use('/api/unites',       uniteRoutes);
 app.use('/api/articles',     articleRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/lots',         lotRoutes);
+app.use('/api/cuves',        cuveRoutes);
 app.use('/api/users',        usersRoutes);
 app.use('/api/dashboard',    dashboardRoutes);
 app.use('/api/quotas',       quotasRoutes);

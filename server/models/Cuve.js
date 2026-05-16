@@ -2,19 +2,40 @@ const mongoose = require('mongoose');
 
 const cuveSchema = new mongoose.Schema(
   {
-    label: { type: String, required: true, unique: true, trim: true },
-    description: { type: String, trim: true },
-    volumeActuelL: { type: Number, default: 0 },
-    capaciteMaxL: { type: Number, required: true },
-    temperatureC: { type: Number, default: null },
+    nom: {
+      type:     String,
+      required: [true, 'Le nom de la cuve est requis'],
+      trim:     true,
+    },
+    capacite: {
+      type:     Number,
+      required: [true, 'La capacité est requise'],
+      min:      [1, 'La capacité doit être supérieure à 0'],
+    },
+    niveauActuel: {
+      type:    Number,
+      default: 0,
+      min:     [0, 'Le niveau ne peut pas être négatif'],
+    },
     statut: {
-      type: String,
-      required: true,
-      enum: ['disponible', 'en_service', 'maintenance', 'hors_service'],
-      default: 'disponible',
+      type:    String,
+      enum:    ['ok', 'alerte', 'critique'],
+      default: 'ok',
+    },
+    description: {
+      type:    String,
+      trim:    true,
+      default: '',
     },
   },
   { timestamps: true }
 );
+
+/* Calcul automatique du statut avant chaque sauvegarde */
+cuveSchema.pre('save', function (next) {
+  const pct = this.capacite > 0 ? (this.niveauActuel / this.capacite) * 100 : 0;
+  this.statut = pct < 15 ? 'critique' : pct < 30 ? 'alerte' : 'ok';
+  next();
+});
 
 module.exports = mongoose.model('Cuve', cuveSchema);
