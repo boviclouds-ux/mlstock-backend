@@ -14,8 +14,10 @@ const app = express();
    correspondante ci-dessous OU ajoutez FRONTEND_URL dans .env.
 ═══════════════════════════════════════════════════════════ */
 const ALLOWED_ORIGINS = [
-  'http://localhost:5173',          // dev Vite
-  process.env.FRONTEND_URL,         // production (défini dans .env ou variables Cloud)
+  'http://localhost:5173',              // dev Vite local
+  'http://localhost:3000',              // dev CRA / autre port local
+  'https://stockml.gobranding.ma',     // production Hostinger
+  process.env.FRONTEND_URL,            // surcharge via variable Render (optionnel)
 ].filter(Boolean);
 
 const corsOptions = {
