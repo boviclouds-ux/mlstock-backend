@@ -4,12 +4,12 @@
  * et normalise les erreurs HTTP en exceptions JavaScript.
  *
  * Utilisation :
- *   import { api } from '../lib/api';
- *   const articles = await api.get('/api/articles');
- *   const created  = await api.post('/api/articles', { code, designation, … });
+ * import { api } from '../lib/api';
+ * const articles = await api.get('/api/articles');
+ * const created  = await api.post('/api/articles', { code, designation, … });
  */
 
-const BASE_URL = import.meta.env.VITE_API_URL ?? "https://mlstock-backend-3.onrender.com";
+const BASE_URL = "https://mlstock-backend-3.onrender.com";
 const TOKEN_KEY = "mlstock_token";
 
 async function apiFetch(path, options = {}) {
