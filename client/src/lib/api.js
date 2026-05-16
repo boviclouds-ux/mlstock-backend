@@ -2,11 +2,6 @@
  * api.js — Wrapper fetch centralisé
  * Injecte automatiquement le token JWT depuis le localStorage
  * et normalise les erreurs HTTP en exceptions JavaScript.
- *
- * Utilisation :
- * import { api } from '../lib/api';
- * const articles = await api.get('/api/articles');
- * const created  = await api.post('/api/articles', { code, designation, … });
  */
 
 const BASE_URL = "https://mlstock-backend-3.onrender.com";
