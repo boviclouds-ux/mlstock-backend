@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\Admin\\\\Desktop\\\\mlstock-backend\" -Recurse -File)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(ls \"c:\\\\Users\\\\Admin\\\\Desktop\")",
+      "Read(//c/Users/Admin/Desktop/**)",
+      "Bash(ls \"C:\\\\Users\\\\Admin\" | head -30)",
+      "Read(//c/Users/Admin/**)",
+      "PowerShell(New-Item -ItemType Directory -Path \"c:\\\\Users\\\\Admin\\\\Desktop\\\\mlstock-backend\\\\server\" -Force)",
+      "PowerShell(New-Item -ItemType Directory -Path \"c:\\\\Users\\\\Admin\\\\Desktop\\\\mlstock-backend\\\\client\" -Force)",
+      "PowerShell(Move-Item \"c:\\\\Users\\\\Admin\\\\Desktop\\\\mlstock-backend\\\\node_modules\" \"c:\\\\Users\\\\Admin\\\\Desktop\\\\mlstock-backend\\\\server\\\\node_modules\")",
+      "Bash(npx tailwindcss *)",
+      "Bash(for f in EspaceCooperative CentreValidations DashboardDirection TracabiliteRapports PreparationsExpeditions; do *)",
+      "Read(//c/Users/Admin/Desktop/mlstock-backend/client/**)",
+      "Bash(node -e ' *)",
+      "Bash(node --check seeder.js)",
+      "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\(JSON.stringify\\(p.dependencies, null, 2\\)\\)\")",
+      "Bash('/api/transactions\\)], *)"
+    ]
+  }
+}
