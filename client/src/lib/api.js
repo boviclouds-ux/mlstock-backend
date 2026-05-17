@@ -1,10 +1,13 @@
 /**
  * api.js — Wrapper fetch centralisé
- * Injecte automatiquement le token JWT depuis le localStorage
- * et normalise les erreurs HTTP en exceptions JavaScript.
+ * Détecte automatiquement l'environnement (Local vs Production)
  */
 
-const BASE_URL = "https://mlstock-backend-3.onrender.com";
+// Détection automatique : si on est sur localhost, on utilise le port 5000, sinon le serveur Render en ligne
+const BASE_URL = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+  ? "http://localhost:5000"
+  : "https://mlstock-backend-2.onrender.com";
+
 const TOKEN_KEY = "mlstock_token";
 
 async function apiFetch(path, options = {}) {
@@ -16,7 +19,10 @@ async function apiFetch(path, options = {}) {
     ...(options.headers ?? {}),
   };
 
-  const res  = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  // On s'assure que le chemin commence bien par /
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+
+  const res = await fetch(`${BASE_URL}${cleanPath}`, { ...options, headers });
   const data = await res.json().catch(() => null);
 
   if (!res.ok) {

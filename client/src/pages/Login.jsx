@@ -2,8 +2,7 @@
 import logoImg from '../assets/logo.png';
 import { useState } from "react";
 import { Mail, Lock, Eye, EyeOff, AlertCircle, Globe } from "lucide-react";
-
-const API_URL = import.meta.env.VITE_API_URL ?? "https://mlstock-backend-3.onrender.com";
+import { api } from "../lib/api";
 
 /* ─── Fond liquide — bleus profonds, aqua, touches d'or ──── */
 function LiquidBackground() {
@@ -64,16 +63,10 @@ export default function Login({ onLogin }) {
     setError("");
     setLoading(true);
     try {
-      const res  = await fetch(`${API_URL}/api/auth/login`, {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ email: email.trim().toLowerCase(), password }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Identifiants incorrects.");
+      const data = await api.post("/api/auth/login", { email: email.trim().toLowerCase(), password });
       onLogin(data.token, data.user);
     } catch (err) {
-      setError(err.message);
+      setError(err.message || "Identifiants incorrects.");
     } finally {
       setLoading(false);
     }

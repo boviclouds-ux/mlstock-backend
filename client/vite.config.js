@@ -6,7 +6,7 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': 'https://mlstock-backend-3.onrender.com',
+      '/api': 'https://mlstock-backend-2.onrender.com',
     },
   },
 });
