@@ -23,7 +23,7 @@ const LOTS_DISPO = [
 /* ─── Adaptateur Transaction API → format UI expéditions ── */
 const STATUT_EXP = {
   'Brouillon':   'a_preparer',
-  'En attente':  'a_preparer',
+  'En attente':  'en_attente_admin',  // picking soumis, en attente de validation OTP Admin
   'Validé':      'approuve',
   'Expédié':     'expedie',
   'Réceptionné': 'expedie',
@@ -207,9 +207,19 @@ function PickingDrawer({ commande, onClose, onSceller }) {
     if (!lot) { setScanError(`Lot "${val}" introuvable.`); return; }
     if (lotsAjoutes.find(l => l.numLot === lot.id)) { setScanError("Ce lot est déjà dans le colis."); return; }
     setScanError("");
-    setLotsAjoutes(p => [...p, { numLot: lot.id, article: lot.article, qteRetire: lot.qte, unite: lot.unite, cuve: lot.cuve }]);
+    const resteAFaire = totalDemande - totalScanne;
+    const qteDefaut = Math.min(lot.qte, Math.max(0, resteAFaire));
+    setLotsAjoutes(p => [...p, { numLot: lot.id, article: lot.article, qteRetire: qteDefaut, qteMax: lot.qte, unite: lot.unite, cuve: lot.cuve }]);
     setScanInput("");
     inputRef.current?.focus();
+  }
+
+  function updateQteLot(numLot, valeur) {
+    setLotsAjoutes(p => p.map(l =>
+      l.numLot === numLot
+        ? { ...l, qteRetire: Math.min(Math.max(0, valeur), l.qteMax) }
+        : l
+    ));
   }
 
   function handleSceller() {
@@ -306,8 +316,19 @@ function PickingDrawer({ commande, onClose, onSceller }) {
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-mono font-semibold text-gray-700">{lot.numLot}</p>
                       <p className="text-[10px] text-gray-400 mt-0.5 truncate">{lot.article} · Cuve {lot.cuve}</p>
+                      <p className="text-[9px] text-gray-300 mt-0.5">Stock dispo : {lot.qteMax.toLocaleString()} {lot.unite}</p>
                     </div>
-                    <span className="text-sm font-bold text-gray-800 tabular-nums shrink-0">{lot.qteRetire.toLocaleString()} <span className="text-xs font-normal text-gray-400">{lot.unite}</span></span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <input
+                        type="number"
+                        min={1}
+                        max={lot.qteMax}
+                        value={lot.qteRetire}
+                        onChange={e => updateQteLot(lot.numLot, parseInt(e.target.value, 10) || 0)}
+                        className="w-20 text-right text-sm font-bold text-gray-800 border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-400 tabular-nums"
+                      />
+                      <span className="text-xs text-gray-400">{lot.unite}</span>
+                    </div>
                     <button onClick={() => setLotsAjoutes(p => p.filter(l => l.numLot !== lot.numLot))}
                       className="shrink-0 text-gray-300 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-colors"><Trash2 size={12}/></button>
                   </div>
@@ -376,13 +397,13 @@ export default function PreparationsExpeditions() {
 
   function flash(id) { setFlashId(id); setTimeout(() => setFlashId(null), 800); }
 
-  /* ─ Sceller : local + PUT API (En attente → Validé) ─── */
+  /* ─ Sceller : local + PUT API (Brouillon → En attente Admin) ─── */
   async function handleSceller(id, lots) {
     setCommandes(p => p.map(c => c.id === id ? { ...c, statut: "en_attente_admin", lotsScelles: lots } : c));
     flash(id);
     const target = commandes.find(c => c.id === id);
     if (target?._id) {
-      try { await api.put(`/api/transactions/${target._id}/statut`, { statut: 'Validé' }); }
+      try { await api.put(`/api/transactions/${target._id}/statut`, { statut: 'En attente' }); }
       catch { /* la vue locale est déjà mise à jour */ }
     }
   }

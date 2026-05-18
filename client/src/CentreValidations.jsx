@@ -44,8 +44,6 @@ function fromApiToRequete(t) {
   };
 }
 
-const COOPERATIVES_LIST=["Coopérative Sakia Al Hamra","Coopérative Aït Si Salem","Coopérative Tadla Azilal","Coopérative Gharb Chrarda","Coopérative Chaouia Ouardigha","Coopérative Doukkala Abda"];
-const ARTICLES_PUSH=[{label:"Holstein – BENNER JESUALDO",unite:"doses"},{label:"Montbéliarde – ALPAGA RF",unite:"doses"},{label:"Azote liquide",unite:"litres"},{label:"Cathéters jetables",unite:"unités"}];
 const DUREES=["Valable 15 min","Valable 1 heure","Valable aujourd'hui","Personnaliser..."];
 
 function genPin(){return String(Math.floor(1000+Math.random()*9000));}
@@ -186,13 +184,33 @@ function ReceptionDrawer({req,onClose,onDecision}){
 
 /* ─── Modale Nouvel Ordre ───────────────────────────── */
 function NouvelOrdreModal({onClose,onSubmit}){
-  const [dest,setDest]=useState(COOPERATIVES_LIST[0]); const [urgent,setUrgent]=useState(false); const [motif,setMotif]=useState("");
-  const [lignes,setLignes]=useState([{id:1,article:ARTICLES_PUSH[0].label,unite:ARTICLES_PUSH[0].unite,qte:""}]);
+  const [unites,        setUnites]        = useState([]);
+  const [loadingUnites, setLoadingUnites] = useState(true);
+  const [dest,          setDest]          = useState(null);
+  const [articles,       setArticles]       = useState([]);
+  const [loadingArticles,setLoadingArticles]= useState(true);
+  const [urgent,setUrgent]=useState(false); const [motif,setMotif]=useState("");
+  const [lignes,setLignes]=useState([{id:1,articleId:null,article:"",unite:"",qte:""}]);
   const [done,setDone]=useState(false);
-  const canSave=lignes.every(l=>Number(l.qte)>0)&&motif.trim()!=="";
-  function addLigne(){setLignes(p=>[...p,{id:Date.now(),article:ARTICLES_PUSH[0].label,unite:ARTICLES_PUSH[0].unite,qte:""}]);}
+
+  useEffect(()=>{
+    api.get("/api/unites?actif=true")
+      .then(res=>{ const list=Array.isArray(res)?res:(res.data??[]); setUnites(list); if(list.length>0)setDest(list[0]); })
+      .catch(()=>{})
+      .finally(()=>setLoadingUnites(false));
+  },[]);
+
+  useEffect(()=>{
+    api.get("/api/articles?actif=true")
+      .then(res=>{ const list=Array.isArray(res)?res:(res.data??[]); setArticles(list); if(list.length>0){const f=list[0];setLignes([{id:1,articleId:f._id,article:f.designation,unite:f.uniteMesure,qte:""}]);} })
+      .catch(()=>{})
+      .finally(()=>setLoadingArticles(false));
+  },[]);
+
+  const canSave=!!dest&&lignes.every(l=>!!l.articleId&&Number(l.qte)>0)&&motif.trim()!=="";
+  function addLigne(){const f=articles[0];setLignes(p=>[...p,{id:Date.now(),articleId:f?._id??null,article:f?.designation??"",unite:f?.uniteMesure??"",qte:""}]);}
   function removeLigne(id){setLignes(p=>p.filter(l=>l.id!==id));}
-  function updateLigne(id,field,val){setLignes(p=>p.map(l=>{if(l.id!==id)return l;if(field==="article"){const f=ARTICLES_PUSH.find(a=>a.label===val);return{...l,article:val,unite:f?.unite??l.unite};}return{...l,[field]:val};}));}
+  function updateLigne(id,field,val){setLignes(p=>p.map(l=>{if(l.id!==id)return l;if(field==="articleId"){const a=articles.find(a=>a._id===val);return{...l,articleId:val,article:a?.designation??"",unite:a?.uniteMesure??l.unite};}return{...l,[field]:val};}));}
   function submit(){setDone(true);setTimeout(()=>{onSubmit({dest,urgent,motif,lignes});onClose();},900);}
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-[1px] flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -203,13 +221,13 @@ function NouvelOrdreModal({onClose,onSubmit}){
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 p-1.5 rounded-lg transition-colors"><X size={17}/></button>
         </div>
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-          <div><label className="block text-sm font-semibold text-gray-800 mb-1.5">Destinataire</label><div className="relative"><select value={dest} onChange={e=>setDest(e.target.value)} className="w-full appearance-none border border-gray-200 rounded-xl px-3 py-2.5 pr-8 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 hover:border-gray-300 transition-colors cursor-pointer">{COOPERATIVES_LIST.map(c=><option key={c}>{c}</option>)}</select><ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/></div></div>
+          <div><label className="block text-sm font-semibold text-gray-800 mb-1.5">Destinataire</label><div className="relative"><select value={dest?._id??""} onChange={e=>{const u=unites.find(u=>u._id===e.target.value);if(u)setDest(u);}} disabled={loadingUnites} className="w-full appearance-none border border-gray-200 rounded-xl px-3 py-2.5 pr-8 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 hover:border-gray-300 transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-wait">{loadingUnites?<option value="" disabled>Chargement des unités…</option>:unites.length===0?<option value="" disabled>Aucune unité active</option>:unites.map(u=><option key={u._id} value={u._id}>{u.nom}{u.region?` — ${u.region}`:""}</option>)}</select><ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/></div></div>
           <div>
             <div className="flex items-center justify-between mb-2"><label className="text-sm font-semibold text-gray-800">Articles à expédier</label><span className="text-xs text-gray-400">{lignes.length} ligne{lignes.length>1?"s":""}</span></div>
             <div className="space-y-2">
               {lignes.map((ligne)=>(
                 <div key={ligne.id} className="flex items-center gap-2">
-                  <div className="relative flex-1"><select value={ligne.article} onChange={e=>updateLigne(ligne.id,"article",e.target.value)} className="w-full appearance-none border border-gray-200 rounded-lg px-3 py-2 pr-7 text-xs text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 hover:border-gray-300 transition-colors cursor-pointer">{ARTICLES_PUSH.map(a=><option key={a.label}>{a.label}</option>)}</select><ChevronDown size={11} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/></div>
+                  <div className="relative flex-1"><select value={ligne.articleId??""} onChange={e=>updateLigne(ligne.id,"articleId",e.target.value)} disabled={loadingArticles} className="w-full appearance-none border border-gray-200 rounded-lg px-3 py-2 pr-7 text-xs text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 hover:border-gray-300 transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-wait">{loadingArticles?<option value="" disabled>Chargement…</option>:articles.length===0?<option value="" disabled>Aucun article actif</option>:articles.map(a=><option key={a._id} value={a._id}>{a.designation} ({a.uniteMesure})</option>)}</select><ChevronDown size={11} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/></div>
                   <div className="flex items-center gap-1 w-28 shrink-0"><input type="number" value={ligne.qte} min={0} onChange={e=>updateLigne(ligne.id,"qte",e.target.value)} placeholder="Qté" className="w-full border border-gray-200 rounded-lg px-2.5 py-2 text-xs text-right font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-500 hover:border-gray-300 placeholder:text-gray-300 transition-colors"/><span className="text-[10px] text-gray-400 whitespace-nowrap">{ligne.unite}</span></div>
                   {lignes.length>1&&<button onClick={()=>removeLigne(ligne.id)} className="text-gray-300 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-colors"><Trash2 size={13}/></button>}
                 </div>
@@ -426,7 +444,7 @@ export default function CentreValidations(){
           <div className="divide-y divide-gray-50">
             {ordresEmis.map(o=>(
               <div key={o.id} className="px-5 py-3 flex items-center gap-4">
-                <div className="flex-1 min-w-0"><p className="text-xs font-mono font-semibold text-gray-600">{o.id}{o.urgent&&<span className="ml-2 text-[10px] font-bold text-yellow-600 bg-yellow-50 border border-yellow-200 px-1.5 py-0.5 rounded-full"><Zap size={8} className="inline"/>Urgent</span>}</p><p className="text-xs text-gray-500 mt-0.5">{o.dest} · {o.motif}</p></div>
+                <div className="flex-1 min-w-0"><p className="text-xs font-mono font-semibold text-gray-600">{o.id}{o.urgent&&<span className="ml-2 text-[10px] font-bold text-yellow-600 bg-yellow-50 border border-yellow-200 px-1.5 py-0.5 rounded-full"><Zap size={8} className="inline"/>Urgent</span>}</p><p className="text-xs text-gray-500 mt-0.5">{o.dest?.nom ?? o.dest} · {o.motif}</p></div>
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200"><span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block animate-pulse"/>Transmis au Magasin</span>
                 <span className="text-[10px] text-gray-400">{o.date}</span>
               </div>

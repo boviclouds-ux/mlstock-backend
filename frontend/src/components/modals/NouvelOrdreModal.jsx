@@ -1,22 +1,63 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { X, Zap, ChevronDown, Plus, Trash2, Send, CheckCircle } from "lucide-react";
-import { COOPERATIVES_LIST, ARTICLES_PUSH } from "../../constants/validationsData";
+import { api } from "../../lib/api";
 
 export default function NouvelOrdreModal({ onClose, onSubmit }) {
-  const [dest,   setDest]   = useState(COOPERATIVES_LIST[0]);
+  const [unites,        setUnites]        = useState([]);
+  const [loadingUnites, setLoadingUnites] = useState(true);
+  const [dest,          setDest]          = useState(null);
+  const [articles,        setArticles]        = useState([]);
+  const [loadingArticles, setLoadingArticles] = useState(true);
   const [urgent, setUrgent] = useState(false);
   const [motif,  setMotif]  = useState("");
-  const [lignes, setLignes] = useState([{ id: 1, article: ARTICLES_PUSH[0].label, unite: ARTICLES_PUSH[0].unite, qte: "" }]);
+  const [lignes, setLignes] = useState([{ id: 1, articleId: null, article: "", unite: "", qte: "" }]);
   const [done,   setDone]   = useState(false);
 
-  const canSave = lignes.every((l) => Number(l.qte) > 0) && motif.trim() !== "";
+  useEffect(() => {
+    api.get("/api/unites?actif=true")
+      .then(res => {
+        const list = Array.isArray(res) ? res : (res.data ?? []);
+        setUnites(list);
+        if (list.length > 0) setDest(list[0]);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingUnites(false));
+  }, []);
 
-  function addLigne()          { setLignes((p) => [...p, { id: Date.now(), article: ARTICLES_PUSH[0].label, unite: ARTICLES_PUSH[0].unite, qte: "" }]); }
-  function removeLigne(id)     { setLignes((p) => p.filter((l) => l.id !== id)); }
+  useEffect(() => {
+    api.get("/api/articles?actif=true")
+      .then(res => {
+        const list = Array.isArray(res) ? res : (res.data ?? []);
+        setArticles(list);
+        if (list.length > 0) {
+          const first = list[0];
+          setLignes([{ id: 1, articleId: first._id, article: first.designation, unite: first.uniteMesure, qte: "" }]);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingArticles(false));
+  }, []);
+
+  const canSave = !!dest && lignes.every((l) => !!l.articleId && Number(l.qte) > 0) && motif.trim() !== "";
+
+  function addLigne() {
+    const first = articles[0];
+    setLignes((p) => [...p, {
+      id: Date.now(),
+      articleId: first?._id ?? null,
+      article:   first?.designation ?? "",
+      unite:     first?.uniteMesure ?? "",
+      qte:       "",
+    }]);
+  }
+  function removeLigne(id) { setLignes((p) => p.filter((l) => l.id !== id)); }
   function updateLigne(id, field, val) {
     setLignes((p) => p.map((l) => {
       if (l.id !== id) return l;
-      if (field === "article") { const f = ARTICLES_PUSH.find((a) => a.label === val); return { ...l, article: val, unite: f?.unite ?? l.unite }; }
+      if (field === "articleId") {
+        const a = articles.find((a) => a._id === val);
+        return { ...l, articleId: val, article: a?.designation ?? "", unite: a?.uniteMesure ?? l.unite };
+      }
       return { ...l, [field]: val };
     }));
   }
@@ -56,11 +97,21 @@ export default function NouvelOrdreModal({ onClose, onSubmit }) {
             <label className="block text-sm font-semibold text-gray-800 mb-1.5">Destinataire</label>
             <div className="relative">
               <select
-                value={dest}
-                onChange={(e) => setDest(e.target.value)}
-                className="w-full appearance-none border border-gray-200 rounded-xl px-3 py-2.5 pr-8 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 hover:border-gray-300 transition-colors cursor-pointer"
+                value={dest?._id ?? ""}
+                onChange={(e) => { const u = unites.find(u => u._id === e.target.value); if (u) setDest(u); }}
+                disabled={loadingUnites}
+                className="w-full appearance-none border border-gray-200 rounded-xl px-3 py-2.5 pr-8 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 hover:border-gray-300 transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-wait"
               >
-                {COOPERATIVES_LIST.map((c) => <option key={c}>{c}</option>)}
+                {loadingUnites
+                  ? <option value="" disabled>Chargement des unités…</option>
+                  : unites.length === 0
+                    ? <option value="" disabled>Aucune unité active</option>
+                    : unites.map((u) => (
+                        <option key={u._id} value={u._id}>
+                          {u.nom}{u.region ? ` — ${u.region}` : ""}
+                        </option>
+                      ))
+                }
               </select>
               <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             </div>
@@ -77,11 +128,21 @@ export default function NouvelOrdreModal({ onClose, onSubmit }) {
                 <div key={ligne.id} className="flex items-center gap-2">
                   <div className="relative flex-1">
                     <select
-                      value={ligne.article}
-                      onChange={(e) => updateLigne(ligne.id, "article", e.target.value)}
-                      className="w-full appearance-none border border-gray-200 rounded-lg px-3 py-2 pr-7 text-xs text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 hover:border-gray-300 transition-colors cursor-pointer"
+                      value={ligne.articleId ?? ""}
+                      onChange={(e) => updateLigne(ligne.id, "articleId", e.target.value)}
+                      disabled={loadingArticles}
+                      className="w-full appearance-none border border-gray-200 rounded-lg px-3 py-2 pr-7 text-xs text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 hover:border-gray-300 transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-wait"
                     >
-                      {ARTICLES_PUSH.map((a) => <option key={a.label}>{a.label}</option>)}
+                      {loadingArticles
+                        ? <option value="" disabled>Chargement…</option>
+                        : articles.length === 0
+                          ? <option value="" disabled>Aucun article actif</option>
+                          : articles.map((a) => (
+                              <option key={a._id} value={a._id}>
+                                {a.designation} ({a.uniteMesure})
+                              </option>
+                            ))
+                      }
                     </select>
                     <ChevronDown size={11} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                   </div>

@@ -203,6 +203,31 @@ const updateTransactionStatut = async (req, res) => {
       }
     }
 
+    /* ── Seuls les Admins peuvent passer au statut "Validé" ─
+       Ce statut ne peut être atteint que via la validation OTP Admin.
+       Un Magasinier ne peut pas l'écrire directement.
+    ─────────────────────────────────────────────────────────── */
+    const ADMIN_ONLY = ['ADMIN_FEDERAL', 'ADMIN'];
+    if (statut === 'Validé' && !ADMIN_ONLY.includes(req.user?.role)) {
+      return res.status(403).json({
+        message: 'Seul un Administrateur peut valider une expédition (statut "Validé"). Étape de validation OTP requise.',
+      });
+    }
+
+    /* ── Contrôle de la transition autorisée ────────────────
+       Le graphe TRANSITIONS est défini en tête de fichier.
+       Tout saut d'étape (ex : Brouillon → Validé) est rejeté.
+    ─────────────────────────────────────────────────────────── */
+    const current = await Transaction.findById(req.params.id).select('statut').lean();
+    if (!current) return res.status(404).json({ message: 'Transaction introuvable.' });
+
+    const allowedNext = TRANSITIONS[current.statut] ?? [];
+    if (!allowedNext.includes(statut)) {
+      return res.status(422).json({
+        message: `Transition interdite : "${current.statut}" → "${statut}". Transitions autorisées depuis ce statut : ${allowedNext.join(', ') || 'aucune'}.`,
+      });
+    }
+
     const transaction = await Transaction.findByIdAndUpdate(
       req.params.id,
       { statut },

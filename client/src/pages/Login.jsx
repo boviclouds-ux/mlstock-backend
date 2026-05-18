@@ -121,12 +121,12 @@ export default function Login({ onLogin }) {
             </button>
           </div>
 
-          {/* Se connecter + S'inscrire */}
-          <div className="flex gap-3 pt-1">
+          {/* Se connecter */}
+          <div className="pt-1">
             <button
               type="submit"
               disabled={loading || !email || !password}
-              className="flex-1 flex items-center justify-center gap-2 py-3 rounded-full text-sm font-semibold text-white bg-indigo-500 hover:bg-indigo-600 active:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-full text-sm font-semibold text-white bg-indigo-500 hover:bg-indigo-600 active:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {loading ? (
                 <>
@@ -134,12 +134,6 @@ export default function Login({ onLogin }) {
                   Connexion…
                 </>
               ) : 'Se connecter'}
-            </button>
-            <button
-              type="button"
-              className="flex-1 py-3 rounded-full text-sm font-semibold text-gray-400 bg-gray-100 hover:bg-gray-200 active:bg-gray-300 transition-colors"
-            >
-              S'inscrire
             </button>
           </div>
         </form>
