@@ -693,11 +693,11 @@ export default function GestionQuotas() {
   const [periode,      setPeriode]      = useState(periodes[0]);  // "Toutes les périodes"
   const [region,       setRegion]       = useState(regions[0]);
   const [ajusterRow,   setAjusterRow]   = useState(null);
-  const [showCampagne, setShowCampagne] = useState(true);
+  const [showCampagne, setShowCampagne] = useState(false);
   const [data,       setData]       = useState({ semences:[], consommables:[], materiel:[] });
   const [isLoading,  setIsLoading]  = useState(true);
   const [error,      setError]      = useState(null);
-  const [coopList,   setCoopList]   = useState(COOPERATIVES);
+  const [coopList,   setCoopList]   = useState([]);
   const [articleMap, setArticleMap] = useState({
     semences:     CATEGORIES.semences.articles,
     consommables: CATEGORIES.consommables.articles,
@@ -725,12 +725,21 @@ export default function GestionQuotas() {
 
   useEffect(() => {
     Promise.all([
-      api.get('/api/unites?limit=200'),
+      api.get('/api/unites?actif=true&limit=200'),
       api.get('/api/articles?actif=true&limit=200'),
     ]).then(([unitesRes, articlesRes]) => {
       const unites = Array.isArray(unitesRes) ? unitesRes : (unitesRes.data ?? []);
-      if (unites.length > 0)
-        setCoopList(unites.map(u => ({ id: u._id, name: u.nom, region: u.region ?? '—' })));
+      if (unites.length > 0) {
+        /* Déduplication par nom : évite les doublons si plusieurs docs Unite
+           portent le même nom en base (artefacts de jeux de données de test). */
+        const seen = new Set();
+        const unique = unites.filter(u => {
+          if (seen.has(u.nom)) return false;
+          seen.add(u.nom);
+          return true;
+        });
+        setCoopList(unique.map(u => ({ id: u._id, name: u.nom, region: u.region ?? '—' })));
+      }
 
       const arts = Array.isArray(articlesRes) ? articlesRes : (articlesRes.data ?? []);
       if (arts.length > 0) {

@@ -106,7 +106,7 @@ export default function OrdresAdmin() {
   /* ─── Chargement initial ────────────────────────── */
   useEffect(() => {
     Promise.all([
-      api.get("/api/unites?limit=200"),
+      api.get("/api/unites?actif=true&limit=200"),
       api.get("/api/articles?limit=200"),
       api.get("/api/transactions?type=ORDRE_ADMIN&limit=100"),
     ])
@@ -151,6 +151,18 @@ export default function OrdresAdmin() {
         : l));
     } else {
       setLignes(p => p.map(l => l._key === key ? { ...l, [field]:value } : l));
+    }
+  }
+
+  /* ─── Rejet d'un ordre ──────────────────────────── */
+  async function handleReject(ordreId) {
+    const ordre = ordres.find(o => o._id === ordreId);
+    if (!ordre) return;
+    try {
+      await api.put(`/api/transactions/${ordreId}/statut`, { statut: 'Rejeté' });
+      setOrdres(p => p.map(o => o._id === ordreId ? { ...o, statut: 'Rejeté' } : o));
+    } catch (err) {
+      setSubmitErr(err.message);
     }
   }
 
@@ -398,8 +410,8 @@ export default function OrdresAdmin() {
           </span>
         </div>
 
-        <div className="grid grid-cols-[1fr_0.7fr_1.4fr_1.2fr_1fr_1fr] gap-3 px-5 py-2.5 bg-slate-50 border-b border-slate-100">
-          {["Réf Ordre","Date","Unité Cible","Motif","Articles","Statut"].map(h => (
+        <div className="grid grid-cols-[1fr_0.7fr_1.4fr_1.2fr_1fr_1fr_auto] gap-3 px-5 py-2.5 bg-slate-50 border-b border-slate-100">
+          {["Réf Ordre","Date","Unité Cible","Motif","Articles","Statut","Action"].map(h => (
             <p key={h} className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{h}</p>
           ))}
         </div>
@@ -413,7 +425,7 @@ export default function OrdresAdmin() {
           )}
           {ordres.map(ordre => (
             <div key={ordre.id}
-              className="grid grid-cols-[1fr_0.7fr_1.4fr_1.2fr_1fr_1fr] gap-3 items-center px-5 py-3.5 hover:bg-slate-50/60 transition-colors">
+              className="grid grid-cols-[1fr_0.7fr_1.4fr_1.2fr_1fr_1fr_auto] gap-3 items-center px-5 py-3.5 hover:bg-slate-50/60 transition-colors">
 
               <div>
                 <div className="flex items-center gap-1.5 mb-0.5">
@@ -453,6 +465,17 @@ export default function OrdresAdmin() {
               </div>
 
               <StatutBadge statut={ordre.statut} />
+
+              <div>
+                {(ordre.statut === 'En attente' || ordre.statut === 'Brouillon') && (
+                  <button
+                    onClick={() => handleReject(ordre._id)}
+                    className="flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-lg bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 hover:border-red-300 transition-all whitespace-nowrap"
+                  >
+                    <X size={10} /> Rejeter
+                  </button>
+                )}
+              </div>
             </div>
           ))}
         </div>

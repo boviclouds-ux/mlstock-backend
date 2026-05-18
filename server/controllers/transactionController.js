@@ -1,4 +1,7 @@
 const Transaction = require('../models/Transaction');
+const Dotation    = require('../models/Dotation');
+const Cooperative = require('../models/Cooperative');
+const Unite       = require('../models/Unite');
 
 /* ─── Transitions de statut autorisées ─────────────────── */
 const TRANSITIONS = {
@@ -21,6 +24,17 @@ const POPULATE_STD = [
 /* ─── Helper : formate les erreurs Mongoose ────────────── */
 function validationMessage(err) {
   return Object.values(err.errors).map(e => e.message).join(' | ');
+}
+
+/* ─── Helper sécurité : résout l'ObjectId Unite d'un user UNITE ──
+   req.user.entite est un string (nom de l'unité).
+   On cherche l'Unite active dont le nom correspond.
+   Retourne null si aucune unité trouvée (compte mal configuré).
+─────────────────────────────────────────────────────────────── */
+async function resolveUniteId(entite) {
+  if (!entite) return null;
+  const unite = await Unite.findOne({ nom: entite, actif: true }).select('_id').lean();
+  return unite?._id ?? null;
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -55,6 +69,13 @@ const createTransaction = async (req, res) => {
    Query params : ?type=ORDRE_ADMIN  ?statut=En+attente
                   ?uniteCible=<id>   ?initiatedBy=<id>
                   ?limit=20          ?page=1
+
+   Cloisonnement UNITE :
+   Un utilisateur avec le rôle UNITE ne voit que :
+   - les transactions dont il est le destinataire (uniteCible)
+   - les transactions qu'il a lui-même initiées (initiatedBy)
+   Tout filtre client sur uniteCible/initiatedBy est ignoré et
+   remplacé par ce filtre strict côté serveur.
 ═══════════════════════════════════════════════════════════ */
 const getAllTransactions = async (req, res) => {
   try {
@@ -68,6 +89,24 @@ const getAllTransactions = async (req, res) => {
     }
     if (req.query.uniteCible)  filter.uniteCible  = req.query.uniteCible;
     if (req.query.initiatedBy) filter.initiatedBy = req.query.initiatedBy;
+
+    /* ── Cloisonnement strict pour le rôle UNITE ─────────────
+       On écrase tout filtre client sur uniteCible/initiatedBy
+       et on force un $or garantissant que l'utilisateur ne voit
+       que ses propres transactions.
+    ─────────────────────────────────────────────────────────── */
+    if (req.user.role === 'UNITE') {
+      const uniteId = await resolveUniteId(req.user.entite);
+      if (!uniteId) {
+        return res.status(403).json({ message: 'Unité non associée à ce compte utilisateur.' });
+      }
+      delete filter.uniteCible;
+      delete filter.initiatedBy;
+      filter.$or = [
+        { uniteCible:  uniteId          },
+        { initiatedBy: req.user._id     },
+      ];
+    }
 
     const page  = Math.max(1, parseInt(req.query.page)  || 1);
     const limit = Math.min(100, parseInt(req.query.limit) || 50);
@@ -96,11 +135,29 @@ const getAllTransactions = async (req, res) => {
 
 /* ═══════════════════════════════════════════════════════════
    GET /api/transactions/:id
+
+   Cloisonnement UNITE :
+   Vérifie que la transaction appartient à l'unité de l'utilisateur
+   (est le destinataire ou l'initiateur) avant de la retourner.
 ═══════════════════════════════════════════════════════════ */
 const getTransactionById = async (req, res) => {
   try {
     const transaction = await Transaction.findById(req.params.id).populate(POPULATE_STD);
     if (!transaction) return res.status(404).json({ message: 'Transaction introuvable.' });
+
+    /* ── Guard UNITE ─────────────────────────────────────── */
+    if (req.user.role === 'UNITE') {
+      const uniteId = await resolveUniteId(req.user.entite);
+      if (!uniteId) {
+        return res.status(403).json({ message: 'Unité non associée à ce compte utilisateur.' });
+      }
+      const isDestinataire = transaction.uniteCible?._id?.toString() === uniteId.toString();
+      const isInitiateur   = transaction.initiatedBy?._id?.toString() === req.user._id.toString();
+      if (!isDestinataire && !isInitiateur) {
+        return res.status(403).json({ message: 'Accès refusé : cette transaction ne vous appartient pas.' });
+      }
+    }
+
     res.json(transaction);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -115,17 +172,35 @@ const getTransactionById = async (req, res) => {
    Règle métier :
    - OPS (Admin, Magasinier) : tout changement de statut autorisé
    - UNITE                   : uniquement 'Réceptionné' (confirmation de réception physique)
+
+   Cloisonnement UNITE :
+   Avant toute écriture, vérifie que la transaction ciblée appartient
+   bien à l'unité de l'utilisateur connecté (uniteCible = son unité).
+   Retourne 403 si ce n'est pas le cas.
 ═══════════════════════════════════════════════════════════ */
 const updateTransactionStatut = async (req, res) => {
   try {
     const { statut } = req.body;
     if (!statut) return res.status(400).json({ message: 'Le champ "statut" est requis.' });
 
-    // Restriction métier : le rôle UNITE ne peut que confirmer la réception
-    if (req.user?.role === 'UNITE' && statut !== 'Réceptionné') {
-      return res.status(403).json({
-        message: 'En tant que Responsable Unité, vous ne pouvez positionner que le statut "Réceptionné".',
-      });
+    /* ── Restriction métier + Guard sécurité UNITE ───────── */
+    if (req.user?.role === 'UNITE') {
+      // 1. Seul 'Réceptionné' est autorisé pour ce rôle
+      if (statut !== 'Réceptionné') {
+        return res.status(403).json({
+          message: 'En tant que Responsable Unité, vous ne pouvez positionner que le statut "Réceptionné".',
+        });
+      }
+      // 2. La transaction doit appartenir à l'unité de l'utilisateur
+      const uniteId = await resolveUniteId(req.user.entite);
+      if (!uniteId) {
+        return res.status(403).json({ message: 'Unité non associée à ce compte utilisateur.' });
+      }
+      const existing = await Transaction.findById(req.params.id).select('uniteCible').lean();
+      if (!existing) return res.status(404).json({ message: 'Transaction introuvable.' });
+      if (existing.uniteCible?.toString() !== uniteId.toString()) {
+        return res.status(403).json({ message: 'Accès refusé : cette transaction ne vous appartient pas.' });
+      }
     }
 
     const transaction = await Transaction.findByIdAndUpdate(
@@ -135,6 +210,32 @@ const updateTransactionStatut = async (req, res) => {
     ).populate(POPULATE_STD);
 
     if (!transaction) return res.status(404).json({ message: 'Transaction introuvable.' });
+
+    /* ── Mise à jour des quotas lors de la réception d'un Ordre Admin ── */
+    if (statut === 'Réceptionné' && transaction.type === 'ORDRE_ADMIN' && transaction.uniteCible) {
+      try {
+        const coop = await Cooperative.findOne({ nom: transaction.uniteCible.nom });
+        if (coop) {
+          await Promise.all(transaction.lignes.map(async ligne => {
+            if (!ligne.article?._id) return;
+            const dotation = await Dotation.findOne({
+              cooperativeId: coop._id,
+              articleId:     ligne.article._id,
+              locked:        false,
+            }).sort({ createdAt: -1 });
+            if (!dotation) return;
+            const newConsomme = dotation.consomme + ligne.quantite;
+            const pct         = dotation.alloue > 0 ? (newConsomme / dotation.alloue) * 100 : 0;
+            const newStatut   = pct >= 90 ? 'critique' : pct >= 75 ? 'alerte' : 'normal';
+            await Dotation.findByIdAndUpdate(dotation._id, {
+              $set: { consomme: newConsomme, statut: newStatut },
+            });
+          }));
+        }
+      } catch (quotaErr) {
+        console.error('[Transaction] Quota update error:', quotaErr.message);
+      }
+    }
 
     res.json(transaction);
   } catch (err) {
@@ -148,6 +249,7 @@ const updateTransactionStatut = async (req, res) => {
    PUT /api/transactions/:id/conformite
    Met à jour le statutConformite de chaque ligne.
    Corps : { lignes: [{ _id: "...", statutConformite: "Conforme" }] }
+   Accès : OPS_ROLES uniquement (Admin + Magasinier) — pas de UNITE.
 ═══════════════════════════════════════════════════════════ */
 const updateConformiteTransaction = async (req, res) => {
   try {
