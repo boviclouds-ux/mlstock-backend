@@ -38,15 +38,27 @@ function uniqCode(prefix) {
    Répond TOUJOURS status 200 + { semences, consommables, materiel }
    Chaque ligne inclut le champ `periode` (depuis Campagne.periode)
    pour que le frontend puisse filtrer par période.
+
+   Cloisonnement UNITE :
+   Un utilisateur de rôle UNITE ne reçoit que les dotations
+   associées à sa propre coopérative (identifiée par user.entite).
 ═══════════════════════════════════════════════════════════ */
-router.get('/data', protect, authorize(...ALLOWED_ROLES), async (req, res) => {
+router.get('/data', protect, authorize(...ALLOWED_ROLES, 'UNITE'), async (req, res) => {
   const result = { semences: [], consommables: [], materiel: [] };
 
   try {
-    const dotations = await Dotation.find()
+    /* ── Filtre MongoDB : UNITE → ses dotations uniquement ── */
+    const dbFilter = {};
+    if (req.user.role === 'UNITE') {
+      const coop = await Cooperative.findOne({ nom: req.user.entite }).lean();
+      if (!coop) return res.status(200).json(result); // aucune coop trouvée → tableau vide
+      dbFilter.cooperativeId = coop._id;
+    }
+
+    const dotations = await Dotation.find(dbFilter)
       .populate('cooperativeId', 'nom region')
       .populate('articleId',     'designation categorie')
-      .populate('campagneId',    'periode')   // exposes campagne.periode par ligne
+      .populate('campagneId',    'periode')
       .lean();
 
     dotations.forEach(d => {

@@ -337,34 +337,32 @@ export default function EspaceCooperative({ user }){
 
   useEffect(() => { fetchReceptions(); }, []);
 
-  /* ─ Quotas : consommation de cette coopérative ─────────── */
+  /* ─ Quotas : dotations de l'unité connectée ────────────────
+     Le backend filtre côté serveur (rôle UNITE → sa coop uniquement).
+     On additionne simplement les onglets : semences → doses, consommables → azote.
+  ─────────────────────────────────────────────────────────── */
   useEffect(() => {
     api.get("/api/quotas/data")
       .then(res => {
         if (!res || typeof res !== 'object') return;
-        const coopName = user?.unite;
-        if (!coopName) return;
-        const allRows = [
-          ...(res.semences     ?? []),
-          ...(res.consommables ?? []),
-          ...(res.materiel     ?? []),
-        ].filter(r => r.cooperative === coopName);
 
-        const sem   = allRows.filter(r => r.article?.toLowerCase().includes('holstein') || r.article?.toLowerCase().includes('montbéliarde') || r.article?.toLowerCase().includes('normande') || r.article?.toLowerCase().includes('prim') || r.article?.toLowerCase().includes('semence') || r.article?.toLowerCase().includes('dose'));
-        const azote = allRows.filter(r => r.article?.toLowerCase().includes('azote'));
+        const sum = (rows) => ({
+          alloue:   rows.reduce((s, r) => s + (r.dotation  || 0), 0),
+          consomme: rows.reduce((s, r) => s + (r.consomme  || 0), 0),
+        });
 
-        const agg = (rows) => ({ alloue: rows.reduce((s,r) => s + (r.dotation||0), 0), consomme: rows.reduce((s,r) => s + (r.consomme||0), 0) });
-        const semAgg   = agg(sem.length   ? sem   : allRows.filter(r => getTab(r) === 'semences'));
-        const azoteAgg = agg(azote.length ? azote : allRows.filter(r => getTab(r) === 'consommables'));
+        const semAgg   = sum(res.semences     ?? []);
+        const azoteAgg = sum(res.consommables ?? []);
 
-        if (semAgg.alloue > 0 || azoteAgg.alloue > 0)
+        if (semAgg.alloue > 0 || azoteAgg.alloue > 0) {
           setQuota({
             semences: { alloue: semAgg.alloue,   consomme: semAgg.consomme,   unite: "doses"  },
             azote:    { alloue: azoteAgg.alloue,  consomme: azoteAgg.consomme, unite: "litres" },
           });
+        }
       })
       .catch(() => {});
-  }, [user?.unite]);
+  }, []);
 
   useEffect(()=>{
     setArticlesLoading(true);
