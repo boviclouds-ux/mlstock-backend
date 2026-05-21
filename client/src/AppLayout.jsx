@@ -107,7 +107,7 @@ function ProfilDrawer({ dark, onToggleDark, onClose }) {
             </div>
           ))}
 
-          {/* Dark mode toggle */}
+          {/* Bascule de thème — désactivée pour les tests V1
           <div className="flex items-center justify-between py-3 border-b border-slate-100 dark:border-slate-700">
             <div className="flex items-center gap-2.5">
               {dark ? <Sun size={16} className="text-amber-400" /> : <Moon size={16} className="text-slate-500" />}
@@ -123,6 +123,7 @@ function ProfilDrawer({ dark, onToggleDark, onClose }) {
                 ${dark ? "translate-x-5" : "translate-x-0.5"}`} />
             </button>
           </div>
+          */}
 
           {/* Password */}
           {!showPw ? (
@@ -444,10 +445,12 @@ export default function AppLayout() {
               </div>
 
               <div className="flex items-center gap-1.5">
+                {/* Bouton thème header — désactivé pour les tests V1
                 <button onClick={() => setDark(d=>!d)}
                   className="p-2 rounded-xl transition-colors text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:text-slate-200 dark:hover:bg-slate-700">
                   {dark ? <Sun size={17} /> : <Moon size={17} />}
                 </button>
+                */}
                 <button className="relative p-2 rounded-xl transition-colors text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:text-slate-200 dark:hover:bg-slate-700">
                   <Bell size={17} />
                   {notifCount > 0 && (

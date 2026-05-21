@@ -7,6 +7,17 @@ const ligneSchema = new mongoose.Schema(
     qte:       { type: Number, required: true, min: [1, 'La quantité doit être ≥ 1'] },
     unite:     { type: String, trim: true, default: 'U' },
     type:      { type: String, enum: ['semence', 'azote', 'materiel'], default: 'materiel' },
+    /* Fiche technique semences — saisie à la commande ou à la réception */
+    ficheTechnique: {
+      type: [{
+        taureau:  { type: String, trim: true, default: '' },
+        nni:      { type: String, trim: true, default: '' },
+        couleur:  { type: String, trim: true, default: '' },
+        quantite: { type: Number, default: 0 },
+        cuveRef:  { type: String, trim: true, default: '' },
+      }],
+      default: [],
+    },
   },
   { _id: false }
 );

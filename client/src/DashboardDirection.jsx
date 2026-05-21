@@ -177,9 +177,11 @@ export default function DashboardDirection() {
         <div className={card}>
           <div className="flex items-start justify-between">
             <div className="p-2.5 rounded-xl bg-blue-50 dark:bg-blue-900/50"><Dna size={20} className="text-blue-600 dark:text-blue-400" /></div>
-            <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full text-emerald-600 bg-emerald-50 border border-emerald-100 dark:text-emerald-400 dark:bg-emerald-900/40 dark:border-emerald-800">
-              <TrendingUp size={9} /> +3.2%
-            </span>
+            {stocks.semences != null && (
+              <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full text-emerald-600 bg-emerald-50 border border-emerald-100 dark:text-emerald-400 dark:bg-emerald-900/40 dark:border-emerald-800">
+                <TrendingUp size={9} /> +3.2%
+              </span>
+            )}
           </div>
           <div>
             <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">Stock Central Semences</p>
@@ -197,9 +199,11 @@ export default function DashboardDirection() {
         <div className={card}>
           <div className="flex items-start justify-between">
             <div className="p-2.5 rounded-xl bg-cyan-50 dark:bg-cyan-900/50"><Droplets size={20} className="text-cyan-600 dark:text-cyan-400" /></div>
-            <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full text-red-500 bg-red-50 border border-red-100 dark:text-red-400 dark:bg-red-900/40 dark:border-red-800">
-              <TrendingDown size={9} /> −1.8%
-            </span>
+            {stocks.azote != null && (
+              <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full text-red-500 bg-red-50 border border-red-100 dark:text-red-400 dark:bg-red-900/40 dark:border-red-800">
+                <TrendingDown size={9} /> −1.8%
+              </span>
+            )}
           </div>
           <div>
             <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">Stock Azote National</p>

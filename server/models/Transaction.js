@@ -79,6 +79,22 @@ const transactionSchema = new mongoose.Schema(
         message:   'La transaction doit contenir au moins une ligne.',
       },
     },
+    // Répartition génétique définie par l'Admin Fédéral (quotas/subventions)
+    repartGenetique: {
+      type: [{
+        taureau: { type: String, trim: true, default: '' },
+        nni:     { type: String, trim: true, default: '' },
+        couleur: { type: String, trim: true, default: '' },
+        qte:     { type: Number, default: 0 },
+      }],
+      default: [],
+    },
+    // Données renseignées lors de la remise au transporteur (étape finale)
+    transporteur: {
+      societe:   { type: String, trim: true, default: '' },
+      matricule: { type: String, trim: true, default: '' },
+    },
+    blReference: { type: String, trim: true, default: null },
   },
   {
     timestamps: true,

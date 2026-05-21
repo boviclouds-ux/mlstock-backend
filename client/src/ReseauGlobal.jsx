@@ -153,6 +153,13 @@ function toApiTransporteur(code, form) {
 }
 
 /* ─── Helpers ──────────────────────────────────────────── */
+const getFlagEmoji = (code) => {
+  if (!code || code.length !== 2) return code;
+  const upper = code.toUpperCase();
+  if (!/^[A-Z]{2}$/.test(upper)) return code;
+  return upper.replace(/./g, char => String.fromCodePoint(char.charCodeAt(0) + 127397));
+};
+
 function nextId(data, prefix) {
   const max = data.reduce((m, d) => Math.max(m, parseInt(d.id.split("-")[1] ?? "0", 10)), 0);
   return `${prefix}-${String(max + 1).padStart(3, "0")}`;
@@ -206,7 +213,7 @@ function ModalSaisie({ tab, item, allData, onClose, onSave }) {
   };
 
   const [form, setForm] = useState(initForm);
-  const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+  const set = (k, v) => setForm(p => ({ ...p, [k]: k === "pavillon" ? getFlagEmoji(v) : v }));
 
   const valid = cfg.fields.filter(f => f.required).every(f => String(form[f.key] ?? "").trim());
   const codePreview = isEdit ? item.id : nextId(allData, cfg.prefix);

@@ -383,13 +383,14 @@ function fromApiTransaction(t) {
 /* ─── Adaptateur API Lot → format UI Chambre Froide ──── */
 function fromApiLot(l) {
   return {
-    id:         l.numLot,
-    article:    l.articleId?.designation ?? '—',
-    type:       l.type,
-    cuve:       '—',
-    rack:       l.rack ?? '—',
-    qte:        l.qteDisponible ?? 0,
-    peremption: l.peremption ? new Date(l.peremption).toISOString().slice(0, 10) : '—',
+    id:             l.numLot,
+    article:        l.articleId?.designation ?? '—',
+    type:           l.type,
+    cuve:           l.cuveId?.nom ?? l.cuveId?.reference ?? '—',
+    rack:           l.rack ?? '—',
+    qte:            l.qteDisponible ?? 0,
+    peremption:     l.peremption ? new Date(l.peremption).toISOString().slice(0, 10) : '—',
+    ficheTechnique: Array.isArray(l.ficheTechnique) ? l.ficheTechnique : [],
   };
 }
 
@@ -450,7 +451,11 @@ export default function MagasinierCentral({ userRole = null }) {
   useEffect(() => {
     setLotsLoading(true);
     api.get("/api/lots")
-      .then(data => setLots(Array.isArray(data) ? data.map(fromApiLot) : []))
+      .then(data => {
+        const mapped = Array.isArray(data) ? data.map(fromApiLot) : [];
+        console.log('LOTS REÇUS DANS L\'INVENTAIRE:', mapped.length, 'lots |', mapped.filter(l => l.ficheTechnique.length > 0).length, 'avec ficheTechnique');
+        setLots(mapped);
+      })
       .catch(err => setLotsError(err.message))
       .finally(() => setLotsLoading(false));
   }, []);
@@ -565,9 +570,11 @@ export default function MagasinierCentral({ userRole = null }) {
               )}
             </div>
             {cuves.length > 0 ? (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="flex overflow-x-auto gap-4 pb-3 snap-x snap-mandatory">
                 {cuves.map(c => (
-                  <CuveCard key={c._id} cuve={c} isAdmin={isAdmin} onEdit={cuve => setCuveEdit(cuve)} />
+                  <div key={c._id} className="min-w-[280px] max-w-[320px] shrink-0 snap-start">
+                    <CuveCard cuve={c} isAdmin={isAdmin} onEdit={cuve => setCuveEdit(cuve)} />
+                  </div>
                 ))}
               </div>
             ) : (
@@ -598,21 +605,57 @@ export default function MagasinierCentral({ userRole = null }) {
                   {!lotsError && lots.length === 0 && !lotsLoading && (
                     <tr><td colSpan={5} className="px-4 py-10 text-center text-xs text-gray-400">Aucun lot en stock</td></tr>
                   )}
-                  {lots.map(lot=>{
-                    const pm=peremptionMeta(lot.peremption);
-                    return (
-                      <tr key={lot.id} className={`hover:bg-gray-50/60 transition-colors ${pm.urgent?"bg-red-50/20":""}`}>
+                  {lots.flatMap(lot => {
+                    const pm = peremptionMeta(lot.peremption);
+                    const peremCell = pm.urgent
+                      ? <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border ${pm.bg} ${pm.color} ${pm.border}`}><AlertTriangle size={10}/>{pm.label} restants</span>
+                      : joursRestants(lot.peremption) <= 45
+                      ? <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${pm.bg} ${pm.color} ${pm.border}`}><Clock size={10}/>{pm.label}j</span>
+                      : <span className="text-xs text-gray-400 font-mono">{lot.peremption}</span>;
+
+                    /* Vue éclatée — une ligne par taureau si ficheTechnique */
+                    if (lot.type === 'semence' && lot.ficheTechnique.length > 0) {
+                      return lot.ficheTechnique.map((ft, ftIdx) => (
+                        <tr key={`${lot.id}-${ftIdx}`} className={`hover:bg-blue-50/30 transition-colors ${pm.urgent ? 'bg-red-50/20' : ftIdx % 2 === 1 ? 'bg-blue-50/10' : ''}`}>
+                          <td className="px-4 py-2.5">
+                            <span className="text-xs font-mono font-semibold text-gray-600">{lot.id}</span>
+                            <span className="ml-1.5 text-[9px] text-gray-300 font-mono tabular-nums">{ftIdx + 1}/{lot.ficheTechnique.length}</span>
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {typeIcon(lot.type)}
+                              <span className="text-xs text-gray-700">{lot.article}</span>
+                              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border shrink-0
+                                ${ft.couleur === 'Rouge'  ? 'bg-red-50 text-red-700 border-red-200' :
+                                  ft.couleur === 'Bleu'   ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                  ft.couleur === 'Vert'   ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                  ft.couleur === 'Jaune'  ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                                  'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                                {ft.taureau || ft.nni || '—'}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <div className="flex items-center gap-1 text-xs text-gray-500">
+                              <MapPin size={10} className="text-gray-300 shrink-0"/>
+                              {ft.refLot ? `Cuve ${ft.refLot}` : lot.cuve !== '—' ? lot.cuve : '—'}
+                            </div>
+                          </td>
+                          <td className="px-4 py-2.5"><span className="text-sm font-bold text-gray-800 tabular-nums">{(ft.qte ?? 0).toLocaleString()}</span></td>
+                          <td className="px-4 py-2.5">{peremCell}</td>
+                        </tr>
+                      ));
+                    }
+                    /* Ligne normale (matériel, azote, etc.) */
+                    return [(
+                      <tr key={lot.id} className={`hover:bg-gray-50/60 transition-colors ${pm.urgent ? 'bg-red-50/20' : ''}`}>
                         <td className="px-4 py-3"><span className="text-xs font-mono font-semibold text-gray-600">{lot.id}</span></td>
                         <td className="px-4 py-3"><div className="flex items-center gap-1.5">{typeIcon(lot.type)}<span className="text-xs text-gray-700">{lot.article}</span></div></td>
-                        <td className="px-4 py-3"><div className="flex items-center gap-1 text-xs text-gray-500"><MapPin size={10} className="text-gray-300 shrink-0"/>{lot.cuve!=="—"?`${lot.cuve} · `:""}{lot.rack}</div></td>
+                        <td className="px-4 py-3"><div className="flex items-center gap-1 text-xs text-gray-500"><MapPin size={10} className="text-gray-300 shrink-0"/>{lot.cuve !== '—' ? `${lot.cuve} · ` : ''}{lot.rack}</div></td>
                         <td className="px-4 py-3"><span className="text-sm font-bold text-gray-800 tabular-nums">{lot.qte.toLocaleString()}</span></td>
-                        <td className="px-4 py-3">
-                          {pm.urgent?<span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border ${pm.bg} ${pm.color} ${pm.border}`}><AlertTriangle size={10}/>{pm.label} restants</span>
-                          :joursRestants(lot.peremption)<=45?<span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${pm.bg} ${pm.color} ${pm.border}`}><Clock size={10}/>{pm.label}j</span>
-                          :<span className="text-xs text-gray-400 font-mono">{lot.peremption}</span>}
-                        </td>
+                        <td className="px-4 py-3">{peremCell}</td>
                       </tr>
-                    );
+                    )];
                   })}
                 </tbody>
               </table>

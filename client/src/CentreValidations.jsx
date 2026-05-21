@@ -60,10 +60,10 @@ function typeMeta(type){
 
 /* ─── Widget PIN ────────────────────────────────────── */
 function PinWidget(){
-  const [pin,setPin]=useState(null); const [duree,setDuree]=useState(DUREES[0]); const [customDate,setCustomDate]=useState(""); const [rem,setRem]=useState(0); const [copied,setCopied]=useState(false);
+  const [pin,setPin]=useState(null); const [duree,setDuree]=useState(DUREES[0]); const [customDate,setCustomDate]=useState(""); const [rem,setRem]=useState(0); const [copied,setCopied]=useState(false); const [generating,setGenerating]=useState(false);
   const isCustom=duree==="Personnaliser...";
   function computeSec(){if(isCustom&&customDate){const d=Math.floor((new Date(customDate)-Date.now())/1000);return d>0?d:0;}return dureeToSec(duree);}
-  const gen=useCallback(()=>{const s=computeSec();if(s<=0)return;setPin(genPin());setRem(s);setCopied(false);},[duree,customDate]);
+  const gen=useCallback(async()=>{const s=computeSec();if(s<=0)return;setGenerating(true);try{const res=await api.post('/api/otp/generate',{dureeSecondes:s});setPin(String(res?.code??genPin()));setRem(s);setCopied(false);}catch{setPin(genPin());setRem(s);setCopied(false);}finally{setGenerating(false);}},[duree,customDate]);
   useEffect(()=>{if(!pin||rem<=0)return;const t=setInterval(()=>setRem(r=>{if(r<=1){clearInterval(t);setPin(null);return 0;}return r-1;}),1000);return()=>clearInterval(t);},[pin]);
   const pct=pin?(rem/computeSec())*100:0; const urgent=rem>0&&rem<60;
   return (
@@ -76,7 +76,7 @@ function PinWidget(){
             <button onClick={()=>{navigator.clipboard?.writeText(pin);setCopied(true);setTimeout(()=>setCopied(false),1500);}} className="text-xs text-blue-300 hover:text-white border border-blue-700 hover:border-blue-500 px-2 py-1 rounded-md transition-colors">{copied?"✓ Copié":"Copier"}</button>
           </div>
           <div><div className="flex justify-between items-center mb-1.5"><span className={`text-xs font-semibold tabular-nums ${urgent?"text-red-300":"text-blue-200"}`}>{fmtTime(rem)}</span><span className="text-[10px] text-blue-400">{duree}</span></div><div className="h-1.5 bg-blue-800 rounded-full overflow-hidden"><div className={`h-full rounded-full transition-all duration-1000 ${urgent?"bg-red-400":pct>50?"bg-emerald-400":"bg-amber-400"}`} style={{width:`${pct}%`}}/></div></div>
-          <button onClick={gen} className="flex items-center justify-center gap-1.5 text-xs text-blue-400 hover:text-blue-200 transition-colors"><RefreshCw size={11}/>Régénérer</button>
+          <button onClick={gen} disabled={generating} className="flex items-center justify-center gap-1.5 text-xs text-blue-400 hover:text-blue-200 disabled:opacity-40 transition-colors">{generating?<><span className="w-3 h-3 border-2 border-blue-600 border-t-blue-300 rounded-full animate-spin"/>…</>:<><RefreshCw size={11}/>Régénérer</>}</button>
         </>
       ):(
         <>
@@ -84,7 +84,7 @@ function PinWidget(){
             <div className="relative"><select value={duree} onChange={e=>{setDuree(e.target.value);setCustomDate("");}} className="w-full appearance-none bg-blue-800 border border-blue-700 text-blue-100 text-xs rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">{DUREES.map(d=><option key={d} className="bg-blue-900 text-blue-100">{d}</option>)}</select><ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-blue-400 pointer-events-none"/></div>
             {isCustom&&<div className="flex flex-col gap-1"><label className="text-[10px] text-blue-300 font-semibold uppercase tracking-wide">Valide jusqu'au</label><input type="datetime-local" value={customDate} min={new Date(Date.now()+60000).toISOString().slice(0,16)} onChange={e=>setCustomDate(e.target.value)} className="w-full bg-white/10 border border-blue-600 text-blue-50 text-xs rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 [color-scheme:dark]"/></div>}
           </div>
-          <button onClick={gen} disabled={isCustom&&(!customDate||new Date(customDate)<=new Date())} className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold py-2 px-3 rounded-lg transition-colors"><Zap size={12} className="text-blue-200"/>Générer PIN</button>
+          <button onClick={gen} disabled={(isCustom&&(!customDate||new Date(customDate)<=new Date()))||generating} className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold py-2 px-3 rounded-lg transition-colors">{generating?<><span className="w-3.5 h-3.5 border-2 border-blue-300 border-t-white rounded-full animate-spin"/>Génération…</>:<><Zap size={12} className="text-blue-200"/>Générer PIN</>}</button>
         </>
       )}
     </div>
@@ -270,9 +270,9 @@ export default function CentreValidations(){
     api.get("/api/transactions?statut=En%20attente&limit=100")
       .then(res => {
         const list = Array.isArray(res) ? res : (res.data ?? []);
-        // ORDRE_ADMIN est auto-approuvé à la création par l'Admin Fédéral :
-        // il ne doit PAS apparaître ici pour une seconde validation circulaire.
-        setRequetes(list.filter(t => t.type !== 'ORDRE_ADMIN').map(fromApiToRequete));
+        // On inclut les ORDRE_ADMIN "En attente" : le magasinier a terminé le picking
+        // et attend la validation admin. Ce n'est pas circulaire — c'est l'étape suivante.
+        setRequetes(list.map(fromApiToRequete));
       })
       .catch(() => setRequetes([]))
       .finally(() => setLoading(false));
@@ -327,6 +327,21 @@ export default function CentreValidations(){
   }
 
   function flash(id) { setFlashId(id); setTimeout(() => setFlashId(null), 800); }
+
+  /* Validation directe Admin → Expédié (nouveau flux double-validation) */
+  async function handleValiderAdmin(id) {
+    setActionError(null);
+    const target = requetes.find(r => r.id === id);
+    if (!target?._id) return;
+    try {
+      await api.put(`/api/ordres/${target._id}/valider-admin`);
+      flash(id);
+      setRequetes(p => p.filter(r => r.id !== id));
+    } catch (err) {
+      setActionError(err.message ?? 'Erreur lors de la validation admin.');
+    }
+  }
+
   function handleNouvelOrdre(data){setOrdresEmis(p=>[{id:`ORD-2025-${String(p.length+42).padStart(4,"0")}`,dest:data.dest,urgent:data.urgent,motif:data.motif,lignes:data.lignes,statut:"transmis",date:new Date().toLocaleString("fr-FR",{hour:"2-digit",minute:"2-digit"})}, ...p]);}
 
   const filtered=filterType==="tous"?requetes:requetes.filter(r=>r.type===filterType);
@@ -412,7 +427,7 @@ export default function CentreValidations(){
                         <div className="flex items-center gap-1.5">
                           {req.type==="depassement"&&<button onClick={()=>setDrawerDero(req)} className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white transition-colors whitespace-nowrap"><Eye size={11}/>Arbitrer</button>}
                           {req.type==="reception"&&<button onClick={()=>setDrawerRec(req)} className={`flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap ${req.conformite==="anomalie"?"bg-amber-500 hover:bg-amber-600 text-white":"bg-blue-600 hover:bg-blue-700 text-white"}`}><ClipboardCheck size={11}/>{req.conformite==="anomalie"?"Voir rapport":"Valider"}</button>}
-                          {req.type==="expedition"&&<button onClick={()=>handleQuick(req.id,"approuve")} className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors whitespace-nowrap"><CheckCircle size={11}/>Approuver</button>}
+                          {req.type==="expedition"&&<button onClick={()=>handleValiderAdmin(req.id)} className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors whitespace-nowrap"><CheckCircle size={11}/>Valider</button>}
                           <button onClick={()=>handleQuick(req.id,"refuse")} className="flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:border-red-300 hover:text-red-600 hover:bg-red-50 transition-all whitespace-nowrap"><XCircle size={11}/>Refuser</button>
                         </div>
                       </td>

@@ -21,10 +21,10 @@ const NAV_GROUPS = [
     { label: 'Mon Espace',      path: '/', icon: LayoutDashboard, end: true,
       roles: [UNITE] },
   ],
-  // Bloc 2 : Gestion des Demandes (Admin Fédéral seulement — UNITE utilise "Mon Espace" en page d'accueil)
+  // Bloc 2 : Gestion des Demandes (Unités uniquement — ADMIN_FEDERAL utilise "Ordres Admin")
   [
     { label: 'Gestion des Demandes', path: '/cooperative', icon: Package,
-      roles: [ADMIN_FEDERAL] },
+      roles: [UNITE] },
   ],
   // Bloc 3 : Logistique & Stock
   [

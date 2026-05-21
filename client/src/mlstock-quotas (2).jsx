@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Fragment } from "react";
 import {
   Plus, Pencil, ChevronDown, TrendingUp, AlertTriangle, CheckCircle,
   FlaskConical, Wrench, Dna, BarChart3, Users, Package,
@@ -197,6 +197,22 @@ function AjusterModal({ row, onClose, onSave }) {
   );
 }
 
+/* ─── Algorithme répartition génétique équitable ─────── */
+function calculerRepartitionGenetique(taureaux, totalQte) {
+  const n = taureaux.length;
+  if (n === 0 || totalQte === 0) return [];
+  const base  = Math.floor(totalQte / n);
+  const reste = totalQte % n;
+  return taureaux.map((t, i) => ({
+    taureau:     t.taureau,
+    nni:         t.nni,
+    couleur:     t.couleur,
+    stockDispo:  t.stockDispo,
+    qte:         i < reste ? base + 1 : base,
+    qteCalculee: i < reste ? base + 1 : base,
+  }));
+}
+
 /* ══════════════════════════════════════════════════════
    DRAWER — NOUVELLE CAMPAGNE
 ══════════════════════════════════════════════════════ */
@@ -223,6 +239,9 @@ function NouvelleCampagneDrawer({ onClose, onCreated, coopList = [], articleMap 
   const [recalcFlash, setRecalcFlash] = useState(false);
   const [lockFlash,   setLockFlash]   = useState(null); // index of last redistributed flash
   const [validated,   setValidated]   = useState(false);
+  const [taureaux,        setTaureaux]        = useState([]);
+  const [loadingTaureaux, setLoadingTaureaux] = useState(false);
+  const [repartGen,       setRepartGen]       = useState({});
 
   const distribue  = dotations.reduce((a, v) => a + (Number(v) || 0), 0);
   const reste      = volumeTotal - distribue;
@@ -249,12 +268,45 @@ function NouvelleCampagneDrawer({ onClose, onCreated, coopList = [], articleMap 
 
   useEffect(() => { if (step === 2) recalculate(); }, [volumeTotal]);
 
-  function goToStep2() {
+  /* Recalcul génétique automatique quand les dotations ou les taureaux changent */
+  useEffect(() => {
+    if (taureaux.length === 0 || step !== 2) return;
+    const genRep = {};
+    dotations.forEach((d, idx) => {
+      genRep[idx] = calculerRepartitionGenetique(taureaux, Number(d) || 0);
+    });
+    setRepartGen(genRep);
+  }, [dotations, taureaux, step]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function goToStep2() {
     const n = coopList.length || 1;
     const d = distribute(volumeTotal, n);
     setDotations(d);
     setLocked(Array(coopList.length).fill(false));
     setStep(2);
+
+    if (categorieId === 'semences') {
+      setLoadingTaureaux(true);
+      try {
+        const res  = await api.get('/api/lots?type=semence&limit=200');
+        const lots = Array.isArray(res) ? res : (res.data ?? []);
+        const map  = {};
+        lots.forEach(lot => {
+          (lot.ficheTechnique ?? []).forEach(g => {
+            const key = g.nni || g.taureau;
+            if (!key) return;
+            if (!map[key]) map[key] = { taureau: g.taureau ?? key, nni: g.nni ?? key, couleur: g.couleur ?? '—', stockDispo: 0 };
+            map[key].stockDispo += Number(g.qte) || 0;
+          });
+        });
+        setTaureaux(Object.values(map).filter(t => t.stockDispo > 0));
+      } catch {
+        setTaureaux([]);
+        setRepartGen({});
+      } finally {
+        setLoadingTaureaux(false);
+      }
+    }
   }
 
   async function handleValidate() {
@@ -267,9 +319,14 @@ function NouvelleCampagneDrawer({ onClose, onCreated, coopList = [], articleMap 
         volumeTotal: Number(volumeTotal),
         periode,
         lignes: coopList.map((coop, idx) => ({
-          cooperative: coop.name,
-          region:      coop.region,
-          alloue:      Number(dotations[idx]) || 0,
+          cooperative:     coop.name,
+          region:          coop.region,
+          alloue:          Number(dotations[idx]) || 0,
+          ...(repartGen[idx]?.length > 0 ? {
+            repartGenetique: repartGen[idx].map(g => ({
+              taureau: g.taureau, nni: g.nni, couleur: g.couleur, qte: Number(g.qte) || 0,
+            })),
+          } : {}),
         })),
       });
       setValidated(true);
@@ -551,59 +608,128 @@ function NouvelleCampagneDrawer({ onClose, onCreated, coopList = [], articleMap 
                     {coopList.length === 0 ? (
                       <tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">Aucune unité enregistrée en base.</td></tr>
                     ) : coopList.map((coop, idx) => {
-                      const val      = dotations[idx];
-                      const numVal   = Number(val) || 0;
-                      const pct      = volumeTotal > 0 ? ((numVal / volumeTotal) * 100).toFixed(1) : "0.0";
-                      const isLocked = locked[idx];
+                      const val        = dotations[idx];
+                      const numVal     = Number(val) || 0;
+                      const pct        = volumeTotal > 0 ? ((numVal / volumeTotal) * 100).toFixed(1) : "0.0";
+                      const isLocked   = locked[idx];
                       const isFlashing = lockFlash === idx;
-                      const initials = coop.name.replace("Unité ", "").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+                      const initials   = coop.name.replace("Unité ", "").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+                      const genLines   = repartGen[idx] ?? [];
+                      const genTotal   = genLines.reduce((s, g) => s + (Number(g.qte) || 0), 0);
+                      const genOk      = taureaux.length === 0 || genTotal === numVal;
+                      const showGen    = taureaux.length > 0 && categorieId === 'semences';
                       return (
-                        <tr key={coop.id}
-                          className={`transition-colors ${recalcFlash && !isLocked ? "row-flash" : isFlashing ? "row-flash" : isLocked ? "bg-slate-50/80" : "hover:bg-gray-50/50"}`}>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2.5">
-                              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 transition-colors
-                                ${isLocked ? "bg-slate-200 text-slate-500" : "bg-blue-50 text-blue-600"}`}>
-                                {initials}
+                        <Fragment key={coop.id}>
+                          {/* ── Ligne principale coopérative ── */}
+                          <tr className={`transition-colors ${recalcFlash && !isLocked ? "row-flash" : isFlashing ? "row-flash" : isLocked ? "bg-slate-50/80" : "hover:bg-gray-50/50"}`}>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2.5">
+                                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 transition-colors
+                                  ${isLocked ? "bg-slate-200 text-slate-500" : "bg-blue-50 text-blue-600"}`}>
+                                  {initials}
+                                </div>
+                                <div>
+                                  <span className={`text-sm font-medium transition-colors ${isLocked ? "text-gray-500" : "text-gray-800"}`}>
+                                    {coop.name}
+                                  </span>
+                                  {isLocked && (
+                                    <span className="ml-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">verrouillé</span>
+                                  )}
+                                </div>
                               </div>
-                              <div>
-                                <span className={`text-sm font-medium transition-colors ${isLocked ? "text-gray-500" : "text-gray-800"}`}>
-                                  {coop.name}
-                                </span>
-                                {isLocked && (
-                                  <span className="ml-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">verrouillé</span>
-                                )}
+                            </td>
+                            <td className="px-4 py-3 text-xs text-gray-400 hidden sm:table-cell">{coop.region}</td>
+                            <td className="px-4 py-3">
+                              <div className="flex justify-end">
+                                <input type="number" value={val} min={0}
+                                  readOnly={isLocked}
+                                  onChange={e => !isLocked && handleTyping(idx, e.target.value)}
+                                  onBlur={() => handleBlur(idx)}
+                                  className={`w-24 border rounded-lg px-2.5 py-1.5 text-sm text-right font-semibold tabular-nums transition-all
+                                    ${isLocked
+                                      ? "border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed"
+                                      : "border-gray-200 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent hover:border-gray-300"}`} />
                               </div>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-xs text-gray-400 hidden sm:table-cell">{coop.region}</td>
-                          <td className="px-4 py-3">
-                            <div className="flex justify-end">
-                              <input type="number" value={val} min={0}
-                                readOnly={isLocked}
-                                onChange={e => !isLocked && handleTyping(idx, e.target.value)}
-                                onBlur={() => handleBlur(idx)}
-                                className={`w-24 border rounded-lg px-2.5 py-1.5 text-sm text-right font-semibold tabular-nums transition-all
+                            </td>
+                            <td className="px-2 py-3 text-center">
+                              <button onClick={() => toggleLock(idx)} title={isLocked ? "Déverrouiller" : "Verrouiller"}
+                                className={`w-7 h-7 rounded-md flex items-center justify-center mx-auto transition-all
                                   ${isLocked
-                                    ? "border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed"
-                                    : "border-gray-200 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent hover:border-gray-300"}`} />
-                            </div>
-                          </td>
-                          <td className="px-2 py-3 text-center">
-                            <button onClick={() => toggleLock(idx)} title={isLocked ? "Déverrouiller" : "Verrouiller"}
-                              className={`w-7 h-7 rounded-md flex items-center justify-center mx-auto transition-all
-                                ${isLocked
-                                  ? "bg-blue-600 text-white hover:bg-blue-700 shadow-sm"
-                                  : "bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600"}`}>
-                              {isLocked
-                                ? <Lock size={12} />
-                                : <Unlock size={12} />}
-                            </button>
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            <span className={`text-xs font-semibold tabular-nums ${isLocked ? "text-slate-400" : "text-gray-500"}`}>{pct}%</span>
-                          </td>
-                        </tr>
+                                    ? "bg-blue-600 text-white hover:bg-blue-700 shadow-sm"
+                                    : "bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600"}`}>
+                                {isLocked ? <Lock size={12} /> : <Unlock size={12} />}
+                              </button>
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <span className={`text-xs font-semibold tabular-nums ${isLocked ? "text-slate-400" : "text-gray-500"}`}>{pct}%</span>
+                            </td>
+                          </tr>
+
+                          {/* ── Sous-lignes par taureau (semences uniquement) ── */}
+                          {showGen && genLines.map((gen, gIdx) => {
+                            const modifie = gen.qte !== gen.qteCalculee;
+                            return (
+                              <tr key={`${coop.id}-g${gIdx}`} className={`border-b border-dashed border-gray-100 ${modifie ? 'bg-amber-50/30' : 'bg-blue-50/20'}`}>
+                                <td className="px-4 py-1.5 pl-12">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <Dna size={9} className="text-blue-400 shrink-0" />
+                                    <span className="text-[11px] text-gray-700 font-medium">{gen.taureau}</span>
+                                    {gen.couleur !== '—' && (
+                                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border shrink-0
+                                        ${gen.couleur === 'Rouge'  ? 'bg-red-50 text-red-700 border-red-200' :
+                                          gen.couleur === 'Bleu'   ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                          gen.couleur === 'Vert'   ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                          gen.couleur === 'Jaune'  ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                                          'bg-gray-100 text-gray-600 border-gray-200'}`}>{gen.couleur}</span>
+                                    )}
+                                  </div>
+                                  <p className="text-[9px] text-gray-400 pl-3.5 mt-0.5 font-mono">{gen.nni}</p>
+                                </td>
+                                <td className="px-4 py-1.5 text-[10px] text-gray-400 hidden sm:table-cell">
+                                  Stock: {gen.stockDispo ?? '—'} doses
+                                </td>
+                                <td className="px-4 py-1.5">
+                                  <div className="flex flex-col items-end">
+                                    <input type="number" value={gen.qte} min={0}
+                                      onChange={e => {
+                                        const newQte = Math.max(0, Number(e.target.value) || 0);
+                                        setRepartGen(prev => {
+                                          const updated = [...(prev[idx] ?? [])];
+                                          updated[gIdx] = { ...updated[gIdx], qte: newQte };
+                                          return { ...prev, [idx]: updated };
+                                        });
+                                      }}
+                                      className={`w-20 border rounded-lg px-2 py-1 text-xs text-right font-semibold tabular-nums focus:outline-none focus:ring-1 focus:ring-blue-400 transition-all
+                                        ${modifie ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-gray-200 text-gray-600'}`}
+                                    />
+                                    {modifie && <span className="text-[9px] text-amber-500 mt-0.5">calculé: {gen.qteCalculee}</span>}
+                                  </div>
+                                </td>
+                                <td className="px-2 py-1.5" />
+                                <td className="px-4 py-1.5 text-right">
+                                  <span className="text-[10px] text-gray-400 tabular-nums">
+                                    {numVal > 0 ? ((Number(gen.qte) / numVal) * 100).toFixed(0) : 0}%
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+
+                          {/* Indicateur de balance génétique par coopérative */}
+                          {showGen && (
+                            <tr key={`${coop.id}-gtot`} className="bg-gray-50/30">
+                              <td colSpan={5} className="px-4 py-1 pl-12 border-b border-gray-100">
+                                <span className={`text-[10px] font-semibold ${genOk ? 'text-emerald-600' : 'text-amber-600'}`}>
+                                  {loadingTaureaux
+                                    ? 'Chargement du stock génétique…'
+                                    : genOk
+                                    ? '✓ Répartition génétique équilibrée'
+                                    : `Sous-total : ${genTotal} / ${numVal} doses — écart : ${numVal - genTotal}`}
+                                </span>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
                       );
                     })}
                   </tbody>
@@ -656,9 +782,12 @@ function NouvelleCampagneDrawer({ onClose, onCreated, coopList = [], articleMap 
                 </button>
               )}
               {step === 1 ? (
-                <button onClick={goToStep2}
-                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-                  Configurer la répartition →
+                <button onClick={goToStep2} disabled={loadingTaureaux}
+                  className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2 text-sm font-semibold rounded-lg transition-colors shadow-sm
+                    ${loadingTaureaux ? 'bg-blue-400 cursor-wait text-white' : 'text-white bg-blue-600 hover:bg-blue-700'}`}>
+                  {loadingTaureaux
+                    ? <><RefreshCw size={15} className="animate-spin" /> Chargement du stock…</>
+                    : <>Configurer la répartition →</>}
                 </button>
               ) : (
                 <button onClick={handleValidate} disabled={!isBalanced || validated || isSubmitting}

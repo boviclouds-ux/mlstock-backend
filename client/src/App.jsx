@@ -161,8 +161,8 @@ function AppLayout({ user, userRole, onLogout }) {
             } />
 
             {/* ── Espace Unité ───────────────────────────────────── */}
-            <Route path="/nouvelle-commande" element={guard(['UNITE', 'ADMIN_FEDERAL'], <EspaceCooperative user={user} />)} />
-            <Route path="/cooperative"       element={guard(['UNITE', 'ADMIN_FEDERAL'], <EspaceCooperative user={user} />)} />
+            <Route path="/nouvelle-commande" element={guard(['UNITE'], <EspaceCooperative user={user} />)} />
+            <Route path="/cooperative"       element={guard(['UNITE'], <EspaceCooperative user={user} />)} />
 
             {/* ── Logistique & Stock (Magasinier + Admins) ──────── */}
             <Route path="/approvisionnements" element={guard(OPS_ROLES, <ApprovisionnementsFournisseurs userRole={userRole} />)} />

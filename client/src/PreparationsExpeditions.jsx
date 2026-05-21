@@ -5,20 +5,10 @@ import {
   Scan, CheckCircle, AlertTriangle, X, ChevronRight,
   PackageCheck, FileText, Dna, FlaskConical, Wrench,
   User, Calendar, Shield, Zap, ScanLine, Plus,
-  Trash2, BadgeCheck, Filter
+  Trash2, BadgeCheck, Filter, Key
 } from "lucide-react";
 
 
-const LOTS_DISPO = [
-  { id: "LOT-2025-0041", article: "Holstein – BENNER JESUALDO", qte: 320, unite: "doses",  cuve: "A-01" },
-  { id: "LOT-2025-0042", article: "Montbéliarde – ALPAGA RF",   qte: 180, unite: "doses",  cuve: "A-01" },
-  { id: "LOT-2025-0043", article: "Normande – OLIVIER ET",      qte: 400, unite: "doses",  cuve: "C-03" },
-  { id: "LOT-2025-0044", article: "Prim'Holstein – JACKPOT",    qte: 95,  unite: "doses",  cuve: "C-03" },
-  { id: "LOT-2025-0045", article: "Azote liquide",              qte: 150, unite: "litres", cuve: "B-02" },
-  { id: "LOT-2025-0046", article: "Azote liquide",              qte: 380, unite: "litres", cuve: "D-04" },
-  { id: "LOT-2025-0047", article: "Cathéters jetables",         qte: 2400,unite: "unités", cuve: "—"    },
-  { id: "LOT-2025-0048", article: "Gants insémination",         qte: 1200,unite: "unités", cuve: "—"    },
-];
 
 /* ─── Adaptateur Transaction API → format UI expéditions ── */
 const STATUT_EXP = {
@@ -42,11 +32,13 @@ function fromApiToExpedition(t) {
     statut:      STATUT_EXP[t.statut] ?? 'a_preparer',
     priorite:    t.type === 'ORDRE_ADMIN' ? 'haute' : 'normale',
     articles:    (t.lignes ?? []).map(l => ({
-      label: l.article?.designation ?? '—',
-      qte:   l.quantite,
-      unite: l.article?.uniteMesure ?? '—',
-      type:  CAT_EXP[l.article?.categorie] ?? 'materiel',
+      label:     l.article?.designation ?? '—',
+      qte:       l.quantite,
+      unite:     l.article?.uniteMesure ?? '—',
+      type:      CAT_EXP[l.article?.categorie] ?? 'materiel',
+      articleId: l.article?._id ?? l.articleId ?? null,
     })),
+    repartGenetique: Array.isArray(t.repartGenetique) ? t.repartGenetique : [],
     lotsScelles: [],
   };
 }
@@ -79,21 +71,163 @@ function OrigineBadge({ origine }) {
   );
 }
 
+/* ─── Génération du Bon de Livraison (impression navigateur) ── */
+function imprimerBL({ commande, societe, matricule, blRef, date }) {
+  const lots = commande.lotsScelles ?? [];
+  const totalQte = lots.length > 0
+    ? lots.reduce((s, l) => s + (l.qteRetire || 0), 0)
+    : commande.articles.reduce((s, a) => s + (a.qte || 0), 0);
+
+  const lignesHtml = lots.length > 0
+    ? lots.map((l, i) => {
+        const couleurStyles = {
+          Rouge: 'background:#fee2e2;color:#dc2626',
+          Bleu:  'background:#dbeafe;color:#2563eb',
+          Vert:  'background:#dcfce7;color:#16a34a',
+          Jaune: 'background:#fef9c3;color:#ca8a04',
+        };
+        const cs = couleurStyles[l.couleur];
+        const badge = cs
+          ? `<span style="${cs};display:inline-block;padding:1px 8px;border-radius:99px;font-size:10px;font-weight:600">${l.couleur}</span>`
+          : '—';
+        return `<tr>
+          <td style="width:32px;text-align:center;color:#94a3b8">${i + 1}</td>
+          <td><strong>${l.article ?? l.taureau ?? '—'}</strong></td>
+          <td style="font-family:monospace;font-size:11px">${l.nni ?? '—'}</td>
+          <td>${badge}</td>
+          <td style="font-family:monospace;font-size:11px">${l.cuve ?? '—'}</td>
+          <td style="text-align:right;font-weight:700">${l.qteRetire} ${l.unite ?? 'doses'}</td>
+        </tr>`;
+      }).join('')
+    : commande.articles.map((a, i) => `<tr>
+        <td style="text-align:center;color:#94a3b8">${i + 1}</td>
+        <td><strong>${a.label}</strong></td>
+        <td>—</td><td>—</td><td>—</td>
+        <td style="text-align:right;font-weight:700">${a.qte} ${a.unite}</td>
+      </tr>`).join('');
+
+  const html = `<!DOCTYPE html>
+<html lang="fr"><head><meta charset="UTF-8"><title>${blRef}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#1a1a1a;padding:15mm 18mm}
+.hdr{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:14px;border-bottom:3px solid #1e293b;margin-bottom:20px}
+.logo{font-size:26px;font-weight:900;color:#1e293b;letter-spacing:-1px}.logo span{color:#2563eb}
+.logo-sub{font-size:10px;color:#64748b;margin-top:3px}
+.doc-tag{font-size:9px;font-weight:700;letter-spacing:2px;color:#64748b;text-transform:uppercase;text-align:right}
+.doc-title{font-size:22px;font-weight:900;color:#1e293b;text-align:right;margin:2px 0}
+.doc-ref{font-size:11px;color:#64748b;text-align:right;font-family:monospace}
+.meta{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px}
+.mbox{border:1px solid #e2e8f0;border-radius:8px;padding:12px}
+.mbox h4{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;margin-bottom:6px}
+.mbox p{line-height:1.65}
+table{width:100%;border-collapse:collapse;margin-bottom:22px;font-size:11px}
+thead tr{background:#1e293b;color:#fff}
+thead th{padding:9px 10px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:1px;font-weight:700}
+thead th:last-child{text-align:right}
+tbody tr:nth-child(even){background:#f8fafc}
+tbody td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:middle}
+.tot{background:#1e293b!important;color:#fff!important;font-weight:700;font-size:12px}
+.tot td{color:#fff!important}
+.sig{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-top:22px}
+.sbox{border:1px solid #e2e8f0;border-radius:8px;padding:14px;min-height:90px}
+.sbox h4{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;margin-bottom:3px}
+.sline{border-top:1px solid #cbd5e1;margin-top:52px}
+.ftr{margin-top:18px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:9px;color:#94a3b8;display:flex;justify-content:space-between}
+@media print{body{padding:8mm 10mm}}
+</style></head>
+<body>
+<div class="hdr">
+  <div>
+    <div class="logo">ML<span>APP</span></div>
+    <div class="logo-sub">Gestion du Stock de Semences Bovines</div>
+  </div>
+  <div>
+    <div class="doc-tag">Document officiel</div>
+    <div class="doc-title">BON DE LIVRAISON</div>
+    <div class="doc-ref">${blRef} &nbsp;·&nbsp; ${date}</div>
+  </div>
+</div>
+<div class="meta">
+  <div class="mbox"><h4>Expéditeur</h4><p><strong>MLAPP — Magasin Central</strong></p><p style="font-size:11px;color:#64748b">Stock Central de Semences Bovines</p></div>
+  <div class="mbox"><h4>Destinataire</h4><p><strong>${commande.destinataire}</strong></p>${commande.region ? `<p style="font-size:11px;color:#64748b">${commande.region}</p>` : ''}</div>
+  <div class="mbox"><h4>Transporteur</h4><p><strong>${societe}</strong></p>${matricule ? `<p style="font-size:11px;color:#64748b">Véhicule / Chauffeur : ${matricule}</p>` : ''}</div>
+  <div class="mbox"><h4>Référence Ordre</h4><p><strong style="font-family:monospace">${commande.id}</strong></p><p style="font-size:11px;color:#64748b">${commande.articles.map(a => a.label).join(', ')}</p></div>
+</div>
+<table>
+  <thead><tr>
+    <th>#</th><th>Taureau / Race</th><th>NNI</th><th>Couleur Paillette</th><th>Cuve d'Origine</th><th style="text-align:right">Qté Livrée</th>
+  </tr></thead>
+  <tbody>
+    ${lignesHtml}
+    <tr class="tot"><td colspan="5" style="text-align:right;padding-right:12px;font-size:11px">TOTAL LIVRÉ</td><td style="text-align:right">${totalQte} doses</td></tr>
+  </tbody>
+</table>
+<div class="sig">
+  <div class="sbox"><h4>Magasinier Central</h4><p style="font-size:10px;color:#64748b;margin-top:3px">Nom &amp; Signature</p><div class="sline"></div></div>
+  <div class="sbox"><h4>Chauffeur / Transporteur</h4><p style="font-size:10px;color:#64748b;margin-top:3px">${societe}</p><div class="sline"></div></div>
+  <div class="sbox"><h4>Cachet &amp; Date</h4><p style="font-size:10px;color:#64748b;margin-top:3px">Cachet officiel</p><div class="sline"></div></div>
+</div>
+<div class="ftr">
+  <span>Généré le ${date} · MLAPP v2.0</span>
+  <span>Ce BL engage la responsabilité du transporteur à la signature.</span>
+</div>
+</body></html>`;
+
+  const win = window.open('', '_blank', 'width=960,height=720');
+  if (win) {
+    win.document.write(html);
+    win.document.close();
+    setTimeout(() => { try { win.print(); } catch (_) {} }, 600);
+  }
+}
+
+/* ─── Modale Remise au Transporteur + Génération BL ───── */
 function TransporteurModal({ commande, onClose, onConfirm }) {
-  const [societe,   setSociete]   = useState("");
-  const [matricule, setMatricule] = useState("");
-  const [step,      setStep]      = useState("idle"); // idle | loading | done
+  const [societe,       setSociete]       = useState("");
+  const [matricule,     setMatricule]     = useState("");
+  const [step,          setStep]          = useState("idle"); // idle | loading | done
+  const [blRef,         setBlRef]         = useState(null);
+  const [error,         setError]         = useState(null);
+  const [transporteurs, setTransporteurs] = useState([]);
+
+  useEffect(() => {
+    api.get('/api/transporteurs')
+      .then(res => setTransporteurs(Array.isArray(res) ? res : (res.data ?? [])))
+      .catch(() => {});
+  }, []);
 
   const canConfirm = societe.trim() !== "";
 
-  function handleConfirm() {
+  async function handleConfirm() {
+    if (!canConfirm || step !== "idle") return;
     setStep("loading");
-    setTimeout(() => setStep("done"), 1200);
-    setTimeout(() => { onConfirm(commande.id); onClose(); }, 2600);
+    setError(null);
+    try {
+      const res = await api.put(`/api/ordres/${commande._id}/finaliser-expedition`, { societe, matricule });
+      const ref = res?.blReference ?? `BL-${new Date().getFullYear()}-${String(Date.now()).slice(-5)}`;
+      setBlRef(ref);
+      setStep("done");
+      onConfirm(commande.id);
+    } catch (err) {
+      setError(err.message ?? "Erreur lors de la finalisation de l'expédition.");
+      setStep("idle");
+    }
+  }
+
+  function handlePrintBL() {
+    imprimerBL({
+      commande,
+      societe,
+      matricule,
+      blRef,
+      date: new Date().toLocaleDateString('fr-FR', { weekday:'long', year:'numeric', month:'long', day:'numeric' }),
+    });
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-[1px] flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-[1px] flex items-center justify-center z-50 p-4"
+      onClick={step !== "done" ? onClose : undefined}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}
         style={{ animation:"modalIn .18s ease forwards" }}>
         <style>{`@keyframes modalIn{from{transform:scale(.95);opacity:0}to{transform:scale(1);opacity:1}}`}</style>
@@ -119,96 +253,252 @@ function TransporteurModal({ commande, onClose, onConfirm }) {
         </div>
 
         <div className="px-5 py-5 space-y-4">
+          {step !== "done" ? (
+            <>
+              {/* Récap lots scellés */}
+              {commande.lotsScelles?.length > 0 && (
+                <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-2">Contenu du colis scellé</p>
+                  {commande.lotsScelles.map((l, i) => (
+                    <div key={i} className="flex justify-between items-center py-1 text-xs">
+                      <span className="text-gray-600 truncate">{l.article ?? l.taureau ?? l.numLot ?? '—'}</span>
+                      <span className="font-semibold text-gray-800 shrink-0 ml-2">{l.qteRetire} {l.unite}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
 
-          {/* Récap lots scellés */}
-          <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-2">Contenu du colis scellé</p>
-            {commande.lotsScelles?.map((l, i) => (
-              <div key={i} className="flex justify-between items-center py-1 text-xs">
-                <span className="font-mono text-gray-500">{l.numLot}</span>
-                <span className="font-semibold text-gray-800">{l.qteRetire} {l.unite}</span>
+              {/* Champs traçabilité */}
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                    Société de Transport <span className="text-red-500">*</span>
+                  </label>
+                  <input type="text" list="transporteurs-list" value={societe} onChange={e => setSociete(e.target.value)}
+                    placeholder="Ex : Ghazala, SDTM, Trans-Atlas…"
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 hover:border-gray-300 placeholder:text-gray-300 transition-colors" />
+                  <datalist id="transporteurs-list">
+                    {transporteurs.map(t => (
+                      <option key={t._id ?? t.nom} value={t.nom} />
+                    ))}
+                  </datalist>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                    Matricule véhicule / Nom chauffeur
+                    <span className="ml-1.5 font-normal text-gray-400">(optionnel)</span>
+                  </label>
+                  <input type="text" value={matricule} onChange={e => setMatricule(e.target.value)}
+                    placeholder="Ex : 12345-A-6 / Ahmed Bennani"
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 hover:border-gray-300 placeholder:text-gray-300 transition-colors" />
+                </div>
               </div>
-            ))}
-          </div>
 
-          {/* Champs traçabilité */}
-          <div className="space-y-3">
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-                Société de Transport <span className="text-red-500">*</span>
-              </label>
-              <input type="text" value={societe} onChange={e => setSociete(e.target.value)}
-                placeholder="Ex : Ghazala, SDTM, Trans-Atlas…"
-                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 hover:border-gray-300 placeholder:text-gray-300 transition-colors" />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-                Matricule véhicule / Nom chauffeur
-                <span className="ml-1.5 font-normal text-gray-400">(optionnel)</span>
-              </label>
-              <input type="text" value={matricule} onChange={e => setMatricule(e.target.value)}
-                placeholder="Ex : 12345-A-6 / Ahmed Bennani"
-                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 hover:border-gray-300 placeholder:text-gray-300 transition-colors" />
-            </div>
-          </div>
-
-          {/* Confirmation impression */}
-          {step === "done" && (
-            <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl p-3">
-              <CheckCircle size={13} className="text-emerald-600 shrink-0" />
-              <p className="text-xs text-emerald-700 font-medium">BL généré · Expédition enregistrée dans le système</p>
+              {error && (
+                <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">
+                  <AlertTriangle size={13} className="text-red-500 shrink-0" />
+                  <p className="text-xs text-red-700 font-medium">{error}</p>
+                </div>
+              )}
+            </>
+          ) : (
+            /* ── Confirmation finale ── */
+            <div className="text-center space-y-3 py-2">
+              <div className="flex items-center justify-center">
+                <div className="bg-emerald-100 rounded-full p-4">
+                  <BadgeCheck size={28} className="text-emerald-600" />
+                </div>
+              </div>
+              <div>
+                <p className="text-sm font-bold text-gray-900">Expédition enregistrée !</p>
+                <p className="text-xs text-gray-500 mt-1.5">
+                  Référence BL : <span className="font-mono font-semibold text-gray-700">{blRef}</span>
+                </p>
+                <p className="text-xs text-gray-400 mt-0.5">{societe}{matricule ? ` · ${matricule}` : ''}</p>
+              </div>
             </div>
           )}
         </div>
 
         {/* Pied */}
         <div className="px-5 pb-5 space-y-2">
-          <button onClick={handleConfirm} disabled={!canConfirm || step !== "idle"}
-            className={`w-full flex items-center justify-center gap-2 py-3 text-sm font-bold rounded-xl transition-all
-              ${step === "done"    ? "bg-emerald-500 text-white"
-              : step === "loading" ? "bg-emerald-400 text-white cursor-wait"
-              : canConfirm         ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
-              :                      "bg-gray-100 text-gray-400 cursor-not-allowed"}`}>
-            {step === "done"
-              ? <><BadgeCheck size={15} /> Expédition enregistrée</>
-              : step === "loading"
-                ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Génération du BL…</>
-                : <>🖨️ Imprimer le BL Sécurisé et Expédier</>}
-          </button>
-          {!canConfirm && step === "idle" && (
-            <p className="text-[10px] text-red-500 text-center">Veuillez renseigner la société de transport.</p>
+          {step !== "done" ? (
+            <>
+              <button onClick={handleConfirm} disabled={!canConfirm || step !== "idle"}
+                className={`w-full flex items-center justify-center gap-2 py-3 text-sm font-bold rounded-xl transition-all
+                  ${step === "loading" ? "bg-emerald-400 text-white cursor-wait"
+                  : canConfirm         ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
+                  :                      "bg-gray-100 text-gray-400 cursor-not-allowed"}`}>
+                {step === "loading"
+                  ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Enregistrement…</>
+                  : <>🚚 Valider l'expédition & Générer le BL</>}
+              </button>
+              {!canConfirm && step === "idle" && (
+                <p className="text-[10px] text-red-500 text-center">Veuillez renseigner la société de transport.</p>
+              )}
+              <p className="text-[10px] text-gray-400 text-center leading-relaxed">
+                Le BL sera disponible immédiatement après validation.
+              </p>
+            </>
+          ) : (
+            <>
+              <button onClick={handlePrintBL}
+                className="w-full flex items-center justify-center gap-2 py-3 text-sm font-bold rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition-colors">
+                🖨️ Télécharger / Imprimer le BL
+              </button>
+              <button onClick={onClose}
+                className="w-full flex items-center justify-center py-2.5 text-sm text-gray-500 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">
+                Fermer
+              </button>
+            </>
           )}
-          <p className="text-[10px] text-gray-400 text-center leading-relaxed">
-            Note : La validation finale sera effectuée par la coopérative destinataire à la réception physique du Bon de Livraison.
-          </p>
         </div>
       </div>
     </div>
   );
 }
 
+/* ─── Algorithme de répartition équitable ─────────────── */
+function groupParTaureau(lots) {
+  const map = {};
+  lots.forEach(lot => {
+    const cle = lot.nni || lot.codeNni || lot.taureau || lot.nomTaureau || lot._id || lot.id;
+    if (!map[cle]) map[cle] = {
+      cle,
+      taureau:    lot.taureau    ?? lot.nomTaureau ?? '—',
+      nni:        lot.nni        ?? lot.codeNni    ?? '—',
+      couleur:    lot.couleur    ?? '—',
+      numLot:     lot.numeroLot  ?? lot.id         ?? cle,
+      cuve:       lot.cuve       ?? lot.refCuve    ?? '—',
+      stockDispo: 0,
+      unite:      lot.unite ?? lot.uniteMesure ?? 'doses',
+    };
+    map[cle].stockDispo += Number(lot.quantite ?? lot.qte ?? lot.quantiteRestante ?? 0);
+  });
+  return Object.values(map).filter(t => t.stockDispo > 0);
+}
+
+function calculerRepartition(taureaux, totalQte) {
+  const n = taureaux.length;
+  if (n === 0) return [];
+  const base  = Math.floor(totalQte / n);
+  const reste = totalQte % n; // les `reste` premiers taureaux reçoivent base+1
+  return taureaux.map((t, i) => ({
+    ...t,
+    qteCalculee: i < reste ? base + 1 : base,
+    qteRetire:   i < reste ? base + 1 : base,
+  }));
+}
+
+/* ─── PickingDrawer ────────────────────────────────────── */
 function PickingDrawer({ commande, onClose, onSceller }) {
-  const [scanInput,   setScanInput]   = useState("");
-  const [lotsAjoutes, setLotsAjoutes] = useState([]);
-  const [scanError,   setScanError]   = useState("");
-  const [done,        setDone]        = useState(false);
+  const hasSemence      = commande.articles.some(a => a.type === 'semence');
+  const semenceArticle  = commande.articles.find(a => a.type === 'semence');
+  const totalDemande    = commande.articles.reduce((s, a) => s + a.qte, 0);
+  const totalSemDem     = semenceArticle?.qte ?? 0;
+
+  /* ── État scan (non-semence) ── */
+  const [scanInput,     setScanInput]     = useState("");
+  const [lotsAjoutes,   setLotsAjoutes]   = useState([]);
+  const [scanError,     setScanError]     = useState("");
+  const [lotsDispoScan, setLotsDispoScan] = useState([]);
   const inputRef = useRef(null);
 
-  const totalDemande = commande.articles.reduce((s, a) => s + a.qte, 0);
-  const totalScanne  = lotsAjoutes.reduce((s, l) => s + l.qteRetire, 0);
-  const pct          = totalDemande > 0 ? Math.min((totalScanne / totalDemande) * 100, 100) : 0;
-  const canSceller   = lotsAjoutes.length > 0;
+  /* Chargement des lots disponibles pour le scan (non-semence uniquement) */
+  useEffect(() => {
+    if (hasSemence) return;
+    api.get('/api/lots?limit=200')
+      .then(res => {
+        const raw = Array.isArray(res) ? res : (res.data ?? []);
+        setLotsDispoScan(raw.map(l => ({
+          id:      l.numeroLot  ?? l._id ?? l.id,
+          article: l.article    ?? l.designation ?? l.label ?? '—',
+          qte:     l.quantite   ?? l.qte ?? 0,
+          unite:   l.unite      ?? l.uniteMesure ?? '—',
+          cuve:    l.cuve       ?? l.refCuve     ?? '—',
+        })));
+      })
+      .catch(() => setLotsDispoScan([]));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /* ── État répartition (semence) ── */
+  const [loadingStock, setLoadingStock] = useState(false);
+  const [stockError,   setStockError]   = useState(null);
+  const [lignesRep,    setLignesRep]    = useState([]);
+
+  /* ── Commun ── */
+  const [done, setDone] = useState(false);
+
+  /* Chargement stock au montage si semences */
+  useEffect(() => {
+    if (!hasSemence) return;
+    chargerEtRepartir();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function chargerEtRepartir() {
+    /* Cas 1 : répartition pré-définie par l'Admin Fédéral via les Quotas → utiliser directement */
+    if (commande.repartGenetique?.length > 0) {
+      setLignesRep(commande.repartGenetique.map(g => ({
+        cle:         g.nni || g.taureau || String(Math.random()),
+        taureau:     g.taureau  ?? '—',
+        nni:         g.nni      ?? '—',
+        couleur:     g.couleur  ?? '—',
+        numLot:      '',
+        cuve:        '—',
+        stockDispo:  g.qte,
+        qteCalculee: g.qte,
+        qteRetire:   g.qte,
+        unite:       semenceArticle?.unite ?? 'doses',
+      })));
+      return;
+    }
+
+    /* Cas 2 : calculer automatiquement depuis le stock disponible */
+    setLoadingStock(true);
+    setStockError(null);
+    try {
+      const qs  = semenceArticle?.articleId
+        ? `/api/lots?articleId=${semenceArticle.articleId}&limit=200`
+        : `/api/lots?type=semence&limit=200`;
+      const res  = await api.get(qs);
+      const lots = Array.isArray(res) ? res : (res.data ?? []);
+      const taureaux = groupParTaureau(lots);
+      setLignesRep(calculerRepartition(taureaux, totalSemDem));
+    } catch (err) {
+      setStockError(err.message);
+      setLignesRep([]);
+    } finally {
+      setLoadingStock(false);
+    }
+  }
+
+  function updateQteRep(cle, val) {
+    setLignesRep(p => p.map(l =>
+      l.cle === cle ? { ...l, qteRetire: Math.max(0, Number(val) || 0) } : l
+    ));
+  }
+
+  /* Validations */
+  const totalSaisiRep  = lignesRep.reduce((s, l) => s + (Number(l.qteRetire) || 0), 0);
+  const ecartRep       = totalSemDem - totalSaisiRep;
+  const canScellerRep  = lignesRep.length > 0 && ecartRep === 0;
+
+  const totalScanne    = lotsAjoutes.reduce((s, l) => s + l.qteRetire, 0);
+  const pct            = totalDemande > 0 ? Math.min((totalScanne / totalDemande) * 100, 100) : 0;
+  const canScellerScan = lotsAjoutes.length > 0;
+
+  const canScellerFinal = hasSemence ? canScellerRep : canScellerScan;
+
+  /* Scan */
   function handleScan(e) {
     e.preventDefault();
     const val = scanInput.trim().toUpperCase();
     if (!val) return;
-    const lot = LOTS_DISPO.find(l => l.id === val || l.id.endsWith(val));
-    if (!lot) { setScanError(`Lot "${val}" introuvable.`); return; }
+    const lot = lotsDispoScan.find(l => l.id === val || String(l.id).endsWith(val));
+    if (!lot)  { setScanError(`Lot "${val}" introuvable${lotsDispoScan.length === 0 ? ' (chargement API en cours ou échec)' : ''}.`); return; }
     if (lotsAjoutes.find(l => l.numLot === lot.id)) { setScanError("Ce lot est déjà dans le colis."); return; }
     setScanError("");
-    const resteAFaire = totalDemande - totalScanne;
-    const qteDefaut = Math.min(lot.qte, Math.max(0, resteAFaire));
+    const qteDefaut = Math.min(lot.qte, Math.max(0, totalDemande - totalScanne));
     setLotsAjoutes(p => [...p, { numLot: lot.id, article: lot.article, qteRetire: qteDefaut, qteMax: lot.qte, unite: lot.unite, cuve: lot.cuve }]);
     setScanInput("");
     inputRef.current?.focus();
@@ -216,15 +506,16 @@ function PickingDrawer({ commande, onClose, onSceller }) {
 
   function updateQteLot(numLot, valeur) {
     setLotsAjoutes(p => p.map(l =>
-      l.numLot === numLot
-        ? { ...l, qteRetire: Math.min(Math.max(0, valeur), l.qteMax) }
-        : l
+      l.numLot === numLot ? { ...l, qteRetire: Math.min(Math.max(0, valeur), l.qteMax) } : l
     ));
   }
 
   function handleSceller() {
     setDone(true);
-    setTimeout(() => { onSceller(commande.id, lotsAjoutes); onClose(); }, 900);
+    const lots = hasSemence
+      ? lignesRep.map(l => ({ numLot: l.numLot, article: l.taureau, taureau: l.taureau, nni: l.nni, couleur: l.couleur, qteRetire: Number(l.qteRetire), qteMax: l.stockDispo, unite: l.unite, cuve: l.cuve }))
+      : lotsAjoutes;
+    setTimeout(() => { onSceller(commande.id, lots); onClose(); }, 900);
   }
 
   return (
@@ -234,12 +525,15 @@ function PickingDrawer({ commande, onClose, onSceller }) {
         style={{ animation:"drawerIn .2s cubic-bezier(.32,0,.67,0) forwards" }}>
         <style>{`@keyframes drawerIn{from{transform:translateX(100%)}to{transform:translateX(0)}}`}</style>
 
+        {/* En-tête */}
         <div className="px-5 pt-6 pb-4 border-b border-gray-100 shrink-0">
           <div className="flex items-start justify-between gap-3">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                 <div className="bg-blue-100 p-1.5 rounded-lg shrink-0"><ClipboardList size={13} className="text-blue-600" /></div>
-                <span className="text-xs font-bold text-blue-600 uppercase tracking-widest">Picking — Préparation Colis</span>
+                <span className="text-xs font-bold text-blue-600 uppercase tracking-widest">
+                  {hasSemence ? 'Répartition Génétique — Picking' : 'Picking — Préparation Colis'}
+                </span>
                 <OrigineBadge origine={commande.origine} />
               </div>
               <h2 className="text-sm font-semibold text-gray-900 truncate">{commande.destinataire}</h2>
@@ -249,8 +543,10 @@ function PickingDrawer({ commande, onClose, onSceller }) {
           </div>
         </div>
 
+        {/* Corps */}
         <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
 
+          {/* Bandeau Admin */}
           {commande.origine === "admin" && commande.origineNote && (
             <div className="flex gap-2.5 bg-violet-950 border border-violet-800 rounded-xl px-4 py-3">
               <Zap size={14} className="text-yellow-400 shrink-0 mt-0.5" />
@@ -261,6 +557,7 @@ function PickingDrawer({ commande, onClose, onSceller }) {
             </div>
           )}
 
+          {/* Articles à préparer */}
           <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
             <p className="text-xs font-bold text-blue-800 mb-2.5 uppercase tracking-wide">Articles à préparer</p>
             <div className="space-y-2">
@@ -274,86 +571,340 @@ function PickingDrawer({ commande, onClose, onSceller }) {
             </div>
           </div>
 
-          <div className="bg-white border border-gray-100 rounded-xl p-4">
-            <div className="flex justify-between items-center mb-2">
-              <span className="text-xs font-semibold text-gray-700">Progression du colis</span>
-              <span className={`text-xs font-bold tabular-nums ${pct>=100?"text-emerald-600":"text-blue-600"}`}>{totalScanne} / {totalDemande} unités</span>
-            </div>
-            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-              <div className={`h-full rounded-full transition-all duration-500 ${pct>=100?"bg-emerald-500":"bg-blue-500"}`} style={{width:`${pct}%`}} />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-gray-800 mb-1.5 flex items-center gap-1.5">
-              <Scan size={14} className="text-gray-400" /> Scanner N° de Lot
-            </label>
-            <form onSubmit={handleScan} className="flex gap-2">
-              <div className="relative flex-1">
-                <input ref={inputRef} type="text" value={scanInput} autoFocus
-                  onChange={e => { setScanInput(e.target.value); setScanError(""); }}
-                  placeholder="Ex : LOT-2025-0041 ou 0041"
-                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 pr-10 text-sm font-mono text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 hover:border-gray-300 placeholder:text-gray-300 transition-colors" />
-                <ScanLine size={15} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-300" />
+          {/* ══ Mode répartition génétique ══ */}
+          {hasSemence && (
+            <>
+              {/* Info algorithme — source admin ou automatique */}
+              <div className={`flex gap-2.5 rounded-xl px-4 py-3 border ${commande.repartGenetique?.length > 0 ? 'bg-violet-950 border-violet-800' : 'bg-slate-900 border-slate-700'}`}>
+                <Dna size={14} className={`shrink-0 mt-0.5 ${commande.repartGenetique?.length > 0 ? 'text-violet-300' : 'text-blue-400'}`} />
+                <div>
+                  <p className={`text-xs font-bold mb-0.5 ${commande.repartGenetique?.length > 0 ? 'text-violet-100' : 'text-slate-100'}`}>
+                    {commande.repartGenetique?.length > 0
+                      ? '⚡ Répartition définie par l\'Admin Fédéral'
+                      : 'Répartition équitable automatique'}
+                  </p>
+                  <p className={`text-xs leading-relaxed ${commande.repartGenetique?.length > 0 ? 'text-violet-300' : 'text-slate-400'}`}>
+                    {commande.repartGenetique?.length > 0
+                      ? 'Quantités imposées par la subvention — modifiables en cas de force majeure, le total doit rester exact.'
+                      : 'Doses pré-calculées en parts égales par taureau (NNI) — ajustez si nécessaire, le total doit rester égal à la commande.'}
+                  </p>
+                </div>
               </div>
-              <button type="submit" className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-colors whitespace-nowrap">
-                <Plus size={14} /> Ajouter
-              </button>
-            </form>
-            {scanError && <p className="mt-1.5 text-xs text-red-600 flex items-center gap-1"><AlertTriangle size={11}/> {scanError}</p>}
-            <p className="mt-1 text-[10px] text-gray-400">Scannez le QR ou saisissez les 4 derniers chiffres du N° de lot.</p>
-          </div>
 
-          {lotsAjoutes.length > 0 ? (
-            <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
-                <div className="flex items-center gap-1.5"><PackageCheck size={13} className="text-emerald-500"/><span className="text-sm font-semibold text-gray-800">Lots ajoutés au colis</span></div>
-                <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">{lotsAjoutes.length} lot{lotsAjoutes.length>1?"s":""}</span>
+              {/* Barre de progression */}
+              <div className="bg-white border border-gray-100 rounded-xl p-4">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-xs font-semibold text-gray-700">Total attribué</span>
+                  <span className={`text-xs font-bold tabular-nums ${ecartRep === 0 ? "text-emerald-600" : "text-amber-600"}`}>
+                    {totalSaisiRep.toLocaleString()} / {totalSemDem.toLocaleString()} {semenceArticle?.unite ?? 'doses'}
+                  </span>
+                </div>
+                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${ecartRep === 0 ? "bg-emerald-500" : totalSaisiRep > totalSemDem ? "bg-red-500" : "bg-amber-400"}`}
+                    style={{ width: `${Math.min(totalSemDem > 0 ? (totalSaisiRep / totalSemDem) * 100 : 0, 100)}%` }}
+                  />
+                </div>
+                {ecartRep !== 0 && (
+                  <p className={`mt-1.5 text-xs flex items-center gap-1 font-semibold ${ecartRep > 0 ? "text-amber-600" : "text-red-600"}`}>
+                    <AlertTriangle size={11} />
+                    {ecartRep > 0
+                      ? `Il manque ${ecartRep} dose${ecartRep > 1 ? 's' : ''} — ajustez les quantités`
+                      : `${Math.abs(ecartRep)} dose${Math.abs(ecartRep) > 1 ? 's' : ''} en trop`}
+                  </p>
+                )}
               </div>
-              <div className="divide-y divide-gray-50">
-                {lotsAjoutes.map(lot => (
-                  <div key={lot.numLot} className="flex items-center gap-3 px-4 py-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-mono font-semibold text-gray-700">{lot.numLot}</p>
-                      <p className="text-[10px] text-gray-400 mt-0.5 truncate">{lot.article} · Cuve {lot.cuve}</p>
-                      <p className="text-[9px] text-gray-300 mt-0.5">Stock dispo : {lot.qteMax.toLocaleString()} {lot.unite}</p>
-                    </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <input
-                        type="number"
-                        min={1}
-                        max={lot.qteMax}
-                        value={lot.qteRetire}
-                        onChange={e => updateQteLot(lot.numLot, parseInt(e.target.value, 10) || 0)}
-                        className="w-20 text-right text-sm font-bold text-gray-800 border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-400 tabular-nums"
-                      />
-                      <span className="text-xs text-gray-400">{lot.unite}</span>
-                    </div>
-                    <button onClick={() => setLotsAjoutes(p => p.filter(l => l.numLot !== lot.numLot))}
-                      className="shrink-0 text-gray-300 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-colors"><Trash2 size={12}/></button>
+
+              {/* Chargement */}
+              {loadingStock && (
+                <div className="flex items-center justify-center gap-3 py-8 bg-white rounded-xl border border-gray-100">
+                  <span className="w-5 h-5 border-2 border-blue-200 border-t-blue-500 rounded-full animate-spin" />
+                  <span className="text-sm text-gray-400">Chargement du stock disponible…</span>
+                </div>
+              )}
+
+              {/* Erreur API stock */}
+              {stockError && !loadingStock && (
+                <div className="flex items-center justify-between gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle size={13} className="text-red-500 shrink-0" />
+                    <p className="text-xs text-red-700">{stockError}</p>
                   </div>
-                ))}
+                  <button onClick={chargerEtRepartir}
+                    className="text-xs font-bold text-red-600 hover:underline shrink-0">Réessayer</button>
+                </div>
+              )}
+
+              {/* Tableau de répartition */}
+              {!loadingStock && lignesRep.length > 0 && (
+                <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
+                  <div className="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <Dna size={13} className="text-blue-500" />
+                      <span className="text-xs font-bold text-gray-700">Répartition par Taureau</span>
+                    </div>
+                    <span className="text-[10px] font-semibold text-gray-400 bg-white border border-gray-200 px-2 py-0.5 rounded-full">
+                      {lignesRep.length} taureau{lignesRep.length > 1 ? 'x' : ''}
+                    </span>
+                  </div>
+
+                  {/* En-têtes colonnes */}
+                  <div className="grid grid-cols-[1fr_auto_auto_auto] gap-3 px-4 py-2 bg-gray-50/50 border-b border-gray-100">
+                    {['Taureau / NNI', 'Cuve', 'Stock', 'Qté'].map(h => (
+                      <span key={h} className="text-[10px] font-bold text-gray-400 uppercase tracking-wider last:text-right">{h}</span>
+                    ))}
+                  </div>
+
+                  <div className="divide-y divide-gray-50">
+                    {lignesRep.map((ligne) => {
+                      const estModifie = ligne.qteRetire !== ligne.qteCalculee;
+                      return (
+                        <div key={ligne.cle}
+                          className={`grid grid-cols-[1fr_auto_auto_auto] gap-3 items-center px-4 py-3 transition-colors ${estModifie ? 'bg-amber-50/50' : 'hover:bg-gray-50/60'}`}>
+
+                          {/* Taureau */}
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <p className="text-xs font-semibold text-gray-800 truncate">{ligne.taureau}</p>
+                              {ligne.couleur !== '—' && (
+                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border shrink-0
+                                  ${ligne.couleur === 'Rouge'  ? 'bg-red-50 text-red-700 border-red-200' :
+                                    ligne.couleur === 'Bleu'   ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                    ligne.couleur === 'Vert'   ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                    ligne.couleur === 'Jaune'  ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                                    'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                                  {ligne.couleur}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[10px] text-gray-400 mt-0.5 font-mono">{ligne.nni}</p>
+                          </div>
+
+                          <span className="text-[11px] font-mono text-gray-500 shrink-0">{ligne.cuve}</span>
+                          <span className="text-[11px] text-gray-400 tabular-nums shrink-0">{ligne.stockDispo.toLocaleString()}</span>
+
+                          <div className="flex flex-col items-end gap-0.5 shrink-0">
+                            <input
+                              type="number"
+                              min={0}
+                              max={ligne.stockDispo}
+                              value={ligne.qteRetire}
+                              onChange={e => updateQteRep(ligne.cle, parseInt(e.target.value, 10) || 0)}
+                              className={`w-20 text-right text-sm font-bold border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 tabular-nums transition-colors
+                                ${estModifie
+                                  ? 'border-amber-300 bg-amber-50 text-amber-800 focus:ring-amber-400'
+                                  : 'border-gray-200 text-gray-800 bg-white focus:ring-blue-400'}`}
+                            />
+                            {estModifie && (
+                              <span className="text-[9px] text-amber-500 font-semibold">
+                                calculé : {ligne.qteCalculee}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Pied de tableau — total */}
+                  <div className={`flex items-center justify-between px-4 py-2.5 border-t transition-colors ${ecartRep === 0 ? 'bg-emerald-50 border-emerald-100' : 'bg-amber-50 border-amber-100'}`}>
+                    <span className={`text-xs font-bold ${ecartRep === 0 ? 'text-emerald-700' : 'text-amber-700'}`}>Total</span>
+                    <span className={`text-sm font-bold tabular-nums flex items-center gap-1.5 ${ecartRep === 0 ? 'text-emerald-700' : 'text-amber-700'}`}>
+                      {totalSaisiRep.toLocaleString()} / {totalSemDem.toLocaleString()} {semenceArticle?.unite ?? 'doses'}
+                      {ecartRep === 0 && <CheckCircle size={12} />}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Aucun lot en stock */}
+              {!loadingStock && !stockError && lignesRep.length === 0 && (
+                <div className="border-2 border-dashed border-gray-200 rounded-xl py-8 text-center">
+                  <Dna size={22} className="mx-auto mb-2 text-gray-300" />
+                  <p className="text-xs font-medium text-gray-400">Aucun lot de semences trouvé en stock</p>
+                  <button onClick={chargerEtRepartir} className="mt-2 text-xs text-blue-600 hover:underline font-semibold">
+                    Actualiser le stock
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ══ Mode scan (non-semence) ══ */}
+          {!hasSemence && (
+            <>
+              <div className="bg-white border border-gray-100 rounded-xl p-4">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-xs font-semibold text-gray-700">Progression du colis</span>
+                  <span className={`text-xs font-bold tabular-nums ${pct >= 100 ? "text-emerald-600" : "text-blue-600"}`}>{totalScanne} / {totalDemande} unités</span>
+                </div>
+                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full transition-all duration-500 ${pct >= 100 ? "bg-emerald-500" : "bg-blue-500"}`} style={{ width: `${pct}%` }} />
+                </div>
               </div>
-            </div>
-          ) : (
-            <div className="border-2 border-dashed border-gray-200 rounded-xl py-8 text-center">
-              <Scan size={22} className="mx-auto mb-2 text-gray-300"/>
-              <p className="text-xs font-medium text-gray-400">Aucun lot scanné pour l'instant</p>
-            </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-800 mb-1.5 flex items-center gap-1.5">
+                  <Scan size={14} className="text-gray-400" /> Scanner N° de Lot
+                </label>
+                <form onSubmit={handleScan} className="flex gap-2">
+                  <div className="relative flex-1">
+                    <input ref={inputRef} type="text" value={scanInput} autoFocus
+                      onChange={e => { setScanInput(e.target.value); setScanError(""); }}
+                      placeholder="Ex : LOT-2025-0041 ou 0041"
+                      className="w-full border border-gray-200 rounded-xl px-4 py-2.5 pr-10 text-sm font-mono text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 hover:border-gray-300 placeholder:text-gray-300 transition-colors" />
+                    <ScanLine size={15} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-300" />
+                  </div>
+                  <button type="submit" className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-colors whitespace-nowrap">
+                    <Plus size={14} /> Ajouter
+                  </button>
+                </form>
+                {scanError && <p className="mt-1.5 text-xs text-red-600 flex items-center gap-1"><AlertTriangle size={11}/> {scanError}</p>}
+                <p className="mt-1 text-[10px] text-gray-400">Scannez le QR ou saisissez les 4 derniers chiffres du N° de lot.</p>
+              </div>
+
+              {lotsAjoutes.length > 0 ? (
+                <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
+                  <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
+                    <div className="flex items-center gap-1.5"><PackageCheck size={13} className="text-emerald-500"/><span className="text-sm font-semibold text-gray-800">Lots ajoutés au colis</span></div>
+                    <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">{lotsAjoutes.length} lot{lotsAjoutes.length > 1 ? "s" : ""}</span>
+                  </div>
+                  <div className="divide-y divide-gray-50">
+                    {lotsAjoutes.map(lot => (
+                      <div key={lot.numLot} className="flex items-center gap-3 px-4 py-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-mono font-semibold text-gray-700">{lot.numLot}</p>
+                          <p className="text-[10px] text-gray-400 mt-0.5 truncate">{lot.article} · Cuve {lot.cuve}</p>
+                          <p className="text-[9px] text-gray-300 mt-0.5">Stock dispo : {lot.qteMax.toLocaleString()} {lot.unite}</p>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <input type="number" min={1} max={lot.qteMax} value={lot.qteRetire}
+                            onChange={e => updateQteLot(lot.numLot, parseInt(e.target.value, 10) || 0)}
+                            className="w-20 text-right text-sm font-bold text-gray-800 border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-400 tabular-nums" />
+                          <span className="text-xs text-gray-400">{lot.unite}</span>
+                        </div>
+                        <button onClick={() => setLotsAjoutes(p => p.filter(l => l.numLot !== lot.numLot))}
+                          className="shrink-0 text-gray-300 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-colors"><Trash2 size={12}/></button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="border-2 border-dashed border-gray-200 rounded-xl py-8 text-center">
+                  <Scan size={22} className="mx-auto mb-2 text-gray-300"/>
+                  <p className="text-xs font-medium text-gray-400">Aucun lot scanné pour l'instant</p>
+                </div>
+              )}
+            </>
           )}
         </div>
 
+        {/* Pied */}
         <div className="px-5 py-4 border-t border-gray-100 bg-white shrink-0 space-y-2">
-          {!canSceller && <p className="text-xs text-gray-400 text-center flex items-center justify-center gap-1.5"><AlertTriangle size={11}/> Ajoutez au moins un lot pour sceller le colis.</p>}
+          {hasSemence && ecartRep !== 0 && lignesRep.length > 0 && (
+            <p className="text-xs text-amber-600 text-center flex items-center justify-center gap-1.5 font-semibold">
+              <AlertTriangle size={11}/>
+              Écart de {Math.abs(ecartRep)} dose{Math.abs(ecartRep) > 1 ? 's' : ''} — le total doit être exactement {totalSemDem}.
+            </p>
+          )}
+          {!hasSemence && !canScellerScan && (
+            <p className="text-xs text-gray-400 text-center flex items-center justify-center gap-1.5">
+              <AlertTriangle size={11}/> Ajoutez au moins un lot pour sceller le colis.
+            </p>
+          )}
           <div className="flex gap-2">
             <button onClick={onClose} className="px-4 py-2.5 text-sm text-gray-500 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">Annuler</button>
-            <button onClick={handleSceller} disabled={!canSceller || done}
+            <button onClick={handleSceller} disabled={!canScellerFinal || done}
               className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-bold rounded-xl transition-all
-                ${done?"bg-emerald-500 text-white":canSceller?"bg-amber-500 hover:bg-amber-600 text-white shadow-sm":"bg-gray-100 text-gray-400 cursor-not-allowed"}`}>
-              {done ? <><BadgeCheck size={15}/> Soumis à l'Admin !</> : <><Lock size={14}/> Sceller et soumettre à l'Admin</>}
+                ${done              ? "bg-emerald-500 text-white"
+                : canScellerFinal   ? "bg-amber-500 hover:bg-amber-600 text-white shadow-sm"
+                :                     "bg-gray-100 text-gray-400 cursor-not-allowed"}`}>
+              {done
+                ? <><BadgeCheck size={15}/> Soumis à l'Admin !</>
+                : <><Lock size={14}/> Sceller et soumettre à l'Admin</>}
             </button>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Modale Dérogation OTP ────────────────────────────── */
+function OtpModal({ commande, onClose, onSuccess }) {
+  const [pin,     setPin]     = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState(null);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!pin.trim()) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await api.put(`/api/ordres/${commande._id}/valider-otp`, { pin: pin.trim() });
+      onSuccess(commande.id);
+      onClose();
+    } catch (err) {
+      setError(err.message ?? 'PIN invalide ou expiré. Contactez l\'Administrateur.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-[1px] flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden"
+        onClick={e => e.stopPropagation()} style={{ animation:"modalIn .18s ease forwards" }}>
+        <style>{`@keyframes modalIn{from{transform:scale(.95);opacity:0}to{transform:scale(1);opacity:1}}`}</style>
+
+        <div className="bg-amber-600 px-5 pt-5 pb-4 text-white">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <div className="bg-white/20 p-1.5 rounded-lg"><Key size={14} /></div>
+              <span className="text-xs font-bold uppercase tracking-widest text-amber-100">Dérogation Admin</span>
+            </div>
+            <button onClick={onClose} className="text-white/60 hover:text-white p-1.5 rounded-lg transition-colors"><X size={15} /></button>
+          </div>
+          <h2 className="text-sm font-bold leading-snug">{commande.destinataire}</h2>
+          <span className="font-mono text-xs text-amber-200">#{commande.id}</span>
+        </div>
+
+        <form onSubmit={handleSubmit} className="px-5 py-5 space-y-4">
+          <p className="text-xs text-gray-500 leading-relaxed">
+            Saisissez le PIN de dérogation communiqué par l'Administrateur Fédéral pour débloquer cet ordre directement depuis le quai.
+          </p>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-1.5">PIN de Dérogation</label>
+            <input
+              type="text"
+              value={pin}
+              onChange={e => { setPin(e.target.value); setError(null); }}
+              placeholder="Ex : 482917"
+              maxLength={8}
+              autoFocus
+              className="w-full text-center text-2xl font-mono font-bold tracking-[0.3em] border border-gray-200 rounded-xl px-3 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500 hover:border-gray-300 placeholder:text-gray-200 placeholder:text-base placeholder:tracking-normal transition-colors"
+            />
+          </div>
+
+          {error && (
+            <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">
+              <AlertTriangle size={13} className="text-red-500 shrink-0" />
+              <p className="text-xs text-red-700 font-medium">{error}</p>
+            </div>
+          )}
+
+          <button type="submit" disabled={!pin.trim() || loading}
+            className={`w-full flex items-center justify-center gap-2 py-3 text-sm font-bold rounded-xl transition-all
+              ${loading         ? "bg-amber-400 text-white cursor-wait"
+              : pin.trim()      ? "bg-amber-600 hover:bg-amber-700 text-white shadow-sm"
+              :                   "bg-gray-100 text-gray-400 cursor-not-allowed"}`}>
+            {loading
+              ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Vérification…</>
+              : <><CheckCircle size={15} /> Débloquer l'ordre</>}
+          </button>
+        </form>
       </div>
     </div>
   );
@@ -365,6 +916,7 @@ export default function PreparationsExpeditions() {
   const [apiError,        setApiError]        = useState(null);
   const [pickingCmd,      setPickingCmd]      = useState(null);
   const [transporteurCmd, setTransporteurCmd] = useState(null);
+  const [otpCmd,          setOtpCmd]          = useState(null);
   const [flashId,         setFlashId]         = useState(null);
   const [filtre,          setFiltre]          = useState("tous");
 
@@ -408,15 +960,16 @@ export default function PreparationsExpeditions() {
     }
   }
 
-  /* ─ Expédier : optimistic update + PUT API ───────────── */
-  async function handleExpedition(id) {
+  /* ─ Déblocage OTP : passe à Validé → affiche "Remise Transporteur" ─ */
+  function handleOtpSuccess(id) {
+    setCommandes(p => p.map(c => c.id === id ? { ...c, statut: "approuve" } : c));
+    flash(id);
+  }
+
+  /* ─ Expédier : MAJ locale (API déjà appelée par TransporteurModal) ─ */
+  function handleExpedition(id) {
     setCommandes(p => p.map(c => c.id === id ? { ...c, statut: "expedie" } : c));
     flash(id);
-    const target = commandes.find(c => c.id === id);
-    if (target?._id) {
-      try { await api.put(`/api/transactions/${target._id}/statut`, { statut: 'Expédié' }); }
-      catch { /* rollback silencieux — l'UI reste cohérente */ }
-    }
   }
 
   const actives = commandes.filter(c => {
@@ -437,6 +990,7 @@ export default function PreparationsExpeditions() {
     <div className="min-h-screen bg-gray-50 font-sans">
       {pickingCmd      && <PickingDrawer commande={pickingCmd} onClose={() => setPickingCmd(null)} onSceller={handleSceller} />}
       {transporteurCmd && <TransporteurModal commande={transporteurCmd} onClose={() => setTransporteurCmd(null)} onConfirm={handleExpedition} />}
+      {otpCmd          && <OtpModal commande={otpCmd} onClose={() => setOtpCmd(null)} onSuccess={handleOtpSuccess} />}
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
 
@@ -567,9 +1121,11 @@ export default function PreparationsExpeditions() {
                             </button>
                           )}
                           {cmd.statut === "en_attente_admin" && (
-                            <span className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed whitespace-nowrap">
-                              <Lock size={11}/> En attente Admin
-                            </span>
+                            <button onClick={() => setOtpCmd(cmd)}
+                              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 transition-colors whitespace-nowrap"
+                              title="Saisir le PIN de dérogation Admin">
+                              <Key size={11}/> En attente Admin
+                            </button>
                           )}
                           {cmd.statut === "approuve" && (
                             <button onClick={() => setTransporteurCmd(cmd)}

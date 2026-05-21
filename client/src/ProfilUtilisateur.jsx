@@ -142,7 +142,7 @@ export default function ProfilUtilisateur({ dark, onToggleDark }) {
           <h2 className="text-sm font-bold text-slate-800 dark:text-white">Préférences & Affichage</h2>
         </div>
         <div className="space-y-5">
-          {/* Thème */}
+          {/* Thème de l'interface — désactivé pour les tests V1
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Thème de l'interface</p>
@@ -157,10 +157,10 @@ export default function ProfilUtilisateur({ dark, onToggleDark }) {
               </button>
             </div>
           </div>
-
           <div className="border-t border-slate-100 dark:border-slate-700"/>
+          */}
 
-          {/* Langue */}
+          {/* Langue de l'interface — désactivée pour les tests V1
           <div className="flex items-center justify-between gap-4">
             <div>
               <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Langue de l'interface</p>
@@ -174,8 +174,8 @@ export default function ProfilUtilisateur({ dark, onToggleDark }) {
               <ChevronRight size={11} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none rotate-90"/>
             </div>
           </div>
-
           <div className="border-t border-slate-100 dark:border-slate-700"/>
+          */}
 
           {/* Notifs */}
           <div className="flex items-center justify-between gap-4">

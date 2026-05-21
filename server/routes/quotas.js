@@ -1,10 +1,12 @@
 const express     = require('express');
 const router      = express.Router();
 const { protect, authorize } = require('../middleware/authMiddleware');
-const Dotation    = require('../models/Dotation');
-const Campagne    = require('../models/Campagne');
-const Cooperative = require('../models/Cooperative');
-const Article     = require('../models/Article');
+const Dotation     = require('../models/Dotation');
+const Campagne     = require('../models/Campagne');
+const Cooperative  = require('../models/Cooperative');
+const Article      = require('../models/Article');
+const Transaction  = require('../models/Transaction');
+const Unite        = require('../models/Unite');
 
 const ADMIN_ROLES   = ['ADMIN_FEDERAL', 'ADMIN'];
 const ALLOWED_ROLES = [...ADMIN_ROLES, 'MAGASINIER'];
@@ -175,11 +177,63 @@ router.post('/', protect, authorize(...ADMIN_ROLES), async (req, res) => {
       dotationsCreees.push(dotation._id);
     }
 
+    /* 4. Créer les Ordres d'Expédition (ORDRE_ADMIN) pour le Magasinier ─
+       Un ordre par coopérative, avec la répartition génétique pré-calculée.
+       Uniquement pour les campagnes de type semence.
+    ─────────────────────────────────────────────────────────────────────── */
+    const ordresCreees = [];
+    if (meta.typeCampagne === 'semence') {
+      for (const ligne of lignes) {
+        if (!ligne.alloue || ligne.alloue <= 0) continue;
+
+        /* Recherche de l'Unite correspondant à la coopérative (correspondance nom) */
+        const escapedNom = ligne.cooperative.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const unite = await Unite.findOne({
+          nom:   { $regex: new RegExp(escapedNom, 'i') },
+          actif: true,
+        });
+
+        if (!unite) {
+          console.warn(`[Quotas] Unite introuvable pour "${ligne.cooperative}" — ordre non créé`);
+          continue;
+        }
+
+        try {
+          const reference = await Transaction.generateReference();
+          const tx = await Transaction.create({
+            reference,
+            type:           'ORDRE_ADMIN',
+            statut:         'Brouillon',
+            motif:          `Subvention — ${campagne.nom} · ${ligne.alloue} doses`,
+            uniteCible:     unite._id,
+            initiatedBy:    req.user._id,
+            lignes: [{
+              article:  articleDoc._id,
+              quantite: Number(ligne.alloue),
+            }],
+            repartGenetique: Array.isArray(ligne.repartGenetique)
+              ? ligne.repartGenetique.map(g => ({
+                  taureau: g.taureau ?? '',
+                  nni:     g.nni     ?? '',
+                  couleur: g.couleur ?? '',
+                  qte:     Number(g.qte) || 0,
+                }))
+              : [],
+          });
+          ordresCreees.push(tx.reference);
+        } catch (txErr) {
+          console.warn(`[Quotas] Ordre non créé pour "${ligne.cooperative}" :`, txErr.message);
+        }
+      }
+    }
+
     return res.status(201).json({
-      message:           `Campagne "${campagne.nom}" créée avec ${dotationsCreees.length} dotation(s).`,
-      campagneId:        campagne._id,
-      periode:           campagne.periode,
-      dotationsCreees:   dotationsCreees.length,
+      message:         `Campagne "${campagne.nom}" créée avec ${dotationsCreees.length} dotation(s) et ${ordresCreees.length} ordre(s) d'expédition.`,
+      campagneId:      campagne._id,
+      periode:         campagne.periode,
+      dotationsCreees: dotationsCreees.length,
+      ordresCreees:    ordresCreees.length,
+      references:      ordresCreees,
     });
 
   } catch (err) {

@@ -77,6 +77,8 @@ function dateRelative(ds) {
 const labelCls  = "text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 block";
 const inputCls  = "w-full bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all appearance-none";
 
+const COULEURS_PAILLETTE = ['Rouge', 'Jaune', 'Vert', 'Bleu', 'Rose', 'Orange', 'Blanc', 'Noir'];
+
 /* ─── Modal Nouvelle Commande (Admin Fédéral) ───────────── */
 function ModalNouvelleCommande({ onClose, onAjouter }) {
   /* ── Listes dynamiques ── */
@@ -107,6 +109,16 @@ function ModalNouvelleCommande({ onClose, onAjouter }) {
   const articleType    = articleObj ? (CAT_TO_TYPE[articleObj.categorie] ?? 'materiel') : null;
   const valid          = fournisseurId && articleId && Number(qte) > 0 && dateArrivee;
 
+  /* ── Fiche Technique Cuve — visible si type = semence ── */
+  const [ficheTechnique, setFicheTechnique] = useState([]);
+  const ficheTotal = ficheTechnique.reduce((s, r) => s + (Number(r.quantite) || 0), 0);
+  const addFicheLigne    = () => setFicheTechnique(p => [...p, { taureau: '', nni: '', couleur: 'Rouge', quantite: '' }]);
+  const removeFicheLigne = (i) => setFicheTechnique(p => p.filter((_, idx) => idx !== i));
+  const updateFicheLigne = (i, key, val) =>
+    setFicheTechnique(p => p.map((r, idx) => idx === i ? { ...r, [key]: val } : r));
+
+  useEffect(() => { setFicheTechnique([]); }, [articleId]);
+
   /* Catégories uniques pour les optgroups */
   const categoriesUniques = [...new Set(articles.map(a => a.categorie))].sort();
 
@@ -130,6 +142,14 @@ function ModalNouvelleCommande({ onClose, onAjouter }) {
           qte:       Number(qte),
           unite:     articleObj.uniteMesure,
           type:      articleType ?? 'materiel',
+          ...(articleType === 'semence' && ficheTechnique.length > 0 ? {
+            ficheTechnique: ficheTechnique.map(r => ({
+              taureau:  r.taureau,
+              nni:      r.nni,
+              couleur:  r.couleur,
+              quantite: Number(r.quantite) || 0,
+            })),
+          } : {}),
         }],
         dateArriveePrevu: dateArrivee || null,
         lieuStockage:     LIEU_STOCKAGE_DEFAUT,
@@ -143,10 +163,10 @@ function ModalNouvelleCommande({ onClose, onAjouter }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl w-full max-w-lg">
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
 
         {/* En-tête */}
-        <div className="flex items-start justify-between gap-4 px-6 pt-5 pb-4 border-b border-slate-800">
+        <div className="flex items-start justify-between gap-4 px-6 pt-5 pb-4 border-b border-slate-800 shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center shrink-0">
               <PlusCircle size={18} className="text-emerald-400" />
@@ -162,7 +182,7 @@ function ModalNouvelleCommande({ onClose, onAjouter }) {
         </div>
 
         {/* Formulaire */}
-        <div className="px-6 py-5 space-y-5">
+        <div className="px-6 py-5 space-y-5 overflow-y-auto flex-1">
 
           {/* Erreurs */}
           {(listError || submitError) && (
@@ -247,6 +267,87 @@ function ModalNouvelleCommande({ onClose, onAjouter }) {
             </div>
           </div>
 
+          {/* ── Fiche Technique Cuve (semences uniquement) ── */}
+          {articleType === 'semence' && (
+            <div className="border border-slate-700 rounded-xl overflow-hidden">
+
+              {/* En-tête */}
+              <div className="flex items-center justify-between px-4 py-2.5 bg-slate-800 border-b border-slate-700">
+                <div className="flex items-center gap-2">
+                  <Dna size={13} className="text-blue-400" />
+                  <p className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">Fiche Technique de la Cuve</p>
+                </div>
+                <button type="button" onClick={addFicheLigne}
+                  className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-400 hover:text-emerald-300 transition-colors">
+                  <PlusCircle size={12} /> Ajouter un taureau
+                </button>
+              </div>
+
+              {/* Indicateur de concordance des totaux */}
+              {Number(qte) > 0 && ficheTechnique.length > 0 && (
+                <div className={`px-4 py-1.5 text-[11px] font-semibold flex items-center justify-between border-b border-slate-700
+                  ${ficheTotal === Number(qte) ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'}`}>
+                  <span>Total paillettes saisies</span>
+                  <span className="font-mono">{ficheTotal} / {Number(qte).toLocaleString()} doses</span>
+                </div>
+              )}
+
+              {/* Lignes de la fiche */}
+              <div className="divide-y divide-slate-700/50 max-h-52 overflow-y-auto">
+                {ficheTechnique.length === 0 ? (
+                  <p className="px-4 py-4 text-xs text-slate-500 text-center italic">
+                    Aucun taureau — cliquez «&nbsp;Ajouter&nbsp;» pour renseigner la cuve.
+                  </p>
+                ) : ficheTechnique.map((row, i) => (
+                  <div key={i} className="px-4 py-3 space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        value={row.taureau}
+                        onChange={e => updateFicheLigne(i, 'taureau', e.target.value)}
+                        placeholder="Nom du Taureau"
+                        className={inputCls}
+                      />
+                      <input
+                        value={row.nni}
+                        onChange={e => updateFicheLigne(i, 'nni', e.target.value)}
+                        placeholder="Code NNI / Race"
+                        className={inputCls}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="relative flex-1">
+                        <select
+                          value={row.couleur}
+                          onChange={e => updateFicheLigne(i, 'couleur', e.target.value)}
+                          className={inputCls}
+                        >
+                          {COULEURS_PAILLETTE.map(c => (
+                            <option key={c} value={c} className="bg-slate-800">{c}</option>
+                          ))}
+                        </select>
+                        <ChevronDown size={11} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                      </div>
+                      <input
+                        type="number" min="1"
+                        value={row.quantite}
+                        onChange={e => updateFicheLigne(i, 'quantite', e.target.value)}
+                        placeholder="Qté"
+                        className="w-20 shrink-0 bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all text-right font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeFicheLigne(i)}
+                        className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-500 hover:bg-red-500/20 hover:text-red-400 border border-transparent hover:border-red-500/30 transition-all shrink-0"
+                      >
+                        <X size={13} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Lieu de stockage — lecture seule */}
           <div>
             <label className={labelCls}>Lieu de stockage</label>
@@ -276,7 +377,7 @@ function ModalNouvelleCommande({ onClose, onAjouter }) {
         )}
 
         {/* Actions */}
-        <div className="px-6 pb-5 flex gap-2.5">
+        <div className="px-6 pb-5 pt-3 flex gap-2.5 shrink-0 border-t border-slate-800">
           <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-slate-700 text-slate-400 text-xs font-semibold hover:bg-slate-800 transition-all">
             Annuler
           </button>

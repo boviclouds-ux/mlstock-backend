@@ -53,6 +53,7 @@ require('./models/Transporteur');
 require('./models/Approvisionnement');
 require('./models/Dotation');
 require('./models/Transaction');
+require('./models/Otp');
 
 const authRoutes         = require('./routes/auth');
 const uniteRoutes        = require('./routes/unites');
@@ -66,6 +67,7 @@ const approvisionnementRoutes = require('./routes/approvisionnements');
 const usersRoutes            = require('./routes/users');
 const dashboardRoutes    = require('./routes/dashboard');
 const quotasRoutes       = require('./routes/quotas');
+const validationsRoutes  = require('./routes/validations');
 
 app.get('/api/status', (req, res) => {
   res.json({ status: 'ok', message: 'API MLstock opérationnelle', version: '2.0' });
@@ -83,6 +85,7 @@ app.use('/api/approvisionnements', approvisionnementRoutes);
 app.use('/api/users',              usersRoutes);
 app.use('/api/dashboard',    dashboardRoutes);
 app.use('/api/quotas',       quotasRoutes);
+app.use('/api',             validationsRoutes); // /api/otp/generate · /api/ordres/:id/valider-*
 
 const PORT = process.env.PORT || 5000;
 
