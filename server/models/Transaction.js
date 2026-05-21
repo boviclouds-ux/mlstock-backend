@@ -42,7 +42,7 @@ const transactionSchema = new mongoose.Schema(
     statut: {
       type:    String,
       enum: {
-        values:  ['Brouillon', 'En attente', 'Validé', 'Expédié', 'Réceptionné', 'Rejeté'],
+        values:  ['Brouillon', 'En attente', 'Validé', 'En_transit', 'Expedie', 'Livre', 'Expédié', 'Réceptionné', 'Rejeté'],
         message: 'Statut invalide : {VALUE}',
       },
       default: 'Brouillon',
@@ -85,6 +85,7 @@ const transactionSchema = new mongoose.Schema(
         taureau: { type: String, trim: true, default: '' },
         nni:     { type: String, trim: true, default: '' },
         couleur: { type: String, trim: true, default: '' },
+        cuve:    { type: String, trim: true, default: '' },
         qte:     { type: Number, default: 0 },
       }],
       default: [],
@@ -95,6 +96,14 @@ const transactionSchema = new mongoose.Schema(
       matricule: { type: String, trim: true, default: '' },
     },
     blReference: { type: String, trim: true, default: null },
+
+    // Validation de réception par le Responsable Régional
+    receptionRegionale: {
+      conformite:     { type: Boolean, default: null },
+      commentaire:    { type: String,  trim: true, default: '' },
+      validePar:      { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+      dateValidation: { type: Date, default: null },
+    },
   },
   {
     timestamps: true,

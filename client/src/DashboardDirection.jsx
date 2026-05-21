@@ -160,7 +160,7 @@ export default function DashboardDirection() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
         <div>
-          <p className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest mb-1">MLAPP · Admin Fédéral</p>
+          <p className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest mb-1">MLStock · Admin Fédéral</p>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white leading-tight">Vue d'ensemble Nationale</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">{today.charAt(0).toUpperCase()+today.slice(1)}</p>
         </div>
@@ -346,7 +346,7 @@ export default function DashboardDirection() {
               <Activity size={14} className="text-slate-400"/>
               <div>
                 <h2 className="text-sm font-bold text-slate-800 dark:text-white">Activité Logistique en Direct</h2>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Dernières actions MLAPP</p>
+                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Dernières actions MLStock</p>
               </div>
             </div>
             <span className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">

@@ -216,6 +216,7 @@ router.post('/', protect, authorize(...ADMIN_ROLES), async (req, res) => {
                   taureau: g.taureau ?? '',
                   nni:     g.nni     ?? '',
                   couleur: g.couleur ?? '',
+                  cuve:    g.cuve    ?? '',
                   qte:     Number(g.qte) || 0,
                 }))
               : [],

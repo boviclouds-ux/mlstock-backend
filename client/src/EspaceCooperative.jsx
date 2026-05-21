@@ -27,7 +27,7 @@ function fromApiToReception(t) {
     })),
     transporteur:  '—',
     matricule:     '—',
-    statut:        t.statut === 'Réceptionné' ? 'receptionne' : 'en_transit',
+    statut:        ['Réceptionné', 'Expedie'].includes(t.statut) ? 'receptionne' : 'en_transit',
     conformite:    null,
     ficheTechnique: null,
   };
@@ -319,8 +319,8 @@ export default function EspaceCooperative({ user }){
     setLoadingReceptions(true);
     try {
       const res = await api.get(
-        "/api/transactions?statut=Expédi%C3%A9%2CR%C3%A9ceptionn%C3%A9&limit=100"
-        // décodé : ?statut=Expédié,Réceptionné
+        "/api/transactions?statut=En_transit%2CExpédie%2CRéceptionné&limit=100"
+        // décodé : ?statut=En_transit,Expedie,Réceptionné
       );
       const list = Array.isArray(res) ? res : (res.data ?? []);
       setReceptions(

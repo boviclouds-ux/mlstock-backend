@@ -3,6 +3,7 @@ const router      = express.Router();
 const { protect, authorize } = require('../middleware/authMiddleware');
 const Otp         = require('../models/Otp');
 const Transaction = require('../models/Transaction');
+const Lot         = require('../models/Lot');
 
 const ADMIN_ROLES    = ['ADMIN_FEDERAL', 'ADMIN'];
 const MAGASINIER_PLUS = [...ADMIN_ROLES, 'MAGASINIER'];
@@ -134,7 +135,7 @@ router.put('/ordres/:id/finaliser-expedition', protect, authorize(...MAGASINIER_
   }
 
   try {
-    const tx = await Transaction.findById(req.params.id).select('statut');
+    const tx = await Transaction.findById(req.params.id).select('statut repartGenetique');
     if (!tx) return res.status(404).json({ message: 'Ordre introuvable.' });
 
     if (tx.statut !== 'Validé') {
@@ -149,7 +150,7 @@ router.put('/ordres/:id/finaliser-expedition', protect, authorize(...MAGASINIER_
       req.params.id,
       {
         $set: {
-          statut:                  'Expédié',
+          statut:                  'En_transit',
           blReference,
           'transporteur.societe':   societe.trim(),
           'transporteur.matricule': (matricule ?? '').trim(),
@@ -158,10 +159,76 @@ router.put('/ordres/:id/finaliser-expedition', protect, authorize(...MAGASINIER_
       { new: true, runValidators: true }
     ).populate(POPULATE_STD);
 
+    // Décrémentation du stock semences — une seule exécution garantie par la guard statut !== 'Validé'
+    if (tx.repartGenetique?.length > 0) {
+      for (const item of tx.repartGenetique) {
+        // $elemMatch garantit que nni ET cuve appartiennent au même sous-document
+        const lotUpdated = await Lot.findOneAndUpdate(
+          { ficheTechnique: { $elemMatch: { nni: item.nni, cuve: item.cuve } } },
+          { $inc: { 'ficheTechnique.$.qte': -item.qte } },
+          { new: true }
+        );
+
+        if (!lotUpdated) {
+          console.error('[Expédition] Lot introuvable pour décrémentation :', item);
+          continue;
+        }
+
+        // Recalcul du total disponible après confirmation de l'écriture atomique
+        const newTotal = lotUpdated.ficheTechnique.reduce((s, f) => s + (f.qte || 0), 0);
+        await Lot.findByIdAndUpdate(lotUpdated._id, { $set: { qteDisponible: newTotal } });
+      }
+    }
+
     return res.status(200).json(updated);
   } catch (err) {
     console.error('[PUT /api/ordres/:id/finaliser-expedition]', err.message);
     return res.status(500).json({ message: "Erreur serveur lors de la finalisation de l'expédition." });
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════
+   PUT /api/ordres/:id/reception-regionale
+   Corps : { conformite (Boolean), commentaire (String) }
+   Valide la réception de l'ordre par le Responsable Régional.
+   L'ordre doit être en statut 'En_transit'.
+   Passe définitivement le statut à 'Expedie'.
+═══════════════════════════════════════════════════════════ */
+router.put('/ordres/:id/reception-regionale', protect, authorize(...ADMIN_ROLES), async (req, res) => {
+  const { conformite, commentaire } = req.body ?? {};
+
+  if (typeof conformite !== 'boolean') {
+    return res.status(400).json({ message: 'Le champ "conformite" (boolean) est requis.' });
+  }
+
+  try {
+    const tx = await Transaction.findById(req.params.id).select('statut');
+    if (!tx) return res.status(404).json({ message: 'Ordre introuvable.' });
+
+    if (tx.statut !== 'En_transit') {
+      return res.status(422).json({
+        message: `Réception impossible : statut actuel "${tx.statut}". L'ordre doit être "En_transit".`,
+      });
+    }
+
+    const updated = await Transaction.findByIdAndUpdate(
+      req.params.id,
+      {
+        $set: {
+          statut:                                 'Expedie',
+          'receptionRegionale.conformite':        conformite,
+          'receptionRegionale.commentaire':       (commentaire ?? '').trim(),
+          'receptionRegionale.validePar':         req.user._id,
+          'receptionRegionale.dateValidation':    new Date(),
+        },
+      },
+      { new: true, runValidators: true }
+    ).populate(POPULATE_STD);
+
+    return res.status(200).json(updated);
+  } catch (err) {
+    console.error('[PUT /api/ordres/:id/reception-regionale]', err.message);
+    return res.status(500).json({ message: 'Erreur serveur lors de la réception régionale.' });
   }
 });
 

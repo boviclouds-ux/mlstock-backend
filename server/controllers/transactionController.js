@@ -6,9 +6,12 @@ const Unite       = require('../models/Unite');
 /* ─── Transitions de statut autorisées ─────────────────── */
 const TRANSITIONS = {
   'Brouillon':   ['En attente', 'Rejeté'],
-  'En attente':  ['Validé', 'Expédié', 'Rejeté'],
-  'Validé':      ['Expédié'],
-  'Expédié':     ['Réceptionné'],
+  'En attente':  ['Validé', 'Rejeté'],
+  'Validé':      ['En_transit'],
+  'En_transit':  ['Expedie', 'Réceptionné'],
+  'Expedie':     ['Réceptionné'],
+  'Livre':       [],
+  'Expédié':     ['Réceptionné'],   // rétrocompat données existantes
   'Réceptionné': [],
   'Rejeté':      [],
 };
@@ -33,7 +36,9 @@ function validationMessage(err) {
 ─────────────────────────────────────────────────────────────── */
 async function resolveUniteId(entite) {
   if (!entite) return null;
-  const unite = await Unite.findOne({ nom: entite, actif: true }).select('_id').lean();
+  const unite = await Unite.findOne(
+    { nom: { $regex: new RegExp(`^${entite}$`, 'i') }, actif: true }
+  ).select('_id').lean();
   return unite?._id ?? null;
 }
 
@@ -228,9 +233,14 @@ const updateTransactionStatut = async (req, res) => {
       });
     }
 
+    const updateData = { statut };
+    if (statut === 'En attente' && Array.isArray(req.body.repartGenetique) && req.body.repartGenetique.length > 0) {
+      updateData.repartGenetique = req.body.repartGenetique;
+    }
+
     const transaction = await Transaction.findByIdAndUpdate(
       req.params.id,
-      { statut },
+      updateData,
       { new: true, runValidators: true }
     ).populate(POPULATE_STD);
 

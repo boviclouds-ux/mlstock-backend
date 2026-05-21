@@ -3,7 +3,7 @@ import logoImg from '../assets/logo.png';
 import {
   LayoutDashboard, Package, Truck, Inbox, ClipboardList, Send,
   Scale, Zap, ShieldCheck, FileText, Tags, Network, Users, Settings,
-  User, LogOut, Shield,
+  User, LogOut, Shield, MapPinCheck,
 } from 'lucide-react';
 
 /* ─── Constantes de rôle — doivent correspondre exactement aux valeurs JWT ── */
@@ -35,10 +35,11 @@ const NAV_GROUPS = [
   ],
   // Bloc 4 : Pilotage & Contrôle
   [
-    { label: 'Gestion des Quotas', path: '/quotas',       icon: Scale,       roles: [ADMIN_FEDERAL, ADMIN] },
-    { label: 'Ordres Admin',       path: '/ordres-admin', icon: Zap,         roles: [ADMIN_FEDERAL, ADMIN] },
-    { label: 'Validations & OTP',  path: '/validations',  icon: ShieldCheck, roles: [ADMIN_FEDERAL, ADMIN] },
-    { label: 'Traçabilité',        path: '/tracabilite',  icon: FileText,    roles: [ADMIN_FEDERAL, ADMIN] },
+    { label: 'Gestion des Quotas',    path: '/quotas',       icon: Scale,        roles: [ADMIN_FEDERAL, ADMIN] },
+    { label: 'Ordres Admin',          path: '/ordres-admin', icon: Zap,          roles: [ADMIN_FEDERAL, ADMIN] },
+    { label: 'Validations & OTP',     path: '/validations',  icon: ShieldCheck,  roles: [ADMIN_FEDERAL, ADMIN] },
+    { label: 'Réception Régionale',   path: '/regional',     icon: MapPinCheck,  roles: [ADMIN_FEDERAL, ADMIN] },
+    { label: 'Traçabilité',           path: '/tracabilite',  icon: FileText,     roles: [ADMIN_FEDERAL, ADMIN] },
   ],
   // Bloc 5 : Administration
   [
