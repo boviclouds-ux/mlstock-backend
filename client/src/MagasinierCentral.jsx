@@ -37,6 +37,12 @@ const STATUT_UI = {
 };
 function statutExp(s) { return STATUT_UI[s] ?? { label: s, bg:'bg-gray-50', text:'text-gray-500', border:'border-gray-200', dot:'bg-gray-400' }; }
 
+/* Pastille couleur paillette → hex saturé pour le dot */
+const COULEUR_SPOT = {
+  Rouge: '#EF4444', Jaune: '#EAB308', Vert: '#22C55E', Bleu: '#3B82F6',
+  Rose: '#EC4899', Orange: '#F97316', Blanc: '#e2e8f0', Noir: '#1e293b',
+};
+
 /* ─── Carte Cuve ────────────────────────────────────── */
 function CuveCard({ cuve, onEdit, isAdmin }) {
   const pct     = Math.min(Math.round(((cuve.niveauActuel ?? 0) / (cuve.capacite || 1)) * 100), 100);
@@ -622,23 +628,25 @@ export default function MagasinierCentral({ userRole = null }) {
                             <span className="ml-1.5 text-[9px] text-gray-300 font-mono tabular-nums">{ftIdx + 1}/{lot.ficheTechnique.length}</span>
                           </td>
                           <td className="px-4 py-2.5">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              {typeIcon(lot.type)}
-                              <span className="text-xs text-gray-700">{lot.article}</span>
-                              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border shrink-0
-                                ${ft.couleur === 'Rouge'  ? 'bg-red-50 text-red-700 border-red-200' :
-                                  ft.couleur === 'Bleu'   ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                                  ft.couleur === 'Vert'   ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                  ft.couleur === 'Jaune'  ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
-                                  'bg-gray-100 text-gray-600 border-gray-200'}`}>
-                                {ft.taureau || ft.nni || '—'}
-                              </span>
+                            <div>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {typeIcon(lot.type)}
+                                <span className="text-xs text-gray-700">{lot.article}</span>
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border shrink-0 bg-white border-gray-200">
+                                  <span className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm"
+                                    style={{ backgroundColor: COULEUR_SPOT[ft.couleur] ?? '#94a3b8' }} />
+                                  <span className="text-[9px] font-bold text-gray-700">{ft.taureau || ft.nni || '—'}</span>
+                                </span>
+                              </div>
+                              {ft.nni && ft.nni !== '—' && (
+                                <p className="text-[9px] text-gray-400 mt-0.5 font-mono">{ft.nni}</p>
+                              )}
                             </div>
                           </td>
                           <td className="px-4 py-2.5">
                             <div className="flex items-center gap-1 text-xs text-gray-500">
-                              <MapPin size={10} className="text-gray-300 shrink-0"/>
-                              {ft.refLot ? `Cuve ${ft.refLot}` : lot.cuve !== '—' ? lot.cuve : '—'}
+                              <span className="shrink-0 text-[11px]">📍</span>
+                              <span>Magasin Central{(ft.cuve && ft.cuve !== '—') ? ` • ${ft.cuve}` : ft.refLot ? ` • ${ft.refLot}` : lot.cuve !== '—' ? ` • ${lot.cuve}` : ''}</span>
                             </div>
                           </td>
                           <td className="px-4 py-2.5"><span className="text-sm font-bold text-gray-800 tabular-nums">{(ft.qte ?? 0).toLocaleString()}</span></td>
@@ -651,7 +659,7 @@ export default function MagasinierCentral({ userRole = null }) {
                       <tr key={lot.id} className={`hover:bg-gray-50/60 transition-colors ${pm.urgent ? 'bg-red-50/20' : ''}`}>
                         <td className="px-4 py-3"><span className="text-xs font-mono font-semibold text-gray-600">{lot.id}</span></td>
                         <td className="px-4 py-3"><div className="flex items-center gap-1.5">{typeIcon(lot.type)}<span className="text-xs text-gray-700">{lot.article}</span></div></td>
-                        <td className="px-4 py-3"><div className="flex items-center gap-1 text-xs text-gray-500"><MapPin size={10} className="text-gray-300 shrink-0"/>{lot.cuve !== '—' ? `${lot.cuve} · ` : ''}{lot.rack}</div></td>
+                        <td className="px-4 py-3"><div className="flex items-center gap-1 text-xs text-gray-500"><span className="shrink-0 text-[11px]">📍</span><span>Magasin Central{lot.cuve !== '—' ? ` • ${lot.cuve}` : ''}</span></div></td>
                         <td className="px-4 py-3"><span className="text-sm font-bold text-gray-800 tabular-nums">{lot.qte.toLocaleString()}</span></td>
                         <td className="px-4 py-3">{peremCell}</td>
                       </tr>
