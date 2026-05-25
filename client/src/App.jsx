@@ -33,44 +33,61 @@ import ResponsableRegional          from './ResponsableRegional.jsx';
    Mappe l'utilisateur renvoyé par le JWT vers la forme
    attendue par la Sidebar et les composants.
 ═══════════════════════════════════════════════════════════ */
+/* ─── Dérivation roleKey depuis les permissions V2 ──────────
+   Priorité : isAdmin > canDispatch > canDemand.
+   Conservé pour la rétrocompatiblité des composants enfants
+   qui reçoivent encore userRole en prop (migration progressive).
+─────────────────────────────────────────────────────────── */
+function deriveRoleKey(p) {
+  if (!p) return 'INCONNU';
+  if (p.isAdmin)     return 'ADMIN';
+  if (p.canDispatch) return 'MAGASINIER';
+  if (p.canDemand)   return 'UNITE';
+  return 'INCONNU';
+}
+
 const ROLE_LABEL = {
-  ADMIN_FEDERAL: 'Admin Fédéral',
-  ADMIN:         'Administrateur',
-  MAGASINIER:    'Magasinier Central',
-  UNITE:         'Responsable Unité',
+  ADMIN:      'Administrateur',
+  MAGASINIER: 'Magasinier Central',
+  UNITE:      'Responsable Unité',
+  INCONNU:    'Compte non configuré',
 };
 
 const ROLE_COULEUR = {
-  ADMIN_FEDERAL: 'bg-violet-600',
-  ADMIN:         'bg-indigo-600',
-  MAGASINIER:    'bg-blue-600',
-  UNITE:         'bg-emerald-600',
+  ADMIN:      'bg-indigo-600',
+  MAGASINIER: 'bg-blue-600',
+  UNITE:      'bg-emerald-600',
+  INCONNU:    'bg-slate-600',
 };
 
 function mapApiUser(u) {
-  const prenom    = u.prenom ?? '';
-  const nom       = u.nom    ?? '';
-  const initiales = `${prenom[0] ?? ''}${nom[0] ?? ''}`.toUpperCase() || 'ML';
+  const prenom      = u.prenom ?? '';
+  const nom         = u.nom    ?? '';
+  const initiales   = `${prenom[0] ?? ''}${nom[0] ?? ''}`.toUpperCase() || 'ML';
+  const permissions = u.permissions ?? {};
+  const roleKey     = deriveRoleKey(permissions);
   return {
-    id:        u.id   ?? u._id,
-    nom:       [prenom, nom].filter(Boolean).join(' ') || u.email,
-    email:     u.email,
-    role:      ROLE_LABEL[u.role]   ?? u.role,
-    roleKey:   u.role,
-    unite:     u.entite ?? 'Maroc Lait',
+    id:          u.id ?? u._id,
+    nom:         [prenom, nom].filter(Boolean).join(' ') || u.email,
+    email:       u.email,
+    role:        ROLE_LABEL[roleKey] ?? roleKey,
+    roleKey,
+    permissions,
+    unite:       u.entite ?? 'Maroc Lait',
     initiales,
-    couleur:   ROLE_COULEUR[u.role] ?? 'bg-slate-600',
-    mfa:       u.mfa ?? false,
+    couleur:     ROLE_COULEUR[roleKey] ?? 'bg-slate-600',
+    mfa:         u.mfa ?? false,
   };
 }
 
 const TOKEN_KEY = 'mlstock_token';
 const USER_KEY  = 'mlstock_user';
 
-/* ─── Titre de la page d'accueil selon le rôle ─────────── */
-function homeTitleForRole(roleKey) {
-  if (roleKey === 'UNITE')     return 'Mon Espace';
-  if (roleKey === 'MAGASINIER') return 'Hub Central — Opérations';
+/* ─── Titre de la page d'accueil selon les permissions V2 ── */
+function homeTitleForPermissions(p) {
+  if (!p) return 'Tableau de Bord';
+  if (p.canDemand && !p.isAdmin && !p.canDispatch) return 'Mon Espace';
+  if (p.canDispatch && !p.isAdmin)                  return 'Hub Central — Opérations';
   return 'Tableau de Bord';
 }
 
@@ -95,27 +112,27 @@ const PAGE_TITLES = {
   '/profil':             'Mon Profil',
 };
 
-/* ─── Groupes de rôles réutilisables ────────────────────── */
-const ADMIN_ROLES = ['ADMIN_FEDERAL', 'ADMIN'];
-const OPS_ROLES   = ['MAGASINIER', 'ADMIN_FEDERAL', 'ADMIN'];
-const ALL_ROLES   = ['ADMIN_FEDERAL', 'ADMIN', 'MAGASINIER', 'UNITE'];
+/* ─── Prédicats de permission réutilisables ─────────────── */
+const pAdmin  = p => Boolean(p?.isAdmin);
+const pOps    = p => Boolean(p?.isAdmin || p?.canDispatch);
+const pDemand = p => Boolean(p?.isAdmin || p?.canDemand);
 
 /* ══════════════════════════════════════════════════════════
    APP LAYOUT — SIDEBAR + ROUTAGE
 ══════════════════════════════════════════════════════════ */
-function AppLayout({ user, userRole, onLogout }) {
+function AppLayout({ user, onLogout }) {
   const location  = useLocation();
   const rawTitle  = PAGE_TITLES[location.pathname] ?? 'MLstock';
-  const pageTitle = location.pathname === '/' ? homeTitleForRole(userRole) : rawTitle;
+  const pageTitle = location.pathname === '/' ? homeTitleForPermissions(user?.permissions) : rawTitle;
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Ferme le drawer à chaque changement de route
   useEffect(() => { setSidebarOpen(false); }, [location.pathname]);
 
-  /* Enveloppe un élément dans ProtectedRoute avec les rôles donnés */
-  function guard(roles, element) {
+  /* Enveloppe un élément dans ProtectedRoute avec un prédicat de permission */
+  function guard(check, element) {
     return (
-      <ProtectedRoute roles={roles} userRole={userRole}>
+      <ProtectedRoute check={check} permissions={user?.permissions}>
         {element}
       </ProtectedRoute>
     );
@@ -128,7 +145,7 @@ function AppLayout({ user, userRole, onLogout }) {
         <div className="fixed inset-0 z-30 bg-black/50 md:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
-      <Sidebar user={user} userRole={userRole} onLogout={onLogout} isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <Sidebar user={user} onLogout={onLogout} isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       <main className="md:ml-64 flex-1 min-h-screen p-4 md:p-8 overflow-y-auto">
         <div className="max-w-5xl mx-auto">
@@ -155,39 +172,40 @@ function AppLayout({ user, userRole, onLogout }) {
           <ErrorBoundary key={location.pathname}>
           <Routes>
 
-            {/* ── Accueil : composant différent selon le rôle JWT ── */}
-            <Route path="/" element={
-              userRole === 'UNITE'      ? <EspaceCooperative user={user} /> :
-              userRole === 'MAGASINIER' ? <DashboardMagasinier /> :
-                                          <DashboardDirection />
-            } />
+            {/* ── Accueil : composant différent selon les permissions ── */}
+            <Route path="/" element={(() => {
+              const p = user?.permissions ?? {};
+              if (p.canDemand && !p.isAdmin && !p.canDispatch) return <EspaceCooperative user={user} />;
+              if (p.canDispatch && !p.isAdmin)                  return <DashboardMagasinier />;
+              return <DashboardDirection />;
+            })()} />
 
-            {/* ── Espace Unité ───────────────────────────────────── */}
-            <Route path="/nouvelle-commande" element={guard(['UNITE'], <EspaceCooperative user={user} />)} />
-            <Route path="/cooperative"       element={guard(['UNITE'], <EspaceCooperative user={user} />)} />
+            {/* ── Espace Bénéficiaire ────────────────────────────── */}
+            <Route path="/nouvelle-commande" element={guard(pDemand, <EspaceCooperative user={user} />)} />
+            <Route path="/cooperative"       element={guard(pDemand, <EspaceCooperative user={user} />)} />
 
-            {/* ── Logistique & Stock (Magasinier + Admins) ──────── */}
-            <Route path="/approvisionnements" element={guard(OPS_ROLES, <ApprovisionnementsFournisseurs userRole={userRole} />)} />
-            <Route path="/receptions"         element={guard(OPS_ROLES, <ReceptionsImportations />)} />
-            <Route path="/magasinier"         element={guard(OPS_ROLES, <MagasinierCentral userRole={userRole} />)} />
-            <Route path="/expeditions"        element={guard(OPS_ROLES, <PreparationsExpeditions />)} />
+            {/* ── Logistique & Stock (Magasinier + Admin) ────────── */}
+            <Route path="/approvisionnements" element={guard(pOps, <ApprovisionnementsFournisseurs userRole={user?.roleKey} />)} />
+            <Route path="/receptions"         element={guard(pOps, <ReceptionsImportations />)} />
+            <Route path="/magasinier"         element={guard(pOps, <MagasinierCentral userRole={user?.roleKey} />)} />
+            <Route path="/expeditions"        element={guard(pOps, <PreparationsExpeditions />)} />
 
-            {/* ── Pilotage & Contrôle (Admins uniquement) ────────── */}
-            <Route path="/quotas"       element={guard(ADMIN_ROLES, <GestionQuotas />)} />
-            <Route path="/validations"  element={guard(ADMIN_ROLES, <CentreValidations />)} />
-            <Route path="/tracabilite"  element={guard(ADMIN_ROLES, <TracabiliteRapports />)} />
-            <Route path="/ordres-admin" element={guard(ADMIN_ROLES, <OrdresAdmin />)} />
+            {/* ── Pilotage & Contrôle (Admin uniquement) ─────────── */}
+            <Route path="/quotas"       element={guard(pAdmin, <GestionQuotas />)} />
+            <Route path="/validations"  element={guard(pAdmin, <CentreValidations />)} />
+            <Route path="/tracabilite"  element={guard(pAdmin, <TracabiliteRapports />)} />
+            <Route path="/ordres-admin" element={guard(pAdmin, <OrdresAdmin />)} />
 
-            {/* ── Administration (Admins uniquement) ─────────────── */}
-            <Route path="/catalogue"    element={guard(ADMIN_ROLES, <CatalogueReferentiel userRole={userRole} />)} />
-            <Route path="/reseau"       element={guard(ADMIN_ROLES, <ReseauGlobal userRole={userRole} />)} />
-            <Route path="/utilisateurs" element={guard(ADMIN_ROLES, <UtilisateursAcces userRole={userRole} />)} />
+            {/* ── Administration (Admin uniquement) ──────────────── */}
+            <Route path="/catalogue"    element={guard(pAdmin, <CatalogueReferentiel userRole={user?.roleKey} />)} />
+            <Route path="/reseau"       element={guard(pAdmin, <ReseauGlobal userRole={user?.roleKey} />)} />
+            <Route path="/utilisateurs" element={guard(pAdmin, <UtilisateursAcces userRole={user?.roleKey} />)} />
 
-            {/* ── Réception Régionale (Admins) ────────────────────── */}
-            <Route path="/regional" element={guard(ADMIN_ROLES, <ResponsableRegional />)} />
+            {/* ── Réception Régionale (Admin) ─────────────────────── */}
+            <Route path="/regional" element={guard(pAdmin, <ResponsableRegional />)} />
 
-            {/* ── Admin Fédéral uniquement ────────────────────────── */}
-            <Route path="/configuration" element={guard(['ADMIN_FEDERAL'], <ConfigurationGenerale userRole={userRole} />)} />
+            {/* ── Configuration (Admin uniquement) ───────────────── */}
+            <Route path="/configuration" element={guard(pAdmin, <ConfigurationGenerale userRole={user?.roleKey} />)} />
 
             {/* ── Accessible à tous les rôles authentifiés ────────── */}
             <Route path="/profil" element={<ProfilUtilisateur />} />
@@ -212,7 +230,6 @@ export default function App() {
 
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user,            setUser]            = useState(null);
-  const [userRole,        setUserRole]        = useState(null);
 
   /* ─ Restauration de session depuis localStorage ──────── */
   useEffect(() => {
@@ -223,10 +240,8 @@ export default function App() {
     try {
       const userData = JSON.parse(savedUser);
       setUser(userData);
-      setUserRole(userData.roleKey);
       setIsAuthenticated(true);
     } catch {
-      // Données corrompues → on nettoie
       localStorage.removeItem(TOKEN_KEY);
       localStorage.removeItem(USER_KEY);
     }
@@ -238,20 +253,15 @@ export default function App() {
     localStorage.setItem(TOKEN_KEY, token);
     localStorage.setItem(USER_KEY,  JSON.stringify(frontendUser));
     setUser(frontendUser);
-    setUserRole(apiUser.role);
     setIsAuthenticated(true);
   }
 
   /* ─ Déconnexion ──────────────────────────────────────── */
   function handleLogout() {
-    // 1. Supprimer toutes les données de session persistées
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
-    // 2. Réinitialiser le state global d'authentification
     setUser(null);
-    setUserRole(null);
     setIsAuthenticated(false);
-    // 3. Rediriger vers la page de connexion (replace évite le retour arrière)
     navigate('/login', { replace: true });
   }
 
@@ -260,5 +270,5 @@ export default function App() {
     return <Login onLogin={handleLogin} />;
   }
 
-  return <AppLayout user={user} userRole={userRole} onLogout={handleLogout} />;
+  return <AppLayout user={user} onLogout={handleLogout} />;
 }

@@ -4,10 +4,15 @@ const User    = require('../models/User');
 
 const router = express.Router();
 
-/* ─── Génère un JWT signé ──────────────────────────────── */
+/* ─── Génère un JWT signé ──────────────────────────────────
+   Le payload contient l'id (clé DB) et entite (affichage UI).
+   Les permissions ne sont pas dupliquées ici : protect() les
+   recharge depuis la DB à chaque requête, garantissant que
+   toute révocation d'accès prend effet immédiatement.
+──────────────────────────────────────────────────────────── */
 function signToken(user) {
   return jwt.sign(
-    { id: user._id, role: user.role, entite: user.entite },
+    { id: user._id, entite: user.entite },
     process.env.JWT_SECRET,
     { expiresIn: '24h' }
   );
@@ -15,12 +20,13 @@ function signToken(user) {
 
 /* ═══════════════════════════════════════════════════════════
    POST /api/auth/register
-   Corps : { prenom, nom, email, password, role?, entite? }
-   Crée un compte en statut "En attente" (validation admin requise)
+   Corps : { prenom, nom, email, password, entite? }
+   Crée un compte en statut "En attente", sans permissions.
+   Un admin devra activer le compte et attribuer les droits.
 ═══════════════════════════════════════════════════════════ */
 router.post('/register', async (req, res) => {
   try {
-    const { prenom = '', nom, email, password, role, entite } = req.body;
+    const { prenom = '', nom, email, password, entite } = req.body;
 
     if (!nom || !email || !password) {
       return res.status(400).json({ message: 'Nom, email et mot de passe sont requis.' });
@@ -35,22 +41,22 @@ router.post('/register', async (req, res) => {
       prenom,
       nom,
       email,
-      password,              // hashé par le pre-save hook
-      role:   role   || 'UNITE',
+      password,             // hashé par le pre-save hook
       entite: entite || 'Maroc Lait — Hub Central',
-      statut: 'En attente',  // toujours en attente jusqu'à validation admin
+      statut: 'En attente', // toujours en attente jusqu'à validation admin
+      // permissions: toutes à false par défaut (défini dans le schéma)
     });
 
     res.status(201).json({
       message: 'Compte créé avec succès. En attente de validation par un administrateur.',
       user: {
-        id:     user._id,
-        prenom: user.prenom,
-        nom:    user.nom,
-        email:  user.email,
-        role:   user.role,
-        entite: user.entite,
-        statut: user.statut,
+        id:          user._id,
+        prenom:      user.prenom,
+        nom:         user.nom,
+        email:       user.email,
+        entite:      user.entite,
+        statut:      user.statut,
+        permissions: user.permissions,
       },
     });
   } catch (err) {
@@ -92,7 +98,7 @@ router.post('/login', async (req, res) => {
 
     if (user.statut === 'En attente') {
       return res.status(403).json({
-        message: "Votre compte est en attente de validation par un administrateur.",
+        message: 'Votre compte est en attente de validation par un administrateur.',
       });
     }
     if (user.statut === 'Suspendu') {
@@ -101,7 +107,6 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // Mise à jour de la dernière connexion
     user.derniereConnexion = new Date();
     await user.save({ validateBeforeSave: false });
 
@@ -114,11 +119,11 @@ router.post('/login', async (req, res) => {
         prenom:            user.prenom,
         nom:               user.nom,
         email:             user.email,
-        role:              user.role,
         entite:            user.entite,
         statut:            user.statut,
         mfa:               user.mfa,
         derniereConnexion: user.derniereConnexion,
+        permissions:       user.permissions,
       },
     });
   } catch (err) {

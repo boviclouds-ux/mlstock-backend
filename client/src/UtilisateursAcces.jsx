@@ -1,4 +1,4 @@
-// UtilisateursAcces.jsx — Gestion des comptes & sécurité · Section 5
+// UtilisateursAcces.jsx — Gestion des comptes & sécurité · V2
 // Règle ERP : On ne supprime jamais un compte — on suspend pour conserver la traçabilité.
 import { useState, useEffect, useMemo } from "react";
 import { api } from "./lib/api.js";
@@ -6,36 +6,66 @@ import Spinner from "./components/Spinner.jsx";
 import {
   Users, UserCheck, UserPlus, Shield, ShieldOff,
   Ban, Key, CheckCircle, XCircle, X, Pencil,
-  ChevronDown, MoreVertical, Mail, Calendar,
+  MoreVertical, Mail, Calendar,
   Clock, Building2, AlertTriangle, Lock, Info,
+  Package, Inbox, Send,
 } from "lucide-react";
 
-/* ─── Référentiels ─────────────────────────────────────── */
-const ROLES = [
-  { key:"ADMIN_FEDERAL", label:"Admin Fédéral",    badge:"bg-violet-100 text-violet-700 border-violet-300" },
-  { key:"ADMIN",         label:"Administrateur",   badge:"bg-indigo-100 text-indigo-700 border-indigo-300" },
-  { key:"MAGASINIER",    label:"Magasinier",        badge:"bg-blue-100   text-blue-700   border-blue-300"   },
-  { key:"UNITE",         label:"Responsable Unité", badge:"bg-emerald-100 text-emerald-700 border-emerald-300"},
+/* ─── Matrice de permissions V2 ────────────────────────── */
+const PERM_DEFS = [
+  {
+    key:         'isAdmin',
+    label:       'Accès global & Quotas',
+    description: 'Administration complète, quotas, validations OTP et configuration.',
+    badgeCls:    'bg-indigo-100 text-indigo-700 border-indigo-300',
+    icon:        Shield,
+    iconActiveCls: 'text-indigo-400',
+    toggleCls:   'bg-indigo-500',
+  },
+  {
+    key:         'canDispatch',
+    label:       'Magasinier Expédition',
+    description: 'Bons de livraison, stocks physiques, expéditions et bons d\'enlèvement.',
+    badgeCls:    'bg-blue-100 text-blue-700 border-blue-300',
+    icon:        Send,
+    iconActiveCls: 'text-blue-400',
+    toggleCls:   'bg-blue-500',
+  },
+  {
+    key:         'canReceive',
+    label:       'Réceptionneur Fournisseur',
+    description: 'Enregistrement des réceptions et approvisionnements entrants.',
+    badgeCls:    'bg-violet-100 text-violet-700 border-violet-300',
+    icon:        Inbox,
+    iconActiveCls: 'text-violet-400',
+    toggleCls:   'bg-violet-500',
+  },
+  {
+    key:         'canDemand',
+    label:       'Acheteur / Bénéficiaire',
+    description: 'Création de demandes, suivi des commandes, signature de réception.',
+    badgeCls:    'bg-emerald-100 text-emerald-700 border-emerald-300',
+    icon:        UserCheck,
+    iconActiveCls: 'text-emerald-400',
+    toggleCls:   'bg-emerald-500',
+  },
 ];
 
-// Entité par défaut pour les rôles administratifs / logistiques (non-Unité)
+const DEFAULT_PERMISSIONS = { isAdmin: false, canDispatch: false, canReceive: false, canDemand: false };
 const HUB_CENTRAL = "Maroc Lait — Hub Central";
-// Rôles rattachés automatiquement au Hub (pas de choix d'unité)
-const isHubRole = (roleKey) => roleKey !== "UNITE";
 
-/* ─── Helpers ──────────────────────────────────────────── */
-function roleMeta(roleKey) {
-  return ROLES.find(r => r.key === roleKey) ?? ROLES[2];
-}
+/* Détermine si l'utilisateur est rattaché à une unité locale plutôt qu'au hub */
+const needsUnite = p => Boolean(p?.canDemand && !p?.isAdmin && !p?.canDispatch);
 
+/* ─── Helpers ───────────────────────────────────────────── */
 function nextUsrId(users) {
-  const max = users.reduce((m, u) => Math.max(m, parseInt(u.id.split("-")[1] ?? "0", 10)), 0);
+  const max = users.reduce((m, u) => Math.max(m, parseInt((u.id ?? '').split("-")[1] ?? "0", 10)), 0);
   return `USR-${String(max + 1).padStart(3, "0")}`;
 }
 
 function formatDate(dt) {
   if (!dt) return "—";
-  const d = new Date(dt.replace(" ", "T"));
+  const d    = new Date(dt.replace(" ", "T"));
   const diff = Math.round((Date.now() - d) / 86400000);
   if (diff === 0) return "Aujourd'hui · " + dt.split(" ")[1];
   if (diff === 1) return "Hier";
@@ -43,12 +73,115 @@ function formatDate(dt) {
   return d.toLocaleDateString("fr-FR", { day:"2-digit", month:"short", year:"numeric" });
 }
 
+function avatarBg(p) {
+  if (!p) return 'bg-slate-500';
+  if (p.isAdmin)     return 'bg-indigo-500';
+  if (p.canDispatch) return 'bg-blue-500';
+  if (p.canReceive)  return 'bg-violet-500';
+  if (p.canDemand)   return 'bg-emerald-500';
+  return 'bg-slate-500';
+}
+
 /* ─── Styles dark ──────────────────────────────────────── */
 const lbl = "text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 block";
 const inp = "w-full bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all";
 
 /* ══════════════════════════════════════════════════════════
-   MODAL CONFIRMATION GÉNÉRIQUE (suspend, reset pw)
+   BADGES DE PERMISSIONS (tableau)
+══════════════════════════════════════════════════════════ */
+function PermissionBadges({ permissions }) {
+  const p      = permissions ?? {};
+  const active = PERM_DEFS.filter(d => p[d.key]);
+  if (active.length === 0) {
+    return <span className="text-[10px] text-slate-400 italic">Aucun droit</span>;
+  }
+  return (
+    <div className="flex flex-wrap gap-1">
+      {active.map(d => (
+        <span key={d.key} className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${d.badgeCls}`}>
+          <d.icon size={8} />
+          {d.label.split(' ')[0]}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
+   TOGGLE DE PERMISSION (réutilisable dans les modals)
+══════════════════════════════════════════════════════════ */
+function PermissionToggle({ def, checked, onChange }) {
+  const Icon = def.icon;
+  return (
+    <label className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all select-none
+      ${checked
+        ? 'border-white/20 bg-white/5'
+        : 'border-slate-700 bg-slate-800/30 hover:border-slate-600'}`}
+    >
+      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0
+        ${checked ? 'bg-white/10' : 'bg-slate-700/50'}`}>
+        <Icon size={14} className={checked ? def.iconActiveCls : 'text-slate-500'} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className={`text-xs font-bold leading-none ${checked ? 'text-white' : 'text-slate-400'}`}>{def.label}</p>
+        <p className="text-[10px] text-slate-500 leading-snug mt-1">{def.description}</p>
+      </div>
+      {/* Toggle pill */}
+      <div className={`w-10 h-5 rounded-full relative shrink-0 transition-colors duration-200 ${checked ? def.toggleCls : 'bg-slate-700'}`}>
+        <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all duration-200 ${checked ? 'left-5' : 'left-0.5'}`} />
+      </div>
+      <input type="checkbox" className="sr-only" checked={checked} onChange={e => onChange(e.target.checked)} />
+    </label>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
+   CHAMP ENTITÉ (partagé entre les deux modals)
+══════════════════════════════════════════════════════════ */
+function EntiteField({ permissions, entite, setEntite, unites }) {
+  const isHub = !needsUnite(permissions);
+  return (
+    <div>
+      <label className={lbl}>Entité rattachée</label>
+      {isHub ? (
+        <div className="flex items-center gap-2 bg-slate-800/30 border border-slate-700/50 rounded-xl px-3 py-2.5">
+          <Building2 size={13} className="text-slate-600 shrink-0"/>
+          <span className="text-sm text-slate-500 flex-1">{HUB_CENTRAL}</span>
+          <Lock size={11} className="text-slate-600 shrink-0"/>
+        </div>
+      ) : (
+        <div className="relative">
+          <select value={entite} onChange={e => setEntite(e.target.value)}
+            className={`${inp} appearance-none`} disabled={unites.length === 0}>
+            {unites.length === 0
+              ? <option value="" className="bg-slate-800">Aucune unité disponible</option>
+              : unites.map(u => (
+                  <option key={u._id} value={u.nom} className="bg-slate-800">
+                    {u.nom}{u.region ? ` · ${u.region}` : ""}
+                  </option>
+                ))
+            }
+          </select>
+        </div>
+      )}
+      {isHub && (
+        <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-slate-500 leading-snug">
+          <Info size={10} className="shrink-0 mt-0.5"/>
+          Le personnel administratif et logistique est rattaché par défaut au siège national.
+        </p>
+      )}
+      {!isHub && unites.length === 0 && (
+        <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-amber-400 leading-snug">
+          <AlertTriangle size={10} className="shrink-0 mt-0.5"/>
+          Aucune unité dans la base. Créez d'abord une unité dans Réseau & Acteurs.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
+   MODAL CONFIRMATION GÉNÉRIQUE
 ══════════════════════════════════════════════════════════ */
 function ModalConfirm({ icon: Icon, iconCls, titre, message, labelConfirm, btnCls, onClose, onConfirm }) {
   return (
@@ -69,19 +202,22 @@ function ModalConfirm({ icon: Icon, iconCls, titre, message, labelConfirm, btnCl
 }
 
 /* ══════════════════════════════════════════════════════════
-   MODAL MODIFIER RÔLE
+   MODAL MODIFIER LES PERMISSIONS V2
 ══════════════════════════════════════════════════════════ */
-function ModalModifierRole({ user, unites, onClose, onSave }) {
-  const firstUnite = unites[0]?.nom ?? "";
-
-  const [roleKey, setRoleKey] = useState(user.roleKey);
-  const [entite,  setEntite]  = useState(
-    isHubRole(user.roleKey) ? HUB_CENTRAL : (user.entite ?? firstUnite)
+function ModalModifierPermissions({ user, unites, onClose, onSave }) {
+  const [permissions, setPermissions] = useState({
+    ...DEFAULT_PERMISSIONS,
+    ...(user.permissions ?? {}),
+  });
+  const [entite, setEntite] = useState(
+    needsUnite(user.permissions) ? (user.entite ?? unites[0]?.nom ?? '') : ''
   );
 
-  function handleRoleChange(newKey) {
-    setRoleKey(newKey);
-    setEntite(isHubRole(newKey) ? HUB_CENTRAL : firstUnite);
+  const entiteFinale = needsUnite(permissions) ? entite : HUB_CENTRAL;
+  const hasAnyPerm   = Object.values(permissions).some(Boolean);
+
+  function togglePerm(key, val) {
+    setPermissions(p => ({ ...p, [key]: val }));
   }
 
   return (
@@ -94,75 +230,50 @@ function ModalModifierRole({ user, unites, onClose, onSave }) {
               <Shield size={16} className="text-amber-400"/>
             </div>
             <div>
-              <p className="text-sm font-bold text-white">Modifier le rôle</p>
-              <p className="text-[11px] text-slate-500 mt-0.5">{user.prenom} {user.nom} · {user.id}</p>
+              <p className="text-sm font-bold text-white">Modifier les droits</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">{user.prenom} {user.nom} · {user.email}</p>
             </div>
           </div>
           <button onClick={onClose} className="text-slate-500 hover:text-slate-300 transition-colors mt-0.5"><X size={18}/></button>
         </div>
 
-        <div className="px-6 py-5 space-y-4">
-          <div>
-            <label className={lbl}>Nouveau rôle</label>
-            <div className="relative">
-              <select value={roleKey} onChange={e => handleRoleChange(e.target.value)} className={`${inp} appearance-none`}>
-                {ROLES.map(r => <option key={r.key} value={r.key} className="bg-slate-800">{r.label}</option>)}
-              </select>
-              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none"/>
-            </div>
-          </div>
+        <div className="px-6 py-5 space-y-3 max-h-[60vh] overflow-y-auto">
+          <label className={lbl}>Matrice des permissions</label>
+          {PERM_DEFS.map(def => (
+            <PermissionToggle
+              key={def.key}
+              def={def}
+              checked={!!permissions[def.key]}
+              onChange={val => togglePerm(def.key, val)}
+            />
+          ))}
 
-          {/* Entité — verrouillée si rôle Hub, dropdown dynamique si Unité */}
-          <div>
-            <label className={lbl}>Entité rattachée</label>
-            {isHubRole(roleKey) ? (
-              <div className="flex items-center gap-2 bg-slate-800/30 border border-slate-700/50 rounded-xl px-3 py-2.5">
-                <Building2 size={13} className="text-slate-600 shrink-0"/>
-                <span className="text-sm text-slate-500 flex-1">{HUB_CENTRAL}</span>
-                <Lock size={11} className="text-slate-600 shrink-0"/>
-              </div>
-            ) : (
-              <div className="relative">
-                <select value={entite} onChange={e => setEntite(e.target.value)} className={`${inp} appearance-none`} disabled={unites.length === 0}>
-                  {unites.length === 0 ? (
-                    <option value="" className="bg-slate-800">Chargement des unités…</option>
-                  ) : (
-                    unites.map(u => (
-                      <option key={u._id} value={u.nom} className="bg-slate-800">
-                        {u.nom}{u.region ? ` · ${u.region}` : ""}
-                      </option>
-                    ))
-                  )}
-                </select>
-                <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none"/>
-              </div>
-            )}
-            {isHubRole(roleKey) && (
-              <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-slate-500 leading-snug">
-                <Info size={10} className="shrink-0 mt-0.5"/>
-                Le personnel administratif et logistique est rattaché par défaut au siège national.
-              </p>
-            )}
-            {!isHubRole(roleKey) && unites.length === 0 && (
-              <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-amber-400 leading-snug">
-                <AlertTriangle size={10} className="shrink-0 mt-0.5"/>
-                Aucune unité dans la base. Créez d'abord une unité dans Réseau & Acteurs.
-              </p>
-            )}
-          </div>
-
-          {roleKey === "ADMIN_FEDERAL" && (
-            <div className="flex items-start gap-2 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2.5">
+          {permissions.isAdmin && (
+            <div className="flex items-start gap-2 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2.5 mt-1">
               <AlertTriangle size={13} className="text-amber-400 shrink-0 mt-0.5"/>
-              <p className="text-[11px] text-amber-300 leading-relaxed">Ce rôle accorde un accès complet au système, incluant les données sensibles et les ordres de validation.</p>
+              <p className="text-[11px] text-amber-300 leading-relaxed">
+                Le droit Admin accorde un accès complet au système, incluant les données sensibles et les validations OTP.
+              </p>
             </div>
           )}
+
+          <EntiteField
+            permissions={permissions}
+            entite={entite}
+            setEntite={setEntite}
+            unites={unites}
+          />
         </div>
 
-        <div className="px-6 pb-5 flex gap-2.5">
-          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-slate-700 text-slate-400 text-xs font-semibold hover:bg-slate-800 transition-all">Annuler</button>
-          <button onClick={() => { onSave(user.id, roleKey, entite); onClose(); }}
-            className="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition-all">
+        <div className="px-6 pb-5 flex gap-2.5 border-t border-slate-800 pt-4">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-slate-700 text-slate-400 text-xs font-semibold hover:bg-slate-800 transition-all">
+            Annuler
+          </button>
+          <button
+            onClick={() => { onSave(user.id, permissions, entiteFinale); onClose(); }}
+            disabled={!hasAnyPerm}
+            className="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white text-xs font-bold transition-all"
+          >
             Enregistrer les droits
           </button>
         </div>
@@ -172,26 +283,22 @@ function ModalModifierRole({ user, unites, onClose, onSave }) {
 }
 
 /* ══════════════════════════════════════════════════════════
-   MODAL NOUVEL UTILISATEUR
+   MODAL NOUVEL UTILISATEUR V2
 ══════════════════════════════════════════════════════════ */
 function ModalNouvelUtilisateur({ unites, onClose, onSave }) {
-  const firstUnite = unites[0]?.nom ?? "";
+  const [prenom,      setPrenom]      = useState("");
+  const [nom,         setNom]         = useState("");
+  const [email,       setEmail]       = useState("");
+  const [permissions, setPermissions] = useState(DEFAULT_PERMISSIONS);
+  const [entite,      setEntite]      = useState(unites[0]?.nom ?? "");
 
-  const [prenom,  setPrenom]  = useState("");
-  const [nom,     setNom]     = useState("");
-  const [email,   setEmail]   = useState("");
-  const [roleKey, setRoleKey] = useState("MAGASINIER");
-  const [entite,  setEntite]  = useState(firstUnite);
+  const entiteFinale = needsUnite(permissions) ? entite : HUB_CENTRAL;
+  const hasAnyPerm   = Object.values(permissions).some(Boolean);
+  const valid        = prenom.trim() && nom.trim() && email.includes("@") && hasAnyPerm;
 
-  const hubRole      = isHubRole(roleKey);
-  const entiteFinale = hubRole ? HUB_CENTRAL : entite;
-
-  function handleRoleChange(newKey) {
-    setRoleKey(newKey);
-    if (!isHubRole(newKey)) setEntite(firstUnite);
+  function togglePerm(key, val) {
+    setPermissions(p => ({ ...p, [key]: val }));
   }
-
-  const valid = prenom.trim() && nom.trim() && email.includes("@");
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
@@ -210,7 +317,8 @@ function ModalNouvelUtilisateur({ unites, onClose, onSave }) {
           <button onClick={onClose} className="text-slate-500 hover:text-slate-300 transition-colors mt-0.5"><X size={18}/></button>
         </div>
 
-        <div className="px-6 py-5 space-y-4">
+        <div className="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
+          {/* Identité */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className={lbl}>Prénom <span className="text-red-500">*</span></label>
@@ -223,68 +331,51 @@ function ModalNouvelUtilisateur({ unites, onClose, onSave }) {
           </div>
           <div>
             <label className={lbl}>Email professionnel <span className="text-red-500">*</span></label>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="ex: k.benali@marocl.ma" className={inp}/>
-          </div>
-          {/* Rôle */}
-          <div>
-            <label className={lbl}>Rôle</label>
-            <div className="relative">
-              <select value={roleKey} onChange={e => handleRoleChange(e.target.value)} className={`${inp} appearance-none`}>
-                {ROLES.map(r => <option key={r.key} value={r.key} className="bg-slate-800">{r.label}</option>)}
-              </select>
-              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none"/>
-            </div>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="ex: k.benali@maroclait.ma" className={inp}/>
           </div>
 
-          {/* Entité — verrouillée si rôle Hub, dropdown actif si Unité */}
+          {/* Matrice de permissions */}
           <div>
-            <label className={lbl}>Entité rattachée</label>
-            {hubRole ? (
-              <div className="flex items-center gap-2 bg-slate-800/30 border border-slate-700/50 rounded-xl px-3 py-2.5">
-                <Building2 size={13} className="text-slate-600 shrink-0"/>
-                <span className="text-sm text-slate-500 flex-1">{HUB_CENTRAL}</span>
-                <Lock size={11} className="text-slate-600 shrink-0"/>
-              </div>
-            ) : (
-              <div className="relative">
-                <select value={entite} onChange={e => setEntite(e.target.value)} className={`${inp} appearance-none`} disabled={unites.length === 0}>
-                  {unites.length === 0 ? (
-                    <option value="" className="bg-slate-800">Aucune unité disponible</option>
-                  ) : (
-                    unites.map(u => (
-                      <option key={u._id} value={u.nom} className="bg-slate-800">
-                        {u.nom}{u.region ? ` · ${u.region}` : ""}
-                      </option>
-                    ))
-                  )}
-                </select>
-                <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none"/>
-              </div>
-            )}
-            {hubRole && (
-              <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-slate-500 leading-snug">
-                <Info size={10} className="shrink-0 mt-0.5"/>
-                Le personnel administratif et logistique est rattaché par défaut au siège national.
-              </p>
-            )}
-            {!hubRole && unites.length === 0 && (
+            <label className={lbl}>Matrice des permissions <span className="text-red-500">*</span></label>
+            <div className="space-y-2">
+              {PERM_DEFS.map(def => (
+                <PermissionToggle
+                  key={def.key}
+                  def={def}
+                  checked={!!permissions[def.key]}
+                  onChange={val => togglePerm(def.key, val)}
+                />
+              ))}
+            </div>
+            {!hasAnyPerm && (
               <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-amber-400 leading-snug">
                 <AlertTriangle size={10} className="shrink-0 mt-0.5"/>
-                Aucune unité dans la base. Créez d'abord une unité dans Réseau & Acteurs.
+                Au moins une permission est requise.
               </p>
             )}
           </div>
+
+          {/* Entité */}
+          <EntiteField
+            permissions={permissions}
+            entite={entite}
+            setEntite={setEntite}
+            unites={unites}
+          />
+
           <div className="flex items-start gap-2 bg-slate-800/60 border border-slate-700 rounded-xl px-3 py-2.5">
             <Lock size={12} className="text-slate-500 shrink-0 mt-0.5"/>
             <p className="text-[11px] text-slate-400 leading-relaxed">Un email d'invitation avec un lien de définition de mot de passe sera envoyé automatiquement.</p>
           </div>
         </div>
 
-        <div className="px-6 pb-5 flex gap-2.5">
+        <div className="px-6 pb-5 flex gap-2.5 border-t border-slate-800 pt-4">
           <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-slate-700 text-slate-400 text-xs font-semibold hover:bg-slate-800 transition-all">Annuler</button>
-          <button onClick={() => { if (valid) { onSave({ prenom, nom, email, roleKey, entite: entiteFinale }); onClose(); } }}
+          <button
+            onClick={() => { if (valid) { onSave({ prenom, nom, email, permissions, entite: entiteFinale }); onClose(); } }}
             disabled={!valid}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs font-bold transition-all">
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs font-bold transition-all"
+          >
             <UserPlus size={13}/> Créer le compte
           </button>
         </div>
@@ -296,7 +387,7 @@ function ModalNouvelUtilisateur({ unites, onClose, onSave }) {
 /* ══════════════════════════════════════════════════════════
    DROPDOWN ACTIONS (par ligne utilisateur)
 ══════════════════════════════════════════════════════════ */
-function DropdownActions({ user, isOpen, onToggle, onModifierRole, onResetPw, onSuspend }) {
+function DropdownActions({ user, isOpen, onToggle, onModifierPermissions, onResetPw, onSuspend }) {
   return (
     <div className="relative shrink-0">
       <button
@@ -309,10 +400,10 @@ function DropdownActions({ user, isOpen, onToggle, onModifierRole, onResetPw, on
       {isOpen && (
         <div className="absolute right-0 top-9 w-52 bg-white rounded-xl border border-slate-200 shadow-xl z-30 overflow-hidden">
           <button
-            onClick={() => { onModifierRole(); onToggle(); }}
+            onClick={() => { onModifierPermissions(); onToggle(); }}
             className="w-full flex items-center gap-3 px-4 py-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
           >
-            <Shield size={13} className="text-amber-500"/> Modifier le rôle
+            <Shield size={13} className="text-amber-500"/> Modifier les droits
           </button>
           <button
             onClick={() => { onResetPw(); onToggle(); }}
@@ -342,22 +433,23 @@ function DropdownActions({ user, isOpen, onToggle, onModifierRole, onResetPw, on
    COMPOSANT PRINCIPAL
 ══════════════════════════════════════════════════════════ */
 export default function UtilisateursAcces({ userRole }) {
-  const [activeTab,      setActiveTab]      = useState("annuaire");
-  const [users,          setUsers]          = useState([]);
-  const [demandes,       setDemandes]       = useState([]);
-  const [unites,         setUnites]         = useState([]);
-  const [isLoading,      setIsLoading]      = useState(true);
-  const [error,          setError]          = useState(null);
-  const [apiError,       setApiError]       = useState(null);  // erreurs mutations
-  const [openMenuId,     setOpenMenuId]     = useState(null);
-  const [modalAdd,       setModalAdd]       = useState(false);
-  const [modalRole,      setModalRole]      = useState(null);
-  const [modalResetPw,   setModalResetPw]   = useState(null);
-  const [modalSuspend,   setModalSuspend]   = useState(null);
-  const [modalRejet,     setModalRejet]     = useState(null);
-  const [recherche,      setRecherche]      = useState("");
+  const [activeTab,        setActiveTab]        = useState("annuaire");
+  const [users,            setUsers]            = useState([]);
+  const [demandes,         setDemandes]         = useState([]);
+  const [unites,           setUnites]           = useState([]);
+  const [isLoading,        setIsLoading]        = useState(true);
+  const [error,            setError]            = useState(null);
+  const [apiError,         setApiError]         = useState(null);
+  const [openMenuId,       setOpenMenuId]       = useState(null);
+  const [modalAdd,         setModalAdd]         = useState(false);
+  const [modalPerms,       setModalPerms]       = useState(null);
+  const [modalResetPw,     setModalResetPw]     = useState(null);
+  const [modalSuspend,     setModalSuspend]     = useState(null);
+  const [modalRejet,       setModalRejet]       = useState(null);
+  const [recherche,        setRecherche]        = useState("");
 
-  const isAdmin = userRole === "ADMIN_FEDERAL";
+  // userRole est dérivé des permissions via deriveRoleKey() dans App.jsx
+  const isAdminUser = userRole === "ADMIN";
 
   /* ─ Chargement initial ─ */
   useEffect(() => {
@@ -367,7 +459,7 @@ export default function UtilisateursAcces({ userRole }) {
 
     Promise.all([
       api.get("/api/users"),
-      api.get("/api/users/demandes"),
+      api.get("/api/users/demandes").catch(() => []),
       api.get("/api/unites?actif=true").catch(() => []),
     ])
       .then(([usersData, demandesData, unitesData]) => {
@@ -393,28 +485,32 @@ export default function UtilisateursAcces({ userRole }) {
       : users;
   }, [users, recherche]);
 
-  /* ─ Mutations utilisateurs ─ */
-  function handleAddUser({ prenom, nom, email, roleKey, entite }) {
+  /* ─ Création d'un utilisateur ─ */
+  function handleAddUser({ prenom, nom, email, permissions, entite }) {
     const optimistic = {
-      id: nextUsrId(users), prenom, nom, email, roleKey, entite,
+      id: nextUsrId(users), prenom, nom, email, permissions, entite,
       derniereConnexion: null, statut: "actif", mfa: false,
     };
     setUsers(prev => [optimistic, ...prev]);
-    api.post("/api/users", { prenom, nom, email, roleKey, entite })
+    // POST crée le compte ; PATCH injecte la matrice de permissions
+    api.post("/api/users", { prenom, nom, email, entite, permissions })
       .catch(err => setApiError(err.message ?? "Erreur lors de la création du compte."));
   }
 
-  function handleModifierRole(userId, newRoleKey, newEntite) {
+  /* ─ Modification des permissions — PATCH /api/users/:id/permissions ─ */
+  function handleModifierPermissions(userId, permissions, entite) {
     setUsers(prev => prev.map(u =>
-      u.id === userId ? { ...u, roleKey: newRoleKey, entite: newEntite } : u
+      u.id === userId ? { ...u, permissions, entite } : u
     ));
-    api.patch(`/api/users/${userId}/role`, { roleKey: newRoleKey, entite: newEntite })
-      .catch(err => setApiError(err.message ?? "Erreur lors de la modification du rôle."));
+    // Corps plat : { isAdmin, canDemand, canReceive, canDispatch }
+    api.patch(`/api/users/${userId}/permissions`, permissions)
+      .catch(err => setApiError(err.message ?? "Erreur lors de la modification des droits."));
   }
 
+  /* ─ Suspension / Réactivation ─ */
   function handleToggleSuspend(userId) {
-    const user = users.find(u => u.id === userId);
-    const newStatut = user?.statut === "suspendu" ? "actif" : "suspendu";
+    const u = users.find(u => u.id === userId);
+    const newStatut = u?.statut === "suspendu" ? "actif" : "suspendu";
     setUsers(prev => prev.map(u =>
       u.id === userId ? { ...u, statut: newStatut } : u
     ));
@@ -422,12 +518,11 @@ export default function UtilisateursAcces({ userRole }) {
       .catch(err => setApiError(err.message ?? "Erreur lors du changement de statut."));
   }
 
-  /* ─ Mutations demandes ─ */
+  /* ─ Demandes d'accès ─ */
   function handleApprouver(demande) {
-    const roleKey = ROLES.find(r => r.label === demande.roleDemande)?.key ?? "UNITE";
     const optimistic = {
       id: nextUsrId(users), prenom: demande.prenom, nom: demande.nom,
-      email: demande.email, roleKey, entite: demande.entite,
+      email: demande.email, permissions: DEFAULT_PERMISSIONS, entite: demande.entite,
       derniereConnexion: null, statut: "actif", mfa: false,
     };
     setUsers(prev => [optimistic, ...prev]);
@@ -509,7 +604,7 @@ export default function UtilisateursAcces({ userRole }) {
             <p className="text-xs text-slate-400 ml-10">Annuaire sécurisé · Gestion IAM · {users.length} comptes</p>
           </div>
 
-          {isAdmin && (
+          {isAdminUser && (
             <button
               onClick={e => { e.stopPropagation(); setModalAdd(true); }}
               className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-900/40 transition-all shrink-0"
@@ -523,8 +618,8 @@ export default function UtilisateursAcces({ userRole }) {
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex flex-wrap gap-2">
             {[
-              { key:"annuaire",  label:"Annuaire Actif",     Icon:UserCheck,  count:users.length    },
-              { key:"demandes",  label:"Demandes",            Icon:UserPlus,   count:demandes.length },
+              { key:"annuaire", label:"Annuaire Actif",  Icon:UserCheck, count:users.length    },
+              { key:"demandes", label:"Demandes",          Icon:UserPlus,  count:demandes.length },
             ].map(({ key, label, Icon, count }) => (
               <button key={key} onClick={() => { setActiveTab(key); setRecherche(""); }}
                 className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all
@@ -547,9 +642,9 @@ export default function UtilisateursAcces({ userRole }) {
 
           <div className="flex gap-2">
             {[
-              { label:"Actifs",    val:nbActifs,    cls:"text-emerald-300" },
-              { label:"Suspendus", val:nbSuspendus, cls:"text-red-300"     },
-              { label:"En attente",val:demandes.length, cls:"text-amber-300" },
+              { label:"Actifs",     val:nbActifs,       cls:"text-emerald-300" },
+              { label:"Suspendus",  val:nbSuspendus,    cls:"text-red-300"     },
+              { label:"En attente", val:demandes.length, cls:"text-amber-300"   },
             ].map(s => (
               <div key={s.label} className="bg-white/5 rounded-xl px-3 py-1.5 text-center min-w-16">
                 <p className={`text-lg font-bold tabular-nums ${s.cls}`}>{s.val}</p>
@@ -563,7 +658,6 @@ export default function UtilisateursAcces({ userRole }) {
       {/* ── ONGLET ANNUAIRE ──────────────────────────────── */}
       {activeTab === "annuaire" && (
         <>
-          {/* Recherche */}
           <div className="relative">
             <Users size={13} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"/>
             <input value={recherche} onChange={e => setRecherche(e.target.value)}
@@ -572,9 +666,9 @@ export default function UtilisateursAcces({ userRole }) {
           </div>
 
           <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
-            <div className="overflow-x-auto w-full"><div className="min-w-[600px]">
-            <div className={`grid grid-cols-[1.5fr_0.9fr_1.1fr_1fr_0.9fr_auto] gap-3 ${hdrCls}`}>
-              {["Utilisateur","Rôle","Entité","Dernière connexion","Statut",""].map(h => <p key={h} className={hdr}>{h}</p>)}
+            <div className="overflow-x-auto w-full"><div className="min-w-[640px]">
+            <div className={`grid grid-cols-[1.5fr_1.2fr_1.1fr_1fr_0.8fr_auto] gap-3 ${hdrCls}`}>
+              {["Utilisateur","Permissions","Entité","Dernière connexion","Statut",""].map(h => <p key={h} className={hdr}>{h}</p>)}
             </div>
 
             <div className="divide-y divide-slate-50">
@@ -589,22 +683,19 @@ export default function UtilisateursAcces({ userRole }) {
                   {!recherche && <p className="text-xs text-slate-300 mt-1">Les comptes apparaîtront ici dès leur création.</p>}
                 </div>
               ) : filteredUsers.map(user => {
-                const role    = roleMeta(user.roleKey);
+                const p       = user.permissions ?? {};
                 const isActif = user.statut === "actif";
                 return (
                   <div key={user.id}
-                    className={`grid grid-cols-[1.5fr_0.9fr_1.1fr_1fr_0.9fr_auto] gap-3 items-center ${rowCls}
+                    className={`grid grid-cols-[1.5fr_1.2fr_1.1fr_1fr_0.8fr_auto] gap-3 items-center ${rowCls}
                       ${!isActif ? "opacity-60 bg-slate-50/80" : ""}`}
                     onClick={e => e.stopPropagation()}>
 
                     {/* Utilisateur */}
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 mb-0.5">
-                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold text-white shrink-0
-                          ${user.roleKey === "ADMIN_FEDERAL" ? "bg-violet-500" :
-                            user.roleKey === "ADMIN"          ? "bg-indigo-500" :
-                            user.roleKey === "MAGASINIER"     ? "bg-blue-500"   : "bg-emerald-500"}`}>
-                          {user.prenom[0]}{user.nom[0]}
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${avatarBg(p)}`}>
+                          {(user.prenom?.[0] ?? '?')}{(user.nom?.[0] ?? '')}
                         </div>
                         <div className="min-w-0">
                           <p className="text-xs font-bold text-slate-800 truncate">{user.prenom} {user.nom}</p>
@@ -624,15 +715,13 @@ export default function UtilisateursAcces({ userRole }) {
                       </div>
                     </div>
 
-                    {/* Rôle */}
-                    <span className={`inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full border ${role.badge}`}>
-                      {role.label}
-                    </span>
+                    {/* Permissions — badges dynamiques V2 */}
+                    <PermissionBadges permissions={user.permissions} />
 
                     {/* Entité */}
                     <div className="flex items-center gap-1.5 text-xs text-slate-600 min-w-0">
                       <Building2 size={10} className="text-slate-400 shrink-0"/>
-                      <span className="truncate">{user.entite}</span>
+                      <span className="truncate">{user.entite ?? '—'}</span>
                     </div>
 
                     {/* Dernière connexion */}
@@ -649,12 +738,12 @@ export default function UtilisateursAcces({ userRole }) {
                     </span>
 
                     {/* Actions */}
-                    {isAdmin ? (
+                    {isAdminUser ? (
                       <DropdownActions
                         user={user}
                         isOpen={openMenuId === user.id}
                         onToggle={() => setOpenMenuId(prev => prev === user.id ? null : user.id)}
-                        onModifierRole={() => setModalRole(user)}
+                        onModifierPermissions={() => setModalPerms(user)}
                         onResetPw={() => setModalResetPw(user)}
                         onSuspend={() => setModalSuspend(user)}
                       />
@@ -663,7 +752,6 @@ export default function UtilisateursAcces({ userRole }) {
                 );
               })}
             </div>
-
             </div></div>
             <div className="px-5 py-2.5 bg-slate-50 border-t border-slate-100">
               <p className="text-[11px] text-slate-400">
@@ -693,7 +781,6 @@ export default function UtilisateursAcces({ userRole }) {
               <div className="divide-y divide-slate-50">
                 {demandes.map(d => (
                   <div key={d.id} className={`grid grid-cols-[0.7fr_1.4fr_1.4fr_1fr_1fr_auto] gap-3 items-center ${rowCls}`}>
-
                     <div>
                       <div className="flex items-center gap-1 text-[11px] text-slate-500">
                         <Calendar size={10} className="text-slate-400 shrink-0"/>
@@ -701,24 +788,16 @@ export default function UtilisateursAcces({ userRole }) {
                       </div>
                       <p className="text-[9px] text-slate-400 font-mono mt-0.5">{d.id}</p>
                     </div>
-
                     <p className="text-xs font-semibold text-slate-800">{d.prenom} {d.nom}</p>
-
                     <div className="flex items-center gap-1.5 text-[11px] text-slate-500 min-w-0">
                       <Mail size={10} className="text-slate-400 shrink-0"/>
                       <span className="truncate">{d.email}</span>
                     </div>
-
-                    <span className={`inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full border
-                      ${ROLES.find(r => r.label === d.roleDemande)?.badge ?? "bg-slate-100 text-slate-600 border-slate-200"}`}>
-                      {d.roleDemande}
-                    </span>
-
+                    <span className="text-[10px] text-slate-600">{d.roleDemande ?? '—'}</span>
                     <div className="flex items-center gap-1.5 text-xs text-slate-600 min-w-0">
                       <Building2 size={10} className="text-slate-400 shrink-0"/>
                       <span className="truncate">{d.entite}</span>
                     </div>
-
                     <div className="flex items-center gap-1.5 shrink-0">
                       <button onClick={() => handleApprouver(d)}
                         className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-bold hover:bg-emerald-100 transition-all">
@@ -751,12 +830,12 @@ export default function UtilisateursAcces({ userRole }) {
           onSave={handleAddUser}
         />
       )}
-      {modalRole && (
-        <ModalModifierRole
-          user={modalRole}
+      {modalPerms && (
+        <ModalModifierPermissions
+          user={modalPerms}
           unites={unites}
-          onClose={() => setModalRole(null)}
-          onSave={handleModifierRole}
+          onClose={() => setModalPerms(null)}
+          onSave={handleModifierPermissions}
         />
       )}
       {modalResetPw && (

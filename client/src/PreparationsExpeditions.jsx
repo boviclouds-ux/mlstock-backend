@@ -12,6 +12,7 @@ import {
 
 /* ─── Adaptateur Transaction API → format UI expéditions ── */
 const STATUT_EXP = {
+  /* ── V1 legacy ── */
   'Brouillon':   'a_preparer',
   'En attente':  'en_attente_admin',
   'Validé':      'approuve',
@@ -20,6 +21,12 @@ const STATUT_EXP = {
   'Expédié':     'expedie',
   'Réceptionné': 'expedie',
   'Rejeté':      'a_preparer',
+  /* ── V2 workflow quotas ── */
+  'Demandée':               'a_preparer',
+  'Validée_BE':             'approuve',
+  'Partiellement_Livrée':   'en_cours',
+  'Totalement_Livrée':      'expedie',
+  'Réceptionnée_Cloturée':  'expedie',
 };
 const CAT_EXP = { Semences:'semence', Azote:'azote' };
 
@@ -47,11 +54,12 @@ function fromApiToExpedition(t) {
 
 function statutMeta(s) {
   return {
-    a_preparer:       { label:"À préparer",           bg:"bg-blue-50",   text:"text-blue-700",   border:"border-blue-200",   dot:"bg-blue-500",   pulse:false },
-    en_attente_admin: { label:"En attente Admin",      bg:"bg-amber-50",  text:"text-amber-700",  border:"border-amber-200",  dot:"bg-amber-500",  pulse:true  },
-    approuve:         { label:"Prêt au départ",        bg:"bg-emerald-50",text:"text-emerald-700",border:"border-emerald-200",dot:"bg-emerald-500",pulse:false },
-    en_transit:       { label:"En transit",             bg:"bg-amber-50",  text:"text-amber-700",  border:"border-amber-200",  dot:"bg-amber-500",  pulse:true  },
-    expedie:          { label:"Expédié",               bg:"bg-gray-100",  text:"text-gray-500",   border:"border-gray-200",   dot:"bg-gray-400",   pulse:false },
+    a_preparer:       { label:"À préparer",            bg:"bg-blue-50",    text:"text-blue-700",    border:"border-blue-200",    dot:"bg-blue-500",    pulse:false },
+    en_attente_admin: { label:"En attente Admin",       bg:"bg-amber-50",   text:"text-amber-700",   border:"border-amber-200",   dot:"bg-amber-500",   pulse:true  },
+    approuve:         { label:"Prêt à livrer",          bg:"bg-emerald-50", text:"text-emerald-700", border:"border-emerald-200", dot:"bg-emerald-500", pulse:false },
+    en_cours:         { label:"Livraison en cours",     bg:"bg-blue-50",    text:"text-blue-700",    border:"border-blue-200",    dot:"bg-blue-500",    pulse:true  },
+    en_transit:       { label:"En transit",              bg:"bg-amber-50",   text:"text-amber-700",   border:"border-amber-200",   dot:"bg-amber-500",   pulse:true  },
+    expedie:          { label:"Livré / Expédié",        bg:"bg-gray-100",   text:"text-gray-500",    border:"border-gray-200",    dot:"bg-gray-400",    pulse:false },
   }[s] ?? {};
 }
 
@@ -439,20 +447,25 @@ function PickingDrawer({ commande, onClose, onSceller }) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function chargerEtRepartir() {
-    /* Cas 1 : répartition pré-définie par l'Admin Fédéral via les Quotas → utiliser directement */
+    /* Cas 1 : répartition V2 (quantiteAutorisee / quantiteLivree) ou V1 (qte) depuis les Quotas */
     if (commande.repartGenetique?.length > 0) {
-      setLignesRep(commande.repartGenetique.map(g => ({
-        cle:         g.nni || g.taureau || String(Math.random()),
-        taureau:     g.taureau  ?? '—',
-        nni:         g.nni      ?? '—',
-        couleur:     g.couleur  ?? '—',
-        numLot:      '',
-        cuve:        '—',
-        stockDispo:  g.qte,
-        qteCalculee: g.qte,
-        qteRetire:   g.qte,
-        unite:       semenceArticle?.unite ?? 'doses',
-      })));
+      setLignesRep(commande.repartGenetique.map(g => {
+        const autorisee  = g.quantiteAutorisee  ?? g.quantiteDemandee ?? g.qte ?? 0;
+        const livree     = g.quantiteLivree     ?? 0;
+        const reliquat   = Math.max(0, autorisee - livree);
+        return {
+          cle:               g.nni || g.taureau || String(Math.random()),
+          taureau:           g.taureau          ?? '—',
+          nni:               g.nni              ?? '—',
+          couleur:           g.couleur          ?? '—',
+          conteneurSemence:  g.conteneurSemence ?? g.cuve ?? '—',
+          quantiteAutorisee: autorisee,
+          quantiteLivree:    livree,
+          reliquat,
+          qteRetire:         reliquat,
+          unite:             semenceArticle?.unite ?? 'doses',
+        };
+      }));
       return;
     }
 
@@ -477,14 +490,17 @@ function PickingDrawer({ commande, onClose, onSceller }) {
 
   function updateQteRep(cle, val) {
     setLignesRep(p => p.map(l =>
-      l.cle === cle ? { ...l, qteRetire: Math.max(0, Number(val) || 0) } : l
+      l.cle === cle
+        ? { ...l, qteRetire: Math.min(l.reliquat ?? Infinity, Math.max(0, Number(val) || 0)) }
+        : l
     ));
   }
 
   /* Validations */
   const totalSaisiRep  = lignesRep.reduce((s, l) => s + (Number(l.qteRetire) || 0), 0);
-  const ecartRep       = totalSemDem - totalSaisiRep;
-  const canScellerRep  = lignesRep.length > 0 && ecartRep === 0;
+  const totalReliquat  = lignesRep.reduce((s, l) => s + (l.reliquat ?? 0), 0);
+  const hasOverLimit   = lignesRep.some(l => Number(l.qteRetire) > (l.reliquat ?? 0));
+  const canScellerRep  = lignesRep.length > 0 && totalSaisiRep > 0 && !hasOverLimit;
 
   const totalScanne    = lotsAjoutes.reduce((s, l) => s + l.qteRetire, 0);
   const pct            = totalDemande > 0 ? Math.min((totalScanne / totalDemande) * 100, 100) : 0;
@@ -516,7 +532,15 @@ function PickingDrawer({ commande, onClose, onSceller }) {
   function handleSceller() {
     setDone(true);
     const lots = hasSemence
-      ? lignesRep.map(l => ({ numLot: l.numLot, article: l.taureau, taureau: l.taureau, nni: l.nni, couleur: l.couleur, qteRetire: Number(l.qteRetire), qteMax: l.stockDispo, unite: l.unite, cuve: l.cuve }))
+      ? lignesRep.map(l => ({
+          taureau:          l.taureau,
+          nni:              l.nni,
+          couleur:          l.couleur,
+          conteneurSemence: l.conteneurSemence,
+          reliquat:         l.reliquat,
+          qteRetire:        Number(l.qteRetire),
+          unite:            l.unite,
+        }))
       : lotsAjoutes;
     setTimeout(() => { onSceller(commande.id, lots); onClose(); }, 900);
   }
@@ -583,7 +607,7 @@ function PickingDrawer({ commande, onClose, onSceller }) {
                 <div>
                   <p className={`text-xs font-bold mb-0.5 ${commande.repartGenetique?.length > 0 ? 'text-violet-100' : 'text-slate-100'}`}>
                     {commande.repartGenetique?.length > 0
-                      ? '⚡ Répartition définie par l\'Admin Fédéral'
+                      ? '⚡ Répartition définie par l\'Administrateur'
                       : 'Répartition équitable automatique'}
                   </p>
                   <p className={`text-xs leading-relaxed ${commande.repartGenetique?.length > 0 ? 'text-violet-300' : 'text-slate-400'}`}>
@@ -594,26 +618,29 @@ function PickingDrawer({ commande, onClose, onSceller }) {
                 </div>
               </div>
 
-              {/* Barre de progression */}
+              {/* Barre de progression livraison */}
               <div className="bg-white border border-gray-100 rounded-xl p-4">
                 <div className="flex justify-between items-center mb-2">
-                  <span className="text-xs font-semibold text-gray-700">Total attribué</span>
-                  <span className={`text-xs font-bold tabular-nums ${ecartRep === 0 ? "text-emerald-600" : "text-amber-600"}`}>
-                    {totalSaisiRep.toLocaleString()} / {totalSemDem.toLocaleString()} {semenceArticle?.unite ?? 'doses'}
+                  <span className="text-xs font-semibold text-gray-700">À expédier cette session</span>
+                  <span className={`text-xs font-bold tabular-nums ${hasOverLimit ? "text-red-600" : totalSaisiRep > 0 ? "text-emerald-600" : "text-amber-600"}`}>
+                    {totalSaisiRep.toLocaleString()} / {totalReliquat.toLocaleString()} {semenceArticle?.unite ?? 'doses'} restantes
                   </span>
                 </div>
                 <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                   <div
-                    className={`h-full rounded-full transition-all duration-500 ${ecartRep === 0 ? "bg-emerald-500" : totalSaisiRep > totalSemDem ? "bg-red-500" : "bg-amber-400"}`}
-                    style={{ width: `${Math.min(totalSemDem > 0 ? (totalSaisiRep / totalSemDem) * 100 : 0, 100)}%` }}
+                    className={`h-full rounded-full transition-all duration-500 ${hasOverLimit ? "bg-red-500" : totalSaisiRep > 0 ? "bg-emerald-500" : "bg-gray-200"}`}
+                    style={{ width: `${Math.min(totalReliquat > 0 ? (totalSaisiRep / totalReliquat) * 100 : 0, 100)}%` }}
                   />
                 </div>
-                {ecartRep !== 0 && (
-                  <p className={`mt-1.5 text-xs flex items-center gap-1 font-semibold ${ecartRep > 0 ? "text-amber-600" : "text-red-600"}`}>
+                {hasOverLimit && (
+                  <p className="mt-1.5 text-xs flex items-center gap-1 font-semibold text-red-600">
                     <AlertTriangle size={11} />
-                    {ecartRep > 0
-                      ? `Il manque ${ecartRep} dose${ecartRep > 1 ? 's' : ''} — ajustez les quantités`
-                      : `${Math.abs(ecartRep)} dose${Math.abs(ecartRep) > 1 ? 's' : ''} en trop`}
+                    Une ou plusieurs quantités dépassent le reliquat autorisé.
+                  </p>
+                )}
+                {!hasOverLimit && totalSaisiRep === 0 && totalReliquat > 0 && (
+                  <p className="mt-1.5 text-xs text-amber-600 font-semibold flex items-center gap-1">
+                    <AlertTriangle size={11} /> Saisissez au moins une quantité à expédier.
                   </p>
                 )}
               </div>
@@ -653,23 +680,25 @@ function PickingDrawer({ commande, onClose, onSceller }) {
 
                   {/* En-têtes colonnes */}
                   <div className="grid grid-cols-[1fr_auto_auto_auto] gap-3 px-4 py-2 bg-gray-50/50 border-b border-gray-100">
-                    {['Taureau / NNI', 'Cuve', 'Stock', 'Qté'].map(h => (
+                    {['Taureau / NNI', 'Conteneur', 'Autorisé · Livré · Reliquat', 'À expédier'].map(h => (
                       <span key={h} className="text-[10px] font-bold text-gray-400 uppercase tracking-wider last:text-right">{h}</span>
                     ))}
                   </div>
 
                   <div className="divide-y divide-gray-50">
                     {lignesRep.map((ligne) => {
-                      const estModifie = ligne.qteRetire !== ligne.qteCalculee;
+                      const overLimit  = Number(ligne.qteRetire) > (ligne.reliquat ?? 0);
+                      const isPartial  = ligne.reliquat > 0 && Number(ligne.qteRetire) < ligne.reliquat && Number(ligne.qteRetire) > 0;
                       return (
                         <div key={ligne.cle}
-                          className={`grid grid-cols-[1fr_auto_auto_auto] gap-3 items-center px-4 py-3 transition-colors ${estModifie ? 'bg-amber-50/50' : 'hover:bg-gray-50/60'}`}>
+                          className={`grid grid-cols-[1fr_auto_auto_auto] gap-3 items-center px-4 py-3 transition-colors
+                            ${overLimit ? 'bg-red-50/60' : isPartial ? 'bg-amber-50/40' : 'hover:bg-gray-50/60'}`}>
 
                           {/* Taureau */}
                           <div className="min-w-0">
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <p className="text-xs font-semibold text-gray-800 truncate">{ligne.taureau}</p>
-                              {ligne.couleur !== '—' && (
+                              {ligne.couleur && ligne.couleur !== '—' && (
                                 <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border shrink-0
                                   ${ligne.couleur === 'Rouge'  ? 'bg-red-50 text-red-700 border-red-200' :
                                     ligne.couleur === 'Bleu'   ? 'bg-blue-50 text-blue-700 border-blue-200' :
@@ -683,25 +712,39 @@ function PickingDrawer({ commande, onClose, onSceller }) {
                             <p className="text-[10px] text-gray-400 mt-0.5 font-mono">{ligne.nni}</p>
                           </div>
 
-                          <span className="text-[11px] font-mono text-gray-500 shrink-0">{ligne.cuve}</span>
-                          <span className="text-[11px] text-gray-400 tabular-nums shrink-0">{ligne.stockDispo.toLocaleString()}</span>
+                          {/* Conteneur semence */}
+                          <span className="text-[11px] font-mono text-gray-500 shrink-0 max-w-[80px] truncate">{ligne.conteneurSemence}</span>
 
+                          {/* Autorisé · Livré · Reliquat */}
+                          <div className="text-right shrink-0 space-y-0.5">
+                            <p className="text-[10px] text-gray-400 tabular-nums">
+                              <span className="text-gray-300">Aut. </span>{(ligne.quantiteAutorisee ?? 0).toLocaleString()}
+                            </p>
+                            <p className="text-[10px] text-gray-400 tabular-nums">
+                              <span className="text-gray-300">Livr. </span>{(ligne.quantiteLivree ?? 0).toLocaleString()}
+                            </p>
+                            <p className={`text-[10px] font-bold tabular-nums ${ligne.reliquat > 0 ? 'text-blue-600' : 'text-emerald-600'}`}>
+                              {ligne.reliquat > 0 ? `Rel. ${ligne.reliquat.toLocaleString()}` : '✓ Soldé'}
+                            </p>
+                          </div>
+
+                          {/* Input à expédier */}
                           <div className="flex flex-col items-end gap-0.5 shrink-0">
                             <input
                               type="number"
                               min={0}
-                              max={ligne.stockDispo}
+                              max={ligne.reliquat ?? 0}
                               value={ligne.qteRetire}
+                              disabled={ligne.reliquat <= 0}
                               onChange={e => updateQteRep(ligne.cle, parseInt(e.target.value, 10) || 0)}
                               className={`w-20 text-right text-sm font-bold border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 tabular-nums transition-colors
-                                ${estModifie
-                                  ? 'border-amber-300 bg-amber-50 text-amber-800 focus:ring-amber-400'
-                                  : 'border-gray-200 text-gray-800 bg-white focus:ring-blue-400'}`}
+                                ${ligne.reliquat <= 0  ? 'border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed' :
+                                  overLimit            ? 'border-red-400 bg-red-50 text-red-700 focus:ring-red-400' :
+                                  isPartial            ? 'border-amber-300 bg-amber-50 text-amber-800 focus:ring-amber-400' :
+                                                         'border-gray-200 text-gray-800 bg-white focus:ring-blue-400'}`}
                             />
-                            {estModifie && (
-                              <span className="text-[9px] text-amber-500 font-semibold">
-                                calculé : {ligne.qteCalculee}
-                              </span>
+                            {overLimit && (
+                              <span className="text-[9px] text-red-600 font-semibold">max {ligne.reliquat}</span>
                             )}
                           </div>
                         </div>
@@ -709,12 +752,16 @@ function PickingDrawer({ commande, onClose, onSceller }) {
                     })}
                   </div>
 
-                  {/* Pied de tableau — total */}
-                  <div className={`flex items-center justify-between px-4 py-2.5 border-t transition-colors ${ecartRep === 0 ? 'bg-emerald-50 border-emerald-100' : 'bg-amber-50 border-amber-100'}`}>
-                    <span className={`text-xs font-bold ${ecartRep === 0 ? 'text-emerald-700' : 'text-amber-700'}`}>Total</span>
-                    <span className={`text-sm font-bold tabular-nums flex items-center gap-1.5 ${ecartRep === 0 ? 'text-emerald-700' : 'text-amber-700'}`}>
-                      {totalSaisiRep.toLocaleString()} / {totalSemDem.toLocaleString()} {semenceArticle?.unite ?? 'doses'}
-                      {ecartRep === 0 && <CheckCircle size={12} />}
+                  {/* Pied de tableau — total session */}
+                  <div className={`flex items-center justify-between px-4 py-2.5 border-t transition-colors
+                    ${hasOverLimit ? 'bg-red-50 border-red-100' : canScellerRep ? 'bg-emerald-50 border-emerald-100' : 'bg-amber-50 border-amber-100'}`}>
+                    <span className={`text-xs font-bold ${hasOverLimit ? 'text-red-700' : canScellerRep ? 'text-emerald-700' : 'text-amber-700'}`}>
+                      Cette livraison
+                    </span>
+                    <span className={`text-sm font-bold tabular-nums flex items-center gap-1.5
+                      ${hasOverLimit ? 'text-red-700' : canScellerRep ? 'text-emerald-700' : 'text-amber-700'}`}>
+                      {totalSaisiRep.toLocaleString()} {semenceArticle?.unite ?? 'doses'}
+                      {canScellerRep && !hasOverLimit && <CheckCircle size={12} />}
                     </span>
                   </div>
                 </div>
@@ -804,10 +851,15 @@ function PickingDrawer({ commande, onClose, onSceller }) {
 
         {/* Pied */}
         <div className="px-5 py-4 border-t border-gray-100 bg-white shrink-0 space-y-2">
-          {hasSemence && ecartRep !== 0 && lignesRep.length > 0 && (
-            <p className="text-xs text-amber-600 text-center flex items-center justify-center gap-1.5 font-semibold">
+          {hasSemence && hasOverLimit && (
+            <p className="text-xs text-red-600 text-center flex items-center justify-center gap-1.5 font-semibold">
               <AlertTriangle size={11}/>
-              Écart de {Math.abs(ecartRep)} dose{Math.abs(ecartRep) > 1 ? 's' : ''} — le total doit être exactement {totalSemDem}.
+              Quantité saisie dépasse le reliquat autorisé — corrigez avant de valider.
+            </p>
+          )}
+          {hasSemence && !hasOverLimit && totalSaisiRep === 0 && lignesRep.length > 0 && (
+            <p className="text-xs text-amber-600 text-center flex items-center justify-center gap-1.5 font-semibold">
+              <AlertTriangle size={11}/> Saisissez au moins une quantité à expédier.
             </p>
           )}
           {!hasSemence && !canScellerScan && (
@@ -820,10 +872,12 @@ function PickingDrawer({ commande, onClose, onSceller }) {
             <button onClick={handleSceller} disabled={!canScellerFinal || done}
               className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-bold rounded-xl transition-all
                 ${done              ? "bg-emerald-500 text-white"
-                : canScellerFinal   ? "bg-amber-500 hover:bg-amber-600 text-white shadow-sm"
+                : canScellerFinal   ? "bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
                 :                     "bg-gray-100 text-gray-400 cursor-not-allowed"}`}>
               {done
-                ? <><BadgeCheck size={15}/> Soumis à l'Admin !</>
+                ? <><BadgeCheck size={15}/> Livraison enregistrée !</>
+                : hasSemence
+                ? <><Send size={14}/> Enregistrer la livraison</>
                 : <><Lock size={14}/> Sceller et soumettre à l'Admin</>}
             </button>
           </div>
@@ -931,7 +985,11 @@ export default function PreparationsExpeditions() {
       const res  = await api.get("/api/transactions?limit=100");
       const list = Array.isArray(res) ? res : (res.data ?? []);
       const mapped = list
-        .filter(t => ['EXPEDITION', 'ORDRE_ADMIN'].includes(t.type))
+        .filter(t =>
+          ['EXPEDITION', 'ORDRE_ADMIN'].includes(t.type) ||
+          (Array.isArray(t.repartGenetique) && t.repartGenetique.length > 0 &&
+           ['Validée_BE', 'Partiellement_Livrée'].includes(t.statut))
+        )
         .map(fromApiToExpedition);
       setCommandes(mapped);
     } catch (err) {
@@ -953,11 +1011,41 @@ export default function PreparationsExpeditions() {
 
   function flash(id) { setFlashId(id); setTimeout(() => setFlashId(null), 800); }
 
-  /* ─ Sceller : local + PUT API (Brouillon → En attente Admin) ─── */
+  /* ─ Livraison partielle V2 (semences) ou scellement V1 (non-semence) ── */
   async function handleSceller(id, lots) {
+    const target = commandes.find(c => c.id === id);
+
+    /* ── Cas V2 : semences avec repartGenetique → POST /livraisons ── */
+    const isSemenceLivraison = lots.length > 0 && lots[0].conteneurSemence !== undefined;
+    if (isSemenceLivraison && target?._id) {
+      const payload = lots
+        .filter(l => Number(l.qteRetire) > 0)
+        .map(l => ({
+          ...(l.nni && l.nni !== '—'         ? { nni:     l.nni     } : {}),
+          ...(l.taureau && l.taureau !== '—'  ? { taureau: l.taureau } : {}),
+          conteneurSemence: l.conteneurSemence !== '—' ? l.conteneurSemence : '',
+          quantiteExpediee: Number(l.qteRetire),
+        }));
+      if (!payload.length) return;
+      try {
+        const result  = await api.post(`/api/transactions/${target._id}/livraisons`, payload);
+        const statutBd = result?.statut ?? 'Partiellement_Livrée';
+        const isDone   = statutBd === 'Totalement_Livrée';
+        setCommandes(p => p.map(c => c.id !== id ? c : {
+          ...c,
+          statut:          isDone ? 'expedie' : 'en_cours',
+          repartGenetique: result?.transaction?.repartGenetique ?? c.repartGenetique,
+        }));
+        flash(id);
+      } catch (err) {
+        setApiError(err.message ?? 'Erreur lors de l\'enregistrement de la livraison.');
+      }
+      return;
+    }
+
+    /* ── Cas V1 : non-semence → PUT statut legacy ── */
     setCommandes(p => p.map(c => c.id === id ? { ...c, statut: "en_attente_admin", lotsScelles: lots } : c));
     flash(id);
-    const target = commandes.find(c => c.id === id);
     if (target?._id) {
       const repartPayload = lots
         .filter(l => l.nni)
@@ -973,7 +1061,7 @@ export default function PreparationsExpeditions() {
           statut: 'En attente',
           ...(repartPayload.length > 0 ? { repartGenetique: repartPayload } : {}),
         });
-      } catch { /* la vue locale est déjà mise à jour */ }
+      } catch { /* vue locale déjà mise à jour */ }
     }
   }
 
@@ -1135,6 +1223,18 @@ export default function PreparationsExpeditions() {
                             <button onClick={() => setPickingCmd(cmd)}
                               className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition-colors whitespace-nowrap">
                               <ClipboardList size={12}/> Commencer le Picking
+                            </button>
+                          )}
+                          {cmd.statut === "en_cours" && (
+                            <button onClick={() => setPickingCmd(cmd)}
+                              className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl bg-blue-500 hover:bg-blue-600 text-white transition-colors whitespace-nowrap">
+                              <Send size={12}/> Livraison partielle
+                            </button>
+                          )}
+                          {cmd.statut === "approuve" && cmd.repartGenetique?.length > 0 && (
+                            <button onClick={() => setPickingCmd(cmd)}
+                              className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-colors whitespace-nowrap">
+                              <Send size={12}/> Démarrer la livraison
                             </button>
                           )}
                           {cmd.statut === "en_attente_admin" && (

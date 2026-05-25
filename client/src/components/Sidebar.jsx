@@ -6,65 +6,67 @@ import {
   User, LogOut, Shield, MapPinCheck,
 } from 'lucide-react';
 
-/* ─── Constantes de rôle — doivent correspondre exactement aux valeurs JWT ── */
-const ADMIN_FEDERAL = 'ADMIN_FEDERAL';
-const ADMIN         = 'ADMIN';
-const MAGASINIER    = 'MAGASINIER';
-const UNITE         = 'UNITE';         // ← anciennement COOPERATIVE
+/* ─── Prédicats de permission V2 ─────────────────────────── */
+const isBeneficiaire = p => Boolean(p.canDemand && !p.isAdmin && !p.canDispatch);
+const isOps          = p => Boolean(p.isAdmin || p.canDispatch);
+const isAdminOnly    = p => Boolean(p.isAdmin);
 
-/* ─── Groupes de navigation filtrés par rôle ─────────── */
+/* ─── Groupes de navigation filtrés par permission V2 ──────── */
 const NAV_GROUPS = [
   // Bloc 1 : Vue d'ensemble
   [
     { label: 'Tableau de Bord', path: '/', icon: LayoutDashboard, end: true,
-      roles: [ADMIN_FEDERAL, ADMIN, MAGASINIER] },
+      canSee: isOps },
     { label: 'Mon Espace',      path: '/', icon: LayoutDashboard, end: true,
-      roles: [UNITE] },
+      canSee: isBeneficiaire },
   ],
-  // Bloc 2 : Gestion des Demandes (Unités uniquement — ADMIN_FEDERAL utilise "Ordres Admin")
+  // Bloc 2 : Gestion des Demandes (Bénéficiaires uniquement)
   [
     { label: 'Gestion des Demandes', path: '/cooperative', icon: Package,
-      roles: [UNITE] },
+      canSee: isBeneficiaire },
   ],
-  // Bloc 3 : Logistique & Stock
+  // Bloc 3 : Logistique & Stock (Magasinier + Admin)
   [
-    { label: 'Approvisionnements',        path: '/approvisionnements', icon: Truck,         roles: [MAGASINIER, ADMIN_FEDERAL, ADMIN] },
-    { label: 'Réceptions & Importations', path: '/receptions',         icon: Inbox,         roles: [MAGASINIER, ADMIN_FEDERAL, ADMIN] },
-    { label: 'Inventaire Central',        path: '/magasinier',         icon: ClipboardList, roles: [MAGASINIER, ADMIN_FEDERAL, ADMIN] },
-    { label: 'Préparations & Expéditions',path: '/expeditions',        icon: Send,          roles: [MAGASINIER, ADMIN_FEDERAL, ADMIN] },
+    { label: 'Approvisionnements',         path: '/approvisionnements', icon: Truck,         canSee: isOps },
+    { label: 'Réceptions & Importations',  path: '/receptions',         icon: Inbox,         canSee: isOps },
+    { label: 'Inventaire Central',         path: '/magasinier',         icon: ClipboardList, canSee: isOps },
+    { label: 'Préparations & Expéditions', path: '/expeditions',        icon: Send,          canSee: isOps },
   ],
-  // Bloc 4 : Pilotage & Contrôle
+  // Bloc 4 : Pilotage & Contrôle (Admin uniquement)
   [
-    { label: 'Gestion des Quotas',    path: '/quotas',       icon: Scale,        roles: [ADMIN_FEDERAL, ADMIN] },
-    { label: 'Ordres Admin',          path: '/ordres-admin', icon: Zap,          roles: [ADMIN_FEDERAL, ADMIN] },
-    { label: 'Validations & OTP',     path: '/validations',  icon: ShieldCheck,  roles: [ADMIN_FEDERAL, ADMIN] },
-    { label: 'Réception Régionale',   path: '/regional',     icon: MapPinCheck,  roles: [ADMIN_FEDERAL, ADMIN] },
-    { label: 'Traçabilité',           path: '/tracabilite',  icon: FileText,     roles: [ADMIN_FEDERAL, ADMIN] },
+    { label: 'Gestion des Quotas',  path: '/quotas',       icon: Scale,       canSee: isAdminOnly },
+    { label: 'Ordres Admin',        path: '/ordres-admin', icon: Zap,         canSee: isAdminOnly },
+    { label: 'Validations & OTP',   path: '/validations',  icon: ShieldCheck, canSee: isAdminOnly },
+    { label: 'Réception Régionale', path: '/regional',     icon: MapPinCheck, canSee: isAdminOnly },
+    { label: 'Traçabilité',         path: '/tracabilite',  icon: FileText,    canSee: isAdminOnly },
   ],
-  // Bloc 5 : Administration
+  // Bloc 5 : Administration (Admin uniquement)
   [
-    { label: 'Catalogue & Référentiel', path: '/catalogue',     icon: Tags,     roles: [ADMIN_FEDERAL, ADMIN] },
-    { label: 'Réseau & Acteurs',         path: '/reseau',        icon: Network,  roles: [ADMIN_FEDERAL, ADMIN] },
-    { label: 'Utilisateurs & Accès',    path: '/utilisateurs',  icon: Users,    roles: [ADMIN_FEDERAL, ADMIN] },
-    { label: 'Configuration Générale',  path: '/configuration', icon: Settings, roles: [ADMIN_FEDERAL] },
+    { label: 'Catalogue & Référentiel', path: '/catalogue',     icon: Tags,     canSee: isAdminOnly },
+    { label: 'Réseau & Acteurs',         path: '/reseau',        icon: Network,  canSee: isAdminOnly },
+    { label: 'Utilisateurs & Accès',    path: '/utilisateurs',  icon: Users,    canSee: isAdminOnly },
+    { label: 'Configuration Générale',  path: '/configuration', icon: Settings, canSee: isAdminOnly },
   ],
 ];
 
-const ROLE_BADGE = {
-  [ADMIN_FEDERAL]: 'bg-violet-600/20 text-violet-300 border-violet-700',
-  [ADMIN]:         'bg-indigo-600/20 text-indigo-300 border-indigo-700',
-  [UNITE]:         'bg-emerald-600/20 text-emerald-300 border-emerald-800',
-  [MAGASINIER]:    'bg-blue-600/20 text-blue-300 border-blue-800',
-};
+/* ─── Labels et badges dérivés des permissions V2 ────────── */
+function getRoleBadgeClass(p) {
+  if (!p) return 'bg-slate-600/20 text-slate-300 border-slate-700';
+  if (p.isAdmin)     return 'bg-indigo-600/20 text-indigo-300 border-indigo-700';
+  if (p.canDispatch) return 'bg-blue-600/20 text-blue-300 border-blue-800';
+  if (p.canDemand)   return 'bg-emerald-600/20 text-emerald-300 border-emerald-800';
+  return 'bg-slate-600/20 text-slate-300 border-slate-700';
+}
 
-const ROLE_LABEL = {
-  [ADMIN_FEDERAL]: 'Admin Fédéral',
-  [ADMIN]:         'Administrateur',
-  [UNITE]:         'Responsable Unité',
-  [MAGASINIER]:    'Magasinier',
-};
+function getRoleLabel(p) {
+  if (!p) return 'Compte non configuré';
+  if (p.isAdmin)     return 'Administrateur';
+  if (p.canDispatch) return 'Magasinier';
+  if (p.canDemand)   return 'Responsable Unité';
+  return 'Compte non configuré';
+}
 
-/* ─── Lien de navigation ──────────────────────────────── */
+/* ─── Lien de navigation ──────────────────────────────────── */
 function NavItem({ path, icon: Icon, label, end = false, onClose }) {
   return (
     <NavLink
@@ -88,10 +90,12 @@ function NavItem({ path, icon: Icon, label, end = false, onClose }) {
   );
 }
 
-/* ─── Composant principal ─────────────────────────────── */
-export default function Sidebar({ user, userRole, onLogout, isOpen, onClose }) {
+/* ─── Composant principal ─────────────────────────────────── */
+export default function Sidebar({ user, onLogout, isOpen, onClose }) {
+  const permissions = user?.permissions ?? {};
+
   const visibleGroups = NAV_GROUPS
-    .map(group => group.filter(item => item.roles.includes(userRole)))
+    .map(group => group.filter(item => item.canSee(permissions)))
     .filter(group => group.length > 0);
 
   return (
@@ -102,10 +106,10 @@ export default function Sidebar({ user, userRole, onLogout, isOpen, onClose }) {
         <img src={logoImg} alt="ML STOCK" className="h-9 w-auto object-contain" />
       </div>
 
-      {/* Badge rôle */}
+      {/* Badge rôle dérivé des permissions */}
       <div className="px-5 py-3 border-b border-white/10">
-        <span className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full bg-white/10 border border-white/15 text-white/80">
-          <Shield size={9} /> {ROLE_LABEL[userRole] ?? userRole}
+        <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full border ${getRoleBadgeClass(permissions)}`}>
+          <Shield size={9} /> {getRoleLabel(permissions)}
         </span>
       </div>
 

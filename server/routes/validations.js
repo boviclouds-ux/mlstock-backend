@@ -1,27 +1,23 @@
 const express     = require('express');
 const router      = express.Router();
-const { protect, authorize } = require('../middleware/authMiddleware');
+const { protect, requireAdmin, requireDispatch } = require('../middleware/authMiddleware');
 const Otp         = require('../models/Otp');
 const Transaction = require('../models/Transaction');
 const Lot         = require('../models/Lot');
 
-const ADMIN_ROLES    = ['ADMIN_FEDERAL', 'ADMIN'];
-const MAGASINIER_PLUS = [...ADMIN_ROLES, 'MAGASINIER'];
-
 const POPULATE_STD = [
-  { path: 'uniteCible',     select: 'nom code region type' },
-  { path: 'initiatedBy',   select: 'prenom nom email role' },
+  { path: 'uniteCible',     select: 'nom code region type'         },
+  { path: 'initiatedBy',   select: 'prenom nom email permissions'  },
   { path: 'lignes.article', select: 'code designation uniteMesure categorie' },
 ];
 
 /* ═══════════════════════════════════════════════════════════
    POST /api/otp/generate
    Corps : { dureeSecondes: 900 }
-   Génère un PIN à 6 chiffres, le stocke en base (TTL auto),
-   retourne { code, expiresAt, dureeSecondes }.
-   Invalide les anciens OTP actifs du même admin.
+   Génère un PIN à 6 chiffres (TTL auto), invalide les anciens.
+   Réservé aux Administrateurs.
 ═══════════════════════════════════════════════════════════ */
-router.post('/otp/generate', protect, authorize(...ADMIN_ROLES), async (req, res) => {
+router.post('/otp/generate', protect, requireAdmin, async (req, res) => {
   try {
     const dureeSecondes = Math.max(60, Math.min(86400, Number(req.body?.dureeSecondes) || 900));
     const code      = String(Math.floor(100000 + Math.random() * 900000));
@@ -43,21 +39,19 @@ router.post('/otp/generate', protect, authorize(...ADMIN_ROLES), async (req, res
 
 /* ═══════════════════════════════════════════════════════════
    PUT /api/ordres/:id/valider-admin
-   Validation directe Admin → 'En attente' → 'Expédié'.
-   Réservé aux Admins.
+   Validation directe Admin → 'En attente' → 'Validé'.
 ═══════════════════════════════════════════════════════════ */
-router.put('/ordres/:id/valider-admin', protect, authorize(...ADMIN_ROLES), async (req, res) => {
+router.put('/ordres/:id/valider-admin', protect, requireAdmin, async (req, res) => {
   try {
     const tx = await Transaction.findById(req.params.id).select('statut');
     if (!tx) return res.status(404).json({ message: 'Ordre introuvable.' });
 
-    if (tx.statut !== 'En attente') {
+    if (tx.statut !== 'Demandée') {
       return res.status(422).json({
-        message: `Validation impossible : statut actuel "${tx.statut}". Seuls les ordres "En attente" peuvent être validés ici.`,
+        message: `Validation impossible : statut actuel "${tx.statut}". Seuls les ordres "Demandée" peuvent être validés ici.`,
       });
     }
 
-    // Passe à 'Validé' → le magasinier peut ensuite finaliser avec la remise transporteur
     const updated = await Transaction.findByIdAndUpdate(
       req.params.id,
       { $set: { statut: 'Validé' } },
@@ -74,11 +68,14 @@ router.put('/ordres/:id/valider-admin', protect, authorize(...ADMIN_ROLES), asyn
 /* ═══════════════════════════════════════════════════════════
    PUT /api/ordres/:id/valider-otp
    Corps : { pin: "482917" }
-   Vérifie le PIN (actif + non expiré), puis passe l'ordre
-   de 'En attente' à 'Expédié'. Le PIN est invalidé après usage.
-   Accessible aux Magasiniers ET Admins.
+   Vérifie le PIN, passe l'ordre 'En attente' → 'Validé'.
+   Le PIN est invalidé après usage (usage unique).
+
+   Accessible à tout utilisateur authentifié porteur d'un PIN valide :
+   le PIN lui-même constitue l'autorisation (signature virtuelle).
+   Cela permet au magasinier ET au bénéficiaire de l'utiliser.
 ═══════════════════════════════════════════════════════════ */
-router.put('/ordres/:id/valider-otp', protect, authorize(...MAGASINIER_PLUS), async (req, res) => {
+router.put('/ordres/:id/valider-otp', protect, async (req, res) => {
   const { pin } = req.body;
   if (!pin) return res.status(400).json({ message: 'Le champ "pin" est requis.' });
 
@@ -98,16 +95,14 @@ router.put('/ordres/:id/valider-otp', protect, authorize(...MAGASINIER_PLUS), as
     const tx = await Transaction.findById(req.params.id).select('statut');
     if (!tx) return res.status(404).json({ message: 'Ordre introuvable.' });
 
-    if (tx.statut !== 'En attente') {
+    if (tx.statut !== 'Demandée') {
       return res.status(422).json({
-        message: `Validation impossible : statut actuel "${tx.statut}".`,
+        message: `Validation OTP impossible : statut actuel "${tx.statut}". L'ordre doit être "Demandée".`,
       });
     }
 
-    /* Invalider le PIN : usage unique */
     await Otp.findByIdAndUpdate(otp._id, { $set: { actif: false } });
 
-    // Passe à 'Validé' → le magasinier finalise ensuite avec la remise transporteur + BL
     const updated = await Transaction.findByIdAndUpdate(
       req.params.id,
       { $set: { statut: 'Validé' } },
@@ -124,11 +119,11 @@ router.put('/ordres/:id/valider-otp', protect, authorize(...MAGASINIER_PLUS), as
 /* ═══════════════════════════════════════════════════════════
    PUT /api/ordres/:id/finaliser-expedition
    Corps : { societe: "Trans-Atlas", matricule: "12345-A-6" }
-   Dernière étape : enregistre les infos transporteur,
-   génère la référence BL et passe l'ordre à 'Expédié'.
-   Accessible Magasinier + Admin.
+   Enregistre les infos transporteur, génère la référence BL,
+   passe l'ordre 'Validé' → 'En_transit' et décrémente les stocks.
+   Accessible au Magasinier (requireDispatch).
 ═══════════════════════════════════════════════════════════ */
-router.put('/ordres/:id/finaliser-expedition', protect, authorize(...MAGASINIER_PLUS), async (req, res) => {
+router.put('/ordres/:id/finaliser-expedition', protect, requireDispatch, async (req, res) => {
   const { societe, matricule } = req.body ?? {};
   if (!societe?.trim()) {
     return res.status(400).json({ message: 'Le nom de la société de transport est requis.' });
@@ -138,9 +133,9 @@ router.put('/ordres/:id/finaliser-expedition', protect, authorize(...MAGASINIER_
     const tx = await Transaction.findById(req.params.id).select('statut repartGenetique');
     if (!tx) return res.status(404).json({ message: 'Ordre introuvable.' });
 
-    if (tx.statut !== 'Validé') {
+    if (tx.statut !== 'Validée_BE') {
       return res.status(422).json({
-        message: `Finalisation impossible : statut actuel "${tx.statut}". L'ordre doit être "Validé" (autorisation Admin/OTP requise).`,
+        message: `Finalisation impossible : statut actuel "${tx.statut}". L'ordre doit être "Validée_BE" (Bon d'Enlèvement émis).`,
       });
     }
 
@@ -150,7 +145,7 @@ router.put('/ordres/:id/finaliser-expedition', protect, authorize(...MAGASINIER_
       req.params.id,
       {
         $set: {
-          statut:                  'En_transit',
+          statut:                   'En_transit',
           blReference,
           'transporteur.societe':   societe.trim(),
           'transporteur.matricule': (matricule ?? '').trim(),
@@ -159,12 +154,22 @@ router.put('/ordres/:id/finaliser-expedition', protect, authorize(...MAGASINIER_
       { new: true, runValidators: true }
     ).populate(POPULATE_STD);
 
-    // Décrémentation du stock semences — une seule exécution garantie par la guard statut !== 'Validé'
+    /* ── Décrémentation du stock semences ────────────────────
+       La guard statut !== 'Validé' garantit une seule exécution.
+       $elemMatch : nni ET conteneurSemence doivent appartenir
+       au même sous-document ficheTechnique.
+    ─────────────────────────────────────────────────────────── */
     if (tx.repartGenetique?.length > 0) {
       for (const item of tx.repartGenetique) {
-        // $elemMatch garantit que nni ET cuve appartiennent au même sous-document
         const lotUpdated = await Lot.findOneAndUpdate(
-          { ficheTechnique: { $elemMatch: { nni: item.nni, cuve: item.cuve } } },
+          {
+            ficheTechnique: {
+              $elemMatch: {
+                nni:              item.nni,
+                conteneurSemence: item.conteneurSemence,
+              },
+            },
+          },
           { $inc: { 'ficheTechnique.$.qte': -item.qte } },
           { new: true }
         );
@@ -174,7 +179,6 @@ router.put('/ordres/:id/finaliser-expedition', protect, authorize(...MAGASINIER_
           continue;
         }
 
-        // Recalcul du total disponible après confirmation de l'écriture atomique
         const newTotal = lotUpdated.ficheTechnique.reduce((s, f) => s + (f.qte || 0), 0);
         await Lot.findByIdAndUpdate(lotUpdated._id, { $set: { qteDisponible: newTotal } });
       }
@@ -190,11 +194,11 @@ router.put('/ordres/:id/finaliser-expedition', protect, authorize(...MAGASINIER_
 /* ═══════════════════════════════════════════════════════════
    PUT /api/ordres/:id/reception-regionale
    Corps : { conformite (Boolean), commentaire (String) }
-   Valide la réception de l'ordre par le Responsable Régional.
-   L'ordre doit être en statut 'En_transit'.
+   Valide la réception régionale. L'ordre doit être 'En_transit'.
    Passe définitivement le statut à 'Expedie'.
+   Réservé aux Administrateurs.
 ═══════════════════════════════════════════════════════════ */
-router.put('/ordres/:id/reception-regionale', protect, authorize(...ADMIN_ROLES), async (req, res) => {
+router.put('/ordres/:id/reception-regionale', protect, requireAdmin, async (req, res) => {
   const { conformite, commentaire } = req.body ?? {};
 
   if (typeof conformite !== 'boolean') {
@@ -205,9 +209,9 @@ router.put('/ordres/:id/reception-regionale', protect, authorize(...ADMIN_ROLES)
     const tx = await Transaction.findById(req.params.id).select('statut');
     if (!tx) return res.status(404).json({ message: 'Ordre introuvable.' });
 
-    if (tx.statut !== 'En_transit') {
+    if (!['Partiellement_Livrée', 'Totalement_Livrée'].includes(tx.statut)) {
       return res.status(422).json({
-        message: `Réception impossible : statut actuel "${tx.statut}". L'ordre doit être "En_transit".`,
+        message: `Réception impossible : statut actuel "${tx.statut}". L'ordre doit être "Partiellement_Livrée" ou "Totalement_Livrée".`,
       });
     }
 
@@ -215,11 +219,11 @@ router.put('/ordres/:id/reception-regionale', protect, authorize(...ADMIN_ROLES)
       req.params.id,
       {
         $set: {
-          statut:                                 'Expedie',
-          'receptionRegionale.conformite':        conformite,
-          'receptionRegionale.commentaire':       (commentaire ?? '').trim(),
-          'receptionRegionale.validePar':         req.user._id,
-          'receptionRegionale.dateValidation':    new Date(),
+          statut:                              'Expedie',
+          'receptionRegionale.conformite':     conformite,
+          'receptionRegionale.commentaire':    (commentaire ?? '').trim(),
+          'receptionRegionale.validePar':      req.user._id,
+          'receptionRegionale.dateValidation': new Date(),
         },
       },
       { new: true, runValidators: true }

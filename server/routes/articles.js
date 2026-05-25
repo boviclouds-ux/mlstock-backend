@@ -1,6 +1,6 @@
 const express    = require('express');
 const router     = express.Router();
-const { protect, authorize } = require('../middleware/authMiddleware');
+const { protect, requireAdmin } = require('../middleware/authMiddleware');
 const {
   getAllArticles,
   getArticleById,
@@ -8,14 +8,12 @@ const {
   updateArticle,
 } = require('../controllers/articleController');
 
-const ADMIN_ROLES = ['ADMIN_FEDERAL', 'ADMIN'];
-
-// Lecture : tous les utilisateurs authentifiés (Magasinier, Unité, Admin)
+// Lecture : tous les utilisateurs authentifiés
 router.get('/',    protect, getAllArticles);
 router.get('/:id', protect, getArticleById);
 
-// Écriture : réservée aux Admins (gestion du catalogue)
-router.post('/',   protect, authorize(...ADMIN_ROLES), createArticle);
-router.put('/:id', protect, authorize(...ADMIN_ROLES), updateArticle);
+// Écriture : réservée aux admins (gestion du catalogue)
+router.post('/',   protect, requireAdmin, createArticle);
+router.put('/:id', protect, requireAdmin, updateArticle);
 
 module.exports = router;

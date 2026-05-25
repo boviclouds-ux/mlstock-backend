@@ -81,7 +81,7 @@ export default function DashboardDirection() {
 
     Promise.all([
       api.get("/api/dashboard/stats"),
-      api.get("/api/cuves").catch(() => []),
+      api.get("/api/conteneurs-semences").catch(() => []),
     ]).then(([data, cuvesData]) => {
       if (cancelled) return;
       setStocks(data.stocks ?? {});

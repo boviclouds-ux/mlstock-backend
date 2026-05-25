@@ -27,14 +27,11 @@ const userSchema = new mongoose.Schema(
       minlength: [6, 'Minimum 6 caractères'],
       select: false, // jamais renvoyé par défaut dans les requêtes
     },
-    role: {
-      type: String,
-      required: true,
-      enum: {
-        values: ['ADMIN_FEDERAL', 'ADMIN', 'MAGASINIER', 'UNITE'],
-        message: 'Rôle invalide : {VALUE}',
-      },
-      default: 'UNITE',
+    permissions: {
+      canDemand:   { type: Boolean, default: false }, // Acheteur / Demandeur
+      canReceive:  { type: Boolean, default: false }, // Réceptionneur fournisseur
+      canDispatch: { type: Boolean, default: false }, // Magasinier — bons d'enlèvement et BL
+      isAdmin:     { type: Boolean, default: false }, // Gestion globale et quotas
     },
     entite: {
       type: String,

@@ -5,8 +5,31 @@ const ligneSchema = new mongoose.Schema(
     articleId: { type: mongoose.Schema.Types.ObjectId, ref: 'Article', default: null },
     label:     { type: String, required: true, trim: true },
     qte:       { type: Number, required: true, min: [1, 'La quantité doit être ≥ 1'] },
-    unite:     { type: String, trim: true, default: 'U' },
-    type:      { type: String, enum: ['semence', 'azote', 'materiel'], default: 'materiel' },
+
+    typeProduit: {
+      type: String,
+      required: [true, 'Le type de produit est requis sur chaque ligne'],
+      enum: {
+        values:  ['Conventionnelle', 'Sexée', 'Azote'],
+        message: 'typeProduit invalide : {VALUE}',
+      },
+    },
+
+    uniteMesure: {
+      type: String,
+      required: [true, "L'unité de mesure est requise sur chaque ligne"],
+      enum: {
+        values:  ['Unité', 'Litre'],
+        message: 'uniteMesure invalide : {VALUE}',
+      },
+    },
+
+    prixAchatUnitaire: {
+      type:     Number,
+      required: [true, "Le prix d'achat unitaire est requis sur chaque ligne"],
+      min:      [0, 'Le prix ne peut pas être négatif'],
+    },
+
     /* Fiche technique semences — saisie à la commande ou à la réception */
     ficheTechnique: {
       type: [{
@@ -14,7 +37,7 @@ const ligneSchema = new mongoose.Schema(
         nni:      { type: String, trim: true, default: '' },
         couleur:  { type: String, trim: true, default: '' },
         quantite: { type: Number, default: 0 },
-        cuveRef:  { type: String, trim: true, default: '' },
+        cuveRef:  { type: String, trim: true, default: '' }, // référence du conteneur semence
       }],
       default: [],
     },

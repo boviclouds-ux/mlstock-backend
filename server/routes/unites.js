@@ -1,6 +1,6 @@
 const express    = require('express');
 const router     = express.Router();
-const { protect, authorize } = require('../middleware/authMiddleware');
+const { protect, requireAdmin, requireDispatch } = require('../middleware/authMiddleware');
 const {
   getAllUnites,
   getUniteById,
@@ -8,14 +8,12 @@ const {
   updateUnite,
 } = require('../controllers/uniteController');
 
-const ADMIN_ROLES = ['ADMIN_FEDERAL', 'ADMIN'];
+// Lecture : admin + magasinier (doit voir les unités bénéficiaires pour les BL)
+router.get('/',    protect, requireDispatch, getAllUnites);
+router.get('/:id', protect, requireDispatch, getUniteById);
 
-// Lecture : accessible aux rôles internes (Admin, Magasinier)
-router.get('/',    protect, authorize(...ADMIN_ROLES, 'MAGASINIER'), getAllUnites);
-router.get('/:id', protect, authorize(...ADMIN_ROLES, 'MAGASINIER'), getUniteById);
-
-// Écriture : réservée aux Admins
-router.post('/',   protect, authorize(...ADMIN_ROLES), createUnite);
-router.put('/:id', protect, authorize(...ADMIN_ROLES), updateUnite);
+// Écriture : réservée aux admins
+router.post('/',   protect, requireAdmin, createUnite);
+router.put('/:id', protect, requireAdmin, updateUnite);
 
 module.exports = router;

@@ -33,6 +33,13 @@ const articleSchema = new mongoose.Schema(
       min:     [0, 'La valeur estimée ne peut pas être négative'],
       default: null,
     },
+    // Prix unitaire de vente — null = non-commercial (subventionné)
+    // Utilisé par le moteur de facturation Mission 8 (Semences Sexées)
+    prixVenteUnitaire: {
+      type:    Number,
+      min:     [0, 'Le prix de vente ne peut pas être négatif'],
+      default: null,
+    },
     seuilAlerte: {
       type:    Number,
       min:     [0, 'Le seuil d\'alerte ne peut pas être négatif'],

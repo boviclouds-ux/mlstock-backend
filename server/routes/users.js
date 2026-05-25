@@ -1,17 +1,7 @@
 const express = require('express');
 const router  = express.Router();
-const { protect, authorize } = require('../middleware/authMiddleware');
+const { protect, requireAdmin } = require('../middleware/authMiddleware');
 const User = require('../models/User');
-
-const ADMIN_ROLES  = ['ADMIN_FEDERAL', 'ADMIN'];
-const FEDERAL_ONLY = ['ADMIN_FEDERAL'];
-
-const ROLE_LABEL = {
-  ADMIN_FEDERAL: 'Admin Fédéral',
-  ADMIN:         'Administrateur',
-  MAGASINIER:    'Magasinier',
-  UNITE:         'Responsable Unité',
-};
 
 /* Formate un objet User Mongoose → format attendu par le frontend */
 function toUserDTO(u) {
@@ -20,8 +10,8 @@ function toUserDTO(u) {
     prenom:            u.prenom ?? '',
     nom:               u.nom,
     email:             u.email,
-    roleKey:           u.role,
     entite:            u.entite,
+    permissions:       u.permissions,
     derniereConnexion: u.derniereConnexion
       ? u.derniereConnexion.toISOString().replace('T', ' ').slice(0, 16)
       : null,
@@ -34,7 +24,7 @@ function toUserDTO(u) {
    GET /api/users
    Liste tous les comptes actifs/suspendus (hors "En attente")
 ═══════════════════════════════════════════════════════════ */
-router.get('/', protect, authorize(...ADMIN_ROLES), async (req, res) => {
+router.get('/', protect, requireAdmin, async (req, res) => {
   try {
     const users = await User.find({ statut: { $ne: 'En attente' } })
       .sort({ createdAt: -1 });
@@ -49,7 +39,7 @@ router.get('/', protect, authorize(...ADMIN_ROLES), async (req, res) => {
    GET /api/users/demandes
    Comptes en attente de validation (⚠ avant /:id)
 ═══════════════════════════════════════════════════════════ */
-router.get('/demandes', protect, authorize(...ADMIN_ROLES), async (req, res) => {
+router.get('/demandes', protect, requireAdmin, async (req, res) => {
   try {
     const demandes = await User.find({ statut: 'En attente' })
       .sort({ createdAt: -1 });
@@ -59,8 +49,8 @@ router.get('/demandes', protect, authorize(...ADMIN_ROLES), async (req, res) => 
       prenom:      u.prenom ?? '',
       nom:         u.nom,
       email:       u.email,
-      roleDemande: ROLE_LABEL[u.role] ?? u.role,
       entite:      u.entite,
+      permissions: u.permissions,
     })));
   } catch (err) {
     console.error('[GET /api/users/demandes]', err);
@@ -70,11 +60,12 @@ router.get('/demandes', protect, authorize(...ADMIN_ROLES), async (req, res) => 
 
 /* ═══════════════════════════════════════════════════════════
    POST /api/users
-   Création directe par un admin (compte immédiatement actif)
+   Création directe par un admin (compte immédiatement actif,
+   sans permissions — l'admin les attribue via PATCH /:id/permissions)
 ═══════════════════════════════════════════════════════════ */
-router.post('/', protect, authorize(...FEDERAL_ONLY), async (req, res) => {
+router.post('/', protect, requireAdmin, async (req, res) => {
   try {
-    const { prenom = '', nom, email, roleKey, entite } = req.body;
+    const { prenom = '', nom, email, entite, permissions = {} } = req.body;
     if (!nom || !email) {
       return res.status(400).json({ message: 'Nom et email sont requis.' });
     }
@@ -84,10 +75,15 @@ router.post('/', protect, authorize(...FEDERAL_ONLY), async (req, res) => {
       prenom,
       nom,
       email,
-      password: tempPwd,
-      role:     roleKey || 'UNITE',
-      entite:   entite  || 'Maroc Lait — Hub Central',
-      statut:   'Actif',
+      password:    tempPwd,
+      entite:      entite || 'Maroc Lait — Hub Central',
+      statut:      'Actif',
+      permissions: {
+        canDemand:   permissions.canDemand   ?? false,
+        canReceive:  permissions.canReceive  ?? false,
+        canDispatch: permissions.canDispatch ?? false,
+        isAdmin:     permissions.isAdmin     ?? false,
+      },
     });
     res.status(201).json(toUserDTO(user));
   } catch (err) {
@@ -103,7 +99,7 @@ router.post('/', protect, authorize(...FEDERAL_ONLY), async (req, res) => {
    POST /api/users/demandes/:id/approve
    Valide un compte en attente (statut → Actif)
 ═══════════════════════════════════════════════════════════ */
-router.post('/demandes/:id/approve', protect, authorize(...FEDERAL_ONLY), async (req, res) => {
+router.post('/demandes/:id/approve', protect, requireAdmin, async (req, res) => {
   try {
     const user = await User.findByIdAndUpdate(
       req.params.id,
@@ -120,10 +116,9 @@ router.post('/demandes/:id/approve', protect, authorize(...FEDERAL_ONLY), async 
 
 /* ═══════════════════════════════════════════════════════════
    DELETE /api/users/demandes/:id
-   Rejette et supprime une demande (aucune traçabilité requise
-   pour un compte qui n'a jamais été actif)
+   Rejette et supprime une demande
 ═══════════════════════════════════════════════════════════ */
-router.delete('/demandes/:id', protect, authorize(...FEDERAL_ONLY), async (req, res) => {
+router.delete('/demandes/:id', protect, requireAdmin, async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ message: 'Demande introuvable.' });
@@ -139,21 +134,28 @@ router.delete('/demandes/:id', protect, authorize(...FEDERAL_ONLY), async (req, 
 });
 
 /* ═══════════════════════════════════════════════════════════
-   PATCH /api/users/:id/role
-   Modifie le rôle et l'entité d'un utilisateur
+   PATCH /api/users/:id/permissions
+   Attribue ou révoque les permissions d'un utilisateur
+   Body : { canDemand?, canReceive?, canDispatch?, isAdmin? }
 ═══════════════════════════════════════════════════════════ */
-router.patch('/:id/role', protect, authorize(...FEDERAL_ONLY), async (req, res) => {
+router.patch('/:id/permissions', protect, requireAdmin, async (req, res) => {
   try {
-    const { roleKey, entite } = req.body;
+    const { canDemand, canReceive, canDispatch, isAdmin } = req.body;
+    const patch = {};
+    if (canDemand   !== undefined) patch['permissions.canDemand']   = canDemand;
+    if (canReceive  !== undefined) patch['permissions.canReceive']  = canReceive;
+    if (canDispatch !== undefined) patch['permissions.canDispatch'] = canDispatch;
+    if (isAdmin     !== undefined) patch['permissions.isAdmin']     = isAdmin;
+
     const user = await User.findByIdAndUpdate(
       req.params.id,
-      { role: roleKey, entite },
+      { $set: patch },
       { new: true, runValidators: true }
     );
     if (!user) return res.status(404).json({ message: 'Utilisateur introuvable.' });
-    res.json({ id: user._id, roleKey: user.role, entite: user.entite });
+    res.json({ id: user._id, permissions: user.permissions });
   } catch (err) {
-    console.error('[PATCH /api/users/:id/role]', err);
+    console.error('[PATCH /api/users/:id/permissions]', err);
     res.status(500).json({ message: 'Erreur serveur.' });
   }
 });
@@ -163,7 +165,7 @@ router.patch('/:id/role', protect, authorize(...FEDERAL_ONLY), async (req, res) 
    Suspend ou réactive un compte
    Body : { statut: 'actif' | 'suspendu' }
 ═══════════════════════════════════════════════════════════ */
-router.patch('/:id/statut', protect, authorize(...FEDERAL_ONLY), async (req, res) => {
+router.patch('/:id/statut', protect, requireAdmin, async (req, res) => {
   try {
     const { statut } = req.body;
     const mongoStatut = statut === 'actif' ? 'Actif' : 'Suspendu';

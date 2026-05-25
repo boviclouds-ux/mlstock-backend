@@ -26,7 +26,11 @@
       "Bash(Format-List)",
       "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\aitch\\\\OneDrive\\\\Desktop\\\\ml\\\\mlstock-backend\\\\mlstock-backend\\\\backend\" -Recurse | Where-Object {$_.Name -match \"\\(Controller|Route\\)\" } | Select-Object -ExpandProperty FullName)",
       "Bash(node -e \"const lc = require\\('lucide-react'\\); console.log\\('MapPinCheck' in lc ? 'OK' : 'MISSING'\\);\")",
-      "Bash(npx vite *)"
+      "Bash(npx vite *)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\aitch\\\\OneDrive\\\\Desktop\\\\ml\\\\mlstock-backend\\\\mlstock-backend\" -Directory)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\aitch\\\\OneDrive\\\\Desktop\\\\ml\\\\mlstock-backend\\\\mlstock-backend\\\\client\\\\src\" -Recurse)",
+      "Bash(Select-Object FullName, PSIsContainer)",
+      "Bash(Sort-Object FullName)"
     ]
   }
 }

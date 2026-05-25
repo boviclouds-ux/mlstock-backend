@@ -6,7 +6,8 @@ import {
   CheckCircle, X, ChevronDown, Dna, FlaskConical, Wrench,
   BadgeCheck, AlertTriangle, Plus, History, Calendar,
   MapPin, QrCode, ScanLine, ShieldCheck, Droplets,
-  ChevronRight, FileSearch, Download, ImagePlus
+  ChevronRight, FileSearch, Download, ImagePlus,
+  Receipt, FileCheck, CreditCard, Package,
 } from "lucide-react";
 
 /* ─── Données ──────────────────────────────────────── */
@@ -14,22 +15,47 @@ const COULEUR_DOT={rouge:"bg-red-500",jaune:"bg-yellow-400",bleu:"bg-blue-500",v
 
 /* ─── Adaptateur Transaction API → format Réception ────── */
 function fromApiToReception(t) {
-  const CAT = { Semences:'semence', Azote:'azote' };
+  const CAT   = { Semences:'semence', Azote:'azote' };
+  const isV2  = Array.isArray(t.repartGenetique) && t.repartGenetique.length > 0;
+  const repG  = t.repartGenetique ?? [];
+
+  const STATUT_V2_UI = {
+    'Partiellement_Livrée':  'partiellement_livre',
+    'Totalement_Livrée':     'totalement_livre',
+    'Réceptionnée_Cloturée': 'receptionne',
+  };
+
+  const statut = isV2
+    ? (STATUT_V2_UI[t.statut] ?? 'en_transit')
+    : (['Réceptionné', 'Expedie'].includes(t.statut) ? 'receptionne' : 'en_transit');
+
+  const totalAutorise = repG.reduce((s, g) => s + (g.quantiteAutorisee ?? 0), 0);
+  const totalLivre    = repG.reduce((s, g) => s + (g.quantiteLivree    ?? 0), 0);
+  const reliquatTotal = Math.max(0, totalAutorise - totalLivre);
+
   return {
-    _id:           t._id,
-    id:            t.reference,
-    dateEnvoi:     (t.createdAt ?? '').slice(0, 10),
-    articles:      (t.lignes ?? []).map(l => ({
+    _id:                  t._id,
+    id:                   t.reference,
+    dateEnvoi:            (t.createdAt ?? '').slice(0, 10),
+    articles:             (t.lignes ?? []).map(l => ({
       label: l.article?.designation ?? '—',
       qte:   l.quantite,
       unite: l.article?.uniteMesure ?? '—',
       type:  CAT[l.article?.categorie] ?? 'materiel',
     })),
-    transporteur:  '—',
-    matricule:     '—',
-    statut:        ['Réceptionné', 'Expedie'].includes(t.statut) ? 'receptionne' : 'en_transit',
-    conformite:    null,
-    ficheTechnique: null,
+    transporteur:         '—',
+    matricule:            '—',
+    statut,
+    statutV2:             isV2 ? t.statut : null,
+    conformite:           null,
+    ficheTechnique:       null,
+    isV2,
+    repartGenetique:      repG,
+    totalAutorise,
+    totalLivre,
+    reliquatTotal,
+    historiqueLivraisons: t.historiqueLivraisons ?? [],
+    facturation:          t.facturation ?? null,
   };
 }
 
@@ -201,6 +227,194 @@ function FicheTechniqueModal({expedition,onClose}){
   );
 }
 
+/* ─── Drawer Clôture Bénéficiaire (V2) ─────────────── */
+function ClotureBeneficiaireDrawer({ expedition, onClose, onCloturer, clotureError, clotureDone }) {
+  const rep   = expedition.repartGenetique ?? [];
+  const hist  = expedition.historiqueLivraisons ?? [];
+  const fact  = expedition.facturation;
+  const peutCloturer = ['Totalement_Livrée', 'Partiellement_Livrée'].includes(expedition.statutV2);
+  const isPartiel    = expedition.statutV2 === 'Partiellement_Livrée';
+
+  const COULEUR_DOT_M = { rouge:'bg-red-500', jaune:'bg-yellow-400', bleu:'bg-blue-500', vert:'bg-green-500', rose:'bg-pink-400', gris:'bg-gray-400' };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-[1px] flex items-end sm:items-center justify-center z-50 p-0 sm:p-4"
+         onClick={onClose}>
+      <div className="bg-white w-full sm:max-w-xl rounded-t-3xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden"
+           onClick={e => e.stopPropagation()}
+           style={{ animation: 'modalIn .2s ease forwards' }}>
+
+        {/* Header */}
+        <div className="px-5 pt-5 pb-4 border-b border-gray-100 shrink-0">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="bg-blue-100 p-1.5 rounded-lg"><Package size={15} className="text-blue-600"/></div>
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">Détail de la Livraison & Clôture</h2>
+                <p className="text-xs text-gray-400 font-mono mt-0.5">#{expedition.id} · {expedition.dateEnvoi}</p>
+              </div>
+            </div>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 p-1.5 rounded-lg transition-colors"><X size={15}/></button>
+          </div>
+        </div>
+
+        {/* Body scrollable */}
+        <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
+
+          {/* Avertissement livraison partielle */}
+          {isPartiel && (
+            <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+              <AlertTriangle size={14} className="text-amber-500 shrink-0 mt-0.5"/>
+              <div>
+                <p className="text-xs font-bold text-amber-800">Livraison partielle</p>
+                <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">
+                  Un reliquat de <strong>{expedition.reliquatTotal}</strong> doses reste non livré.
+                  Clôturer maintenant abandonne ce reliquat définitivement.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Tableau répartition : Autorisé / Livré / Reliquat */}
+          {rep.length > 0 && (
+            <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
+                <div className="flex items-center gap-1.5"><Dna size={13} className="text-blue-400"/><span className="text-sm font-semibold text-gray-800">Répartition Génétique</span></div>
+                <div className="flex gap-3 text-[10px] font-bold text-gray-400 uppercase">
+                  <span>Autorisé</span><span>Livré</span><span>Reliquat</span>
+                </div>
+              </div>
+              <div className="divide-y divide-gray-50">
+                {rep.map((g, i) => {
+                  const autorisee = g.quantiteAutorisee ?? 0;
+                  const livree    = g.quantiteLivree    ?? 0;
+                  const reliquat  = Math.max(0, autorisee - livree);
+                  const dot       = COULEUR_DOT_M[g.couleur] ?? 'bg-gray-300';
+                  return (
+                    <div key={i} className="px-4 py-3 flex items-center gap-3">
+                      <div className="shrink-0 flex items-center gap-1.5">
+                        <span className={`w-3 h-3 rounded-full ${dot}`}/>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-gray-900 truncate">{g.taureau ?? '—'}</p>
+                          <p className="text-[10px] text-gray-400 font-mono">{g.nni ?? '—'}</p>
+                        </div>
+                      </div>
+                      <div className="flex-1"/>
+                      <div className="flex gap-4 text-xs tabular-nums text-right shrink-0">
+                        <span className="text-gray-700 font-semibold w-12 text-right">{autorisee}</span>
+                        <span className="text-emerald-600 font-bold w-12 text-right">{livree}</span>
+                        <span className={`font-bold w-12 text-right ${reliquat > 0 ? 'text-amber-600' : 'text-gray-300'}`}>{reliquat}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+                {/* Total row */}
+                <div className="px-4 py-2.5 flex items-center bg-gray-50/60">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide flex-1">Total</span>
+                  <div className="flex gap-4 text-xs tabular-nums text-right shrink-0">
+                    <span className="text-gray-700 font-bold w-12 text-right">{expedition.totalAutorise}</span>
+                    <span className="text-emerald-600 font-bold w-12 text-right">{expedition.totalLivre}</span>
+                    <span className={`font-bold w-12 text-right ${expedition.reliquatTotal > 0 ? 'text-amber-600' : 'text-gray-300'}`}>{expedition.reliquatTotal}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Historique des expéditions */}
+          {hist.length > 0 && (
+            <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-50 flex items-center gap-1.5">
+                <History size={13} className="text-indigo-400"/><span className="text-sm font-semibold text-gray-800">Historique des expéditions</span>
+                <span className="ml-auto text-[10px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 px-2 py-0.5 rounded-full">{hist.length} BL</span>
+              </div>
+              <div className="divide-y divide-gray-50">
+                {hist.map((h, i) => (
+                  <div key={i} className="px-4 py-3 flex items-center gap-3">
+                    <div className="bg-indigo-50 p-2 rounded-lg shrink-0"><FileCheck size={13} className="text-indigo-500"/></div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-gray-900 font-mono">{h.referenceBL ?? '—'}</p>
+                      <p className="text-[10px] text-gray-400 mt-0.5 flex items-center gap-1">
+                        <Calendar size={9}/>{h.dateExpedition ? h.dateExpedition.slice(0, 10) : '—'}
+                        {h.conteneurSemence && <><span className="text-gray-300 mx-1">·</span>{h.conteneurSemence}</>}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-sm font-bold text-gray-900 tabular-nums">{h.quantiteExpediee ?? 0}</p>
+                      <p className="text-[10px] text-gray-400">doses</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Encart Facturation */}
+          {fact && fact.statut !== 'Non_Applicable' && (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-1.5">
+                <Receipt size={13} className="text-emerald-500"/><span className="text-sm font-semibold text-gray-800">Facturation</span>
+                <span className={`ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                  fact.statut === 'Payée'
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : 'bg-amber-50 text-amber-700 border-amber-200'
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${fact.statut === 'Payée' ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`}/>
+                  {fact.statut === 'Payée' ? 'Payée' : 'En attente'}
+                </span>
+              </div>
+              <div className="px-4 py-4 grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1">Montant Total</p>
+                  <p className="text-xl font-bold text-gray-900 tabular-nums">
+                    {(fact.montantTotal ?? 0).toLocaleString('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    <span className="text-sm font-normal text-gray-400 ml-1">DH</span>
+                  </p>
+                </div>
+                {fact.referenceFacture && (
+                  <div>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1">Référence Facture</p>
+                    <p className="text-xs font-bold text-gray-800 font-mono">{fact.referenceFacture}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Erreur clôture */}
+          {clotureError && (
+            <div className="flex items-center gap-2.5 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+              <AlertCircle size={14} className="text-red-500 shrink-0"/>
+              <p className="text-xs text-red-700 font-medium">{clotureError}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 pb-5 pt-3 border-t border-gray-100 shrink-0 flex gap-2">
+          <button onClick={onClose} className="px-4 py-2.5 text-sm text-gray-500 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">Fermer</button>
+          {peutCloturer && (
+            <button
+              onClick={onCloturer}
+              disabled={clotureDone}
+              className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-bold rounded-xl transition-all ${
+                clotureDone
+                  ? 'bg-emerald-500 text-white'
+                  : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'
+              }`}
+            >
+              {clotureDone
+                ? <><BadgeCheck size={15}/>Clôture confirmée !</>
+                : <><ShieldCheck size={14}/>Confirmer la Réception & Clôturer</>
+              }
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Modale Nouvelle Commande ──────────────────────── */
 function NouvelleCommandeModal({quota,onClose,onSubmit,articles,articlesLoading,articlesError,uniteName}){
   const [article,setArticle]=useState(null); const [qte,setQte]=useState(""); const [motif,setMotif]=useState(""); const [done,setDone]=useState(false);
@@ -263,12 +477,17 @@ function NouvelleCommandeModal({quota,onClose,onSubmit,articles,articlesLoading,
 
 /* ─── Adaptateur Transaction API → format commande UI ─── */
 const STATUT_CMD_MAP = {
-  'Brouillon':   'en_attente',
-  'En attente':  'en_attente',
-  'Validé':      'approuve',
-  'Expédié':     'en_preparation',
-  'Réceptionné': 'livre',
-  'Rejeté':      'rejete',
+  'Brouillon':              'en_attente',
+  'En attente':             'en_attente',
+  'Demandée':               'en_attente',
+  'Validé':                 'approuve',
+  'Validée_BE':             'approuve',
+  'Expédié':                'en_preparation',
+  'Partiellement_Livrée':  'en_preparation',
+  'Totalement_Livrée':     'en_preparation',
+  'Réceptionné':           'livre',
+  'Réceptionnée_Cloturée': 'livre',
+  'Rejeté':                'rejete',
 };
 const CAT_TYPE_MAP = { Semences:'semence', Azote:'azote' };
 
@@ -318,16 +537,17 @@ export default function EspaceCooperative({ user }){
   async function fetchReceptions() {
     setLoadingReceptions(true);
     try {
-      const res = await api.get(
-        "/api/transactions?statut=En_transit%2CExpédie%2CRéceptionné&limit=100"
-        // décodé : ?statut=En_transit,Expedie,Réceptionné
-      );
-      const list = Array.isArray(res) ? res : (res.data ?? []);
-      setReceptions(
-        list
-          .filter(t => ['EXPEDITION', 'ORDRE_ADMIN'].includes(t.type))
-          .map(fromApiToReception)
-      );
+      const [resV1, resV2] = await Promise.all([
+        api.get("/api/transactions?statut=En_transit%2CExpédie%2CRéceptionné&limit=100"),
+        api.get("/api/transactions?statut=Partiellement_Livr%C3%A9e%2CTotalement_Livr%C3%A9e%2CR%C3%A9ceptionn%C3%A9e_Clot%C3%BBr%C3%A9e&limit=100"),
+      ]);
+      const listV1 = (Array.isArray(resV1) ? resV1 : (resV1.data ?? []))
+        .filter(t => ['EXPEDITION', 'ORDRE_ADMIN'].includes(t.type));
+      const listV2 = (Array.isArray(resV2) ? resV2 : (resV2.data ?? []))
+        .filter(t => Array.isArray(t.repartGenetique) && t.repartGenetique.length > 0);
+      const seen   = new Set();
+      const unique = [...listV1, ...listV2].filter(t => { if (seen.has(t._id)) return false; seen.add(t._id); return true; });
+      setReceptions(unique.map(fromApiToReception));
     } catch {
       setReceptions([]);
     } finally {
@@ -377,6 +597,10 @@ export default function EspaceCooperative({ user }){
       .finally(()=>setArticlesLoading(false));
   },[]);
 
+  const [clotureTx,    setClotureTx]    = useState(null);
+  const [clotureError, setClotureError] = useState(null);
+  const [clotureDone,  setClotureDone]  = useState(false);
+
   const [commandeError, setCommandeError] = useState(null);
   const [commandeOk,    setCommandeOk]    = useState(false);
 
@@ -418,6 +642,23 @@ export default function EspaceCooperative({ user }){
     }
   }
 
+  async function cloturer() {
+    if (!clotureTx?._id) return;
+    setClotureError(null);
+    try {
+      await api.put(`/api/transactions/${clotureTx._id}/cloture-beneficiaire`, {});
+      setReceptions(p => p.map(r =>
+        r._id === clotureTx._id
+          ? { ...r, statut: 'receptionne', statutV2: 'Réceptionnée_Cloturée' }
+          : r
+      ));
+      setClotureDone(true);
+      setTimeout(() => { setClotureTx(null); setClotureDone(false); fetchReceptions(); }, 1500);
+    } catch (err) {
+      setClotureError(err.message ?? 'Erreur lors de la clôture');
+    }
+  }
+
   async function nouvelleCommande({ article, articleId, qte, unite, derogation, motif }) {
     setCommandeError(null);
     try {
@@ -436,13 +677,15 @@ export default function EspaceCooperative({ user }){
     }
   }
 
-  const enTransit=receptions.filter(r=>r.statut==="en_transit");
-  const receptionnees=receptions.filter(r=>r.statut==="receptionne");
+  const enTransit     = receptions.filter(r => r.statut === "en_transit");
+  const v2EnCours     = receptions.filter(r => ['partiellement_livre', 'totalement_livre'].includes(r.statut));
+  const receptionnees = receptions.filter(r => r.statut === "receptionne");
 
   return (
     <div className="space-y-6">
       {recModal&&<ReceptionModal expedition={recModal} onClose={()=>setRecModal(null)} onValider={validerReception}/>}
       {ficheModal&&<FicheTechniqueModal expedition={ficheModal} onClose={()=>setFicheModal(null)}/>}
+      {clotureTx&&<ClotureBeneficiaireDrawer expedition={clotureTx} onClose={()=>{setClotureTx(null);setClotureError(null);setClotureDone(false);}} onCloturer={cloturer} clotureError={clotureError} clotureDone={clotureDone}/>}
       {showCommande&&<NouvelleCommandeModal quota={quota} onClose={()=>setShowCommande(false)} onSubmit={nouvelleCommande} articles={articles} articlesLoading={articlesLoading} articlesError={articlesError} uniteName={user?.unite}/>}
 
       {/* Toast succès API */}
@@ -504,7 +747,7 @@ export default function EspaceCooperative({ user }){
       <div className="grid grid-cols-2 gap-2 bg-white border border-gray-100 rounded-2xl p-1.5">
         {[
           {id:"receptions", label:"Réceptions & Conformité", icon:ClipboardCheck,
-           count: enTransit.length},
+           count: enTransit.length + v2EnCours.length},
           {id:"commandes",  label:"Mes Commandes",           icon:History,
            count: commandes.filter(c => !statutCmd(c.statut).clos).length},
         ].map(({id,label,icon:Icon,count})=>(
@@ -524,8 +767,9 @@ export default function EspaceCooperative({ user }){
               <span className="w-5 h-5 border-2 border-gray-200 border-t-blue-500 rounded-full animate-spin" />
               <span className="text-sm text-gray-400">Chargement des livraisons…</span>
             </div>
-          ) : enTransit.length>0?(
+          ) : (enTransit.length > 0 || v2EnCours.length > 0) ? (
             <div>
+              {enTransit.length > 0 && <>
               <div className="flex items-center gap-2 mb-3"><span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse inline-block"/><h2 className="text-xs font-bold text-gray-500 uppercase tracking-widest">En transit — {enTransit.length} livraison{enTransit.length>1?"s":""}</h2></div>
               <div className="space-y-2">
                 {enTransit.map(exp=>(
@@ -549,10 +793,75 @@ export default function EspaceCooperative({ user }){
                   </div>
                 ))}
               </div>
+              </>}
             </div>
-          ):(
+          ) : (
             <div className="bg-white rounded-2xl border border-gray-100 py-12 text-center"><Truck size={32} className="mx-auto mb-2 text-gray-200"/><p className="text-sm font-semibold text-gray-400">Aucune livraison en cours</p><p className="text-xs text-gray-300 mt-1">Les expéditions reçues depuis le Hub Central apparaîtront ici.</p></div>
           )}
+          {/* Livraisons V2 quota en cours / à clôturer */}
+          {v2EnCours.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block"/>
+                <h2 className="text-xs font-bold text-gray-500 uppercase tracking-widest">
+                  Livraisons quota — {v2EnCours.length} dossier{v2EnCours.length > 1 ? 's' : ''} à clôturer
+                </h2>
+              </div>
+              <div className="space-y-2">
+                {v2EnCours.map(exp => {
+                  const isTotale   = exp.statutV2 === 'Totalement_Livrée';
+                  const isPartielle = exp.statutV2 === 'Partiellement_Livrée';
+                  return (
+                    <div key={exp.id} className={`bg-white rounded-2xl border p-4 flex flex-col sm:flex-row sm:items-center gap-3 shadow-sm ${isTotale ? 'border-emerald-200 shadow-emerald-50' : 'border-amber-200 shadow-amber-50'}`}>
+                      <div className={`p-3 rounded-xl shrink-0 ${isTotale ? 'bg-emerald-50' : 'bg-amber-50'}`}>
+                        <Package size={20} className={isTotale ? 'text-emerald-500' : 'text-amber-500'}/>
+                      </div>
+                      <div className="flex-1 min-w-0 space-y-1.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-bold text-gray-900 font-mono">{exp.id}</span>
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                            isTotale
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-amber-50 text-amber-700 border-amber-200'
+                          }`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${isTotale ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`}/>
+                            {isTotale ? 'Totalement livrée' : 'Livraison partielle'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 flex-wrap text-xs text-gray-500">
+                          <span className="flex items-center gap-1"><Calendar size={11}/>Demande du {exp.dateEnvoi}</span>
+                          <span className="flex items-center gap-1 font-semibold text-emerald-600">{exp.totalLivre} doses livrées</span>
+                          {exp.reliquatTotal > 0 && <span className="flex items-center gap-1 text-amber-600 font-semibold">· reliquat : {exp.reliquatTotal}</span>}
+                        </div>
+                        {exp.historiqueLivraisons.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {exp.historiqueLivraisons.map((h, i) => (
+                              <span key={i} className="text-[10px] font-semibold bg-indigo-50 text-indigo-600 border border-indigo-100 px-2 py-0.5 rounded-full font-mono">
+                                {h.referenceBL ?? `BL-${i+1}`}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => { setClotureError(null); setClotureDone(false); setClotureTx(exp); }}
+                          className={`flex items-center gap-2 text-xs font-bold px-4 py-2.5 rounded-xl transition-colors whitespace-nowrap ${
+                            isTotale
+                              ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'
+                              : 'bg-amber-500 hover:bg-amber-600 text-white shadow-sm'
+                          }`}
+                        >
+                          <FileCheck size={13}/>Détail & Clôture
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {receptionnees.length>0&&(
             <details className="mt-2">
               <summary className="flex items-center gap-2 text-xs font-semibold text-gray-400 cursor-pointer select-none list-none hover:text-gray-600">

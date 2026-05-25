@@ -481,7 +481,7 @@ export default function CatalogueReferentiel({ userRole }) {
   const [modalSuppr,  setModalSuppr]  = useState(null);
   const [showCatMgr,  setShowCatMgr]  = useState(false);
 
-  const isAdmin = userRole === "ADMIN_FEDERAL";
+  const isAdmin = userRole === "ADMIN";
 
   /* ─ Chargement initial depuis l'API ─────────────────────── */
   async function fetchArticles() {

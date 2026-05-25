@@ -1,17 +1,15 @@
 const express     = require('express');
 const router      = express.Router();
-const { protect, authorize } = require('../middleware/authMiddleware');
+const { protect, requireAdmin } = require('../middleware/authMiddleware');
 const Lot         = require('../models/Lot');
 const Dotation    = require('../models/Dotation');
 const Transaction = require('../models/Transaction');
-
-const ADMIN_ROLES = ['ADMIN_FEDERAL', 'ADMIN'];
 
 /* Convertit un timestamp en texte relatif (ex: "Il y a 42 min") */
 function formatDelta(date) {
   const diffMs  = Date.now() - new Date(date).getTime();
   const diffMin = Math.round(diffMs / 60000);
-  if (diffMin < 1)  return 'À l\'instant';
+  if (diffMin < 1)  return "À l'instant";
   if (diffMin < 60) return `Il y a ${diffMin} min`;
   const diffH = Math.round(diffMin / 60);
   if (diffH < 24)   return `Il y a ${diffH}h`;
@@ -37,16 +35,26 @@ const TX_TO_ACTION = {
    Agrège : stocks lots, consommation régionale (Dotations),
    activité récente (Transactions), alertes péremption (Lots)
 ═══════════════════════════════════════════════════════════ */
-router.get('/stats', protect, authorize(...ADMIN_ROLES), async (req, res) => {
+router.get('/stats', protect, requireAdmin, async (req, res) => {
   try {
     /* ── Stocks centraux ──────────────────────────────────── */
     const [semAgg, azoteAgg, dotAgg] = await Promise.all([
       Lot.aggregate([
-        { $match: { type: 'semence', statut: { $in: ['disponible', 'reserve'] } } },
+        {
+          $match: {
+            typeProduit: { $in: ['Conventionnelle', 'Sexée'] },
+            statut:      { $in: ['disponible', 'reserve'] },
+          },
+        },
         { $group: { _id: null, total: { $sum: '$qteDisponible' } } },
       ]),
       Lot.aggregate([
-        { $match: { type: 'azote', statut: { $in: ['disponible', 'reserve'] } } },
+        {
+          $match: {
+            typeProduit: 'Azote',
+            statut:      { $in: ['disponible', 'reserve'] },
+          },
+        },
         { $group: { _id: null, total: { $sum: '$qteDisponible' } } },
       ]),
       Dotation.aggregate([
@@ -90,32 +98,30 @@ router.get('/stats', protect, authorize(...ADMIN_ROLES), async (req, res) => {
     const transactions = await Transaction.find()
       .sort({ createdAt: -1 })
       .limit(10)
-      .populate('uniteCible',      'nom region')
+      .populate('uniteCible',       'nom region')
       .populate('fournisseurCible', 'nom')
       .lean();
 
     const activite = transactions.map(t => {
       const dest   = t.uniteCible?.nom || t.fournisseurCible?.nom || '';
-      const detail = dest
-        ? `${t.reference} → ${dest}`
-        : t.reference;
+      const detail = dest ? `${t.reference} → ${dest}` : t.reference;
       return {
-        id:     t._id,
-        type:   TX_TO_TYPE[t.type]   ?? 'PIN',
-        delta:  formatDelta(t.createdAt),
-        action: TX_TO_ACTION[t.type] ?? t.type,
+        id:        t._id,
+        type:      TX_TO_TYPE[t.type]   ?? 'PIN',
+        delta:     formatDelta(t.createdAt),
+        action:    TX_TO_ACTION[t.type] ?? t.type,
         detail,
-        statut: t.statut ?? null,
+        statut:    t.statut ?? null,
         reference: t.reference,
       };
     });
 
-    /* ── Alertes péremption (lots expirés dans < 60 jours) ── */
-    const now          = new Date();
-    const horizon60j   = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
+    /* ── Alertes péremption (lots expirant dans < 60 jours) ── */
+    const now        = new Date();
+    const horizon60j = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
 
     const lotsAlerte = await Lot.find({
-      statut:    { $in: ['disponible', 'reserve'] },
+      statut:     { $in: ['disponible', 'reserve'] },
       peremption: { $gte: now, $lte: horizon60j },
     })
       .select('numLot peremption')

@@ -448,9 +448,9 @@ export default function MagasinierCentral({ userRole = null }) {
 
   /* ─ Récupération des cuves au montage ────────────── */
   useEffect(() => {
-    api.get("/api/cuves")
+    api.get("/api/conteneurs-semences")
       .then(data => setCuves(Array.isArray(data) ? data : []))
-      .catch(() => {}); // silence : état vide si pas de cuves
+      .catch(() => {}); // silence : état vide si pas de conteneurs
   }, []);
 
   /* ─ Récupération des lots au montage ─────────────── */
@@ -469,11 +469,11 @@ export default function MagasinierCentral({ userRole = null }) {
   /* ─ Sauvegarde cuve (POST ou PUT) ────────────────── */
   async function handleSaveCuve(data) {
     if (data._id) {
-      const updated = await api.put(`/api/cuves/${data._id}`, data);
+      const updated = await api.put(`/api/conteneurs-semences/${data._id}`, data);
       setCuves(prev => prev.map(c => c._id === updated._id ? updated : c));
       showToast(true, `${updated.nom} — niveau mis à jour.`);
     } else {
-      const created = await api.post('/api/cuves', data);
+      const created = await api.post('/api/conteneurs-semences', data);
       setCuves(prev => [...prev, created]);
       showToast(true, `${created.nom} — cuve créée.`);
     }

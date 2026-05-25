@@ -43,7 +43,7 @@ export default function DashboardMagasinier() {
     const now = Date.now();
     Promise.all([
       api.get("/api/transactions?limit=20"),
-      api.get("/api/cuves").catch(() => []),
+      api.get("/api/conteneurs-semences").catch(() => []),
       api.get("/api/lots").catch(() => []),
     ]).then(([txRes, cuvesData, lotsData]) => {
       const list = Array.isArray(txRes) ? txRes : (txRes.data ?? []);

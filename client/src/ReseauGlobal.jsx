@@ -419,7 +419,7 @@ export default function ReseauGlobal({ userRole }) {
   const [modalSuppr,  setModalSuppr]  = useState(null);
   const [syncError,   setSyncError]   = useState(null);  // erreurs POST/PUT
 
-  const isAdmin = userRole === "ADMIN_FEDERAL";
+  const isAdmin = userRole === "ADMIN";
 
   /* ─ Chargements initiaux ─────────────────────────────── */
   async function fetchUnites() {

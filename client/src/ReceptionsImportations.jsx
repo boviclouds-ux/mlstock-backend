@@ -9,6 +9,13 @@ import {
   ChevronDown, Plus,
 } from "lucide-react";
 
+/* Mapping typeProduit V2 → type icône interne */
+function typeFromProduit(tp) {
+  if (tp === 'Conventionnelle' || tp === 'Sexée') return 'semence';
+  if (tp === 'Azote') return 'azote';
+  return 'materiel';
+}
+
 /* ─── Adaptateur Approvisionnement API → Camion Réception ─ */
 const STATUT_APPRO_MAP = {
   prevu:              'en_attente',
@@ -37,8 +44,8 @@ function fromApiApproToCamion(a) {
     chargement: (a.lignes ?? []).map(l => ({
       label:          l.label,
       qte:            l.qte,
-      unite:          l.unite,
-      type:           l.type,
+      unite:          l.uniteMesure ?? l.unite,
+      type:           typeFromProduit(l.typeProduit),
       articleId:      l.articleId,
       ficheTechnique: l.ficheTechnique ?? [],
     })),
@@ -136,7 +143,7 @@ function ModalControle({ camion, onClose, onValider }) {
   useEffect(() => {
     if (phase !== 'semences' || cuvesExistantes.length > 0) return;
     setLoadingCuves(true);
-    api.get('/api/cuves?actif=true&limit=100')
+    api.get('/api/conteneurs-semences?actif=true&limit=100')
       .then(res => { const list = Array.isArray(res) ? res : (res.data ?? []); setCuvesExistantes(list); })
       .catch(() => setCuvesExistantes([]))
       .finally(() => setLoadingCuves(false));
@@ -193,7 +200,7 @@ function ModalControle({ camion, onClose, onValider }) {
     onValider(camion.id, {
       decision: 'conforme',
       note,
-      cuves: cuves.map(c => ({
+      conteneursSemences: cuves.map(c => ({
         ...(c._id ? { _id: c._id } : {}),
         ref:      c.ref.trim(),
         etat:     c.etat,
@@ -231,7 +238,7 @@ function ModalControle({ camion, onClose, onValider }) {
               {phase === 'litige'
                 ? <><AlertTriangle size={16} className="text-amber-500 shrink-0" /><p className="text-sm font-bold text-slate-800">Litige / Écart de Réception</p></>
                 : phase === 'semences'
-                ? <><Snowflake size={16} className="text-cyan-500 shrink-0" /><p className="text-sm font-bold text-slate-800">Cuves & Traçabilité Génétique</p></>
+                ? <><Snowflake size={16} className="text-cyan-500 shrink-0" /><p className="text-sm font-bold text-slate-800">Conteneurs & Traçabilité Génétique</p></>
                 : <><ClipboardCheck size={16} className="text-blue-600 shrink-0" /><p className="text-sm font-bold text-slate-800">Contrôle Réception</p></>}
             </div>
             <p className="text-xs text-slate-500 font-mono truncate">{camion.id} · {camion.origine}</p>
@@ -240,7 +247,7 @@ function ModalControle({ camion, onClose, onValider }) {
               <div className="flex items-center gap-1.5 mt-1.5">
                 {[
                   { key: 'checklist', label: '① Contrôle'         },
-                  { key: 'semences',  label: '② Cuves & Génétique' },
+                  { key: 'semences',  label: '② Conteneurs & Génétique' },
                 ].map((step, i) => (
                   <div key={step.key} className="flex items-center gap-1">
                     {i > 0 && <div className={`w-5 h-px ${phase === 'semences' ? 'bg-cyan-300' : 'bg-slate-200'}`} />}
@@ -316,11 +323,11 @@ function ModalControle({ camion, onClose, onValider }) {
                 <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border-b border-slate-200">
                   <div className="flex items-center gap-2">
                     <Snowflake size={13} className="text-cyan-500" />
-                    <p className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">Contenants — Cuves réceptionnées</p>
+                    <p className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">Contenants — Conteneurs Semences réceptionnés</p>
                   </div>
                   <button type="button" onClick={addCuve}
                     className="flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-700 transition-colors">
-                    <Plus size={12} /> Nouvelle cuve
+                    <Plus size={12} /> Nouveau conteneur
                   </button>
                 </div>
 
@@ -334,7 +341,7 @@ function ModalControle({ camion, onClose, onValider }) {
                       disabled={loadingCuves}
                     >
                       <option value="">
-                        {loadingCuves ? 'Chargement du parc…' : cuvesExistantes.length === 0 ? '— Aucune cuve dans le parc —' : '🧊 Sélectionner une cuve existante du parc…'}
+                        {loadingCuves ? 'Chargement du parc…' : cuvesExistantes.length === 0 ? '— Aucun conteneur dans le parc —' : '🧊 Sélectionner un conteneur existant du parc…'}
                       </option>
                       {cuvesExistantes.map(c => (
                         <option key={c._id} value={c._id}>
@@ -632,7 +639,7 @@ function ModalControle({ camion, onClose, onValider }) {
               <button onClick={handleChecklistNext} disabled={!allOk}
                 className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all">
                 {hasSemence
-                  ? <><ChevronRight size={13} /> Suivant — Cuves & Génétique</>
+                  ? <><ChevronRight size={13} /> Suivant — Conteneurs & Génétique</>
                   : <><CheckCircle size={13} /> Conforme — Valider</>}
               </button>
             </div>
@@ -707,7 +714,7 @@ export default function ReceptionsImportations() {
         decision,
         note,
         ...(quantiteRecue != null  ? { quantiteRecue }  : {}),
-        ...(cuves?.length          ? { cuves }           : {}),
+        ...(cuves?.length          ? { conteneursSemences: cuves }  : {}),
         ...(ficheTechnique?.length ? { ficheTechnique }  : {}),
       };
       console.log('PAYLOAD ENVOYÉ AU BACKEND:', payload);

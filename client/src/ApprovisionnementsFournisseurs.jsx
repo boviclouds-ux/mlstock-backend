@@ -9,8 +9,17 @@ import {
   ChevronDown,
 } from "lucide-react";
 
-/* Mapping catégorie API → type icône */
-const CAT_TO_TYPE = { Semences: 'semence', Azote: 'azote' };
+/* Mapping typeProduit V2 → type icône interne */
+function typeFromProduit(tp) {
+  if (tp === 'Conventionnelle' || tp === 'Sexée') return 'semence';
+  if (tp === 'Azote') return 'azote';
+  return 'materiel';
+}
+
+const TYPES_PRODUIT   = ['Conventionnelle', 'Sexée', 'Azote'];
+const UNITES_MESURE   = ['Unité', 'Litre'];
+/* Dérive l'unité de mesure depuis le type produit */
+const uniteMesureAuto = tp => tp === 'Azote' ? 'Litre' : 'Unité';
 
 const LIEU_STOCKAGE_DEFAUT = "Magasin Central National · Agadir";
 
@@ -25,8 +34,8 @@ function fromApiAppro(a) {
     articles:     (a.lignes ?? []).map(l => ({
       label: l.label,
       qte:   l.qte,
-      unite: l.unite,
-      type:  l.type,
+      unite: l.uniteMesure ?? l.unite,
+      type:  typeFromProduit(l.typeProduit),
     })),
     dateCommande: (a.createdAt ?? '').slice(0, 10),
     dateArrivee:  a.dateArriveePrevu ? a.dateArriveePrevu.slice(0, 10) : null,
@@ -104,10 +113,15 @@ function ModalNouvelleCommande({ onClose, onAjouter }) {
   const [qte,           setQte]           = useState("");
   const [dateArrivee,   setDateArrivee]   = useState("");
 
+  const [typeProduit,       setTypeProduit]       = useState("");
+  const [prixAchatUnitaire, setPrixAchatUnitaire] = useState("");
+
   const fournisseurObj = fournisseurs.find(f => f._id === fournisseurId) ?? null;
   const articleObj     = articles.find(a => a._id === articleId) ?? null;
-  const articleType    = articleObj ? (CAT_TO_TYPE[articleObj.categorie] ?? 'materiel') : null;
-  const valid          = fournisseurId && articleId && Number(qte) > 0 && dateArrivee;
+  const uniteMesure    = uniteMesureAuto(typeProduit);
+  const articleType    = typeFromProduit(typeProduit);
+  const isSemence      = articleType === 'semence';
+  const valid          = fournisseurId && articleId && typeProduit && Number(qte) > 0 && dateArrivee && prixAchatUnitaire !== '';
 
   /* ── Fiche Technique Cuve — visible si type = semence ── */
   const [ficheTechnique, setFicheTechnique] = useState([]);
@@ -117,7 +131,7 @@ function ModalNouvelleCommande({ onClose, onAjouter }) {
   const updateFicheLigne = (i, key, val) =>
     setFicheTechnique(p => p.map((r, idx) => idx === i ? { ...r, [key]: val } : r));
 
-  useEffect(() => { setFicheTechnique([]); }, [articleId]);
+  useEffect(() => { setFicheTechnique([]); setTypeProduit(""); setPrixAchatUnitaire(""); }, [articleId]);
 
   /* Catégories uniques pour les optgroups */
   const categoriesUniques = [...new Set(articles.map(a => a.categorie))].sort();
@@ -137,12 +151,13 @@ function ModalNouvelleCommande({ onClose, onAjouter }) {
         fournisseurPays:     fournisseurObj.pays     ?? '',
         fournisseurPavillon: fournisseurObj.pavillon ?? '🌍',
         lignes: [{
-          articleId: articleObj._id ?? null,
-          label:     articleObj.designation,
-          qte:       Number(qte),
-          unite:     articleObj.uniteMesure,
-          type:      articleType ?? 'materiel',
-          ...(articleType === 'semence' && ficheTechnique.length > 0 ? {
+          articleId:         articleObj._id ?? null,
+          label:             articleObj.designation,
+          qte:               Number(qte),
+          typeProduit,
+          uniteMesure,
+          prixAchatUnitaire: Number(prixAchatUnitaire),
+          ...(isSemence && ficheTechnique.length > 0 ? {
             ficheTechnique: ficheTechnique.map(r => ({
               taureau:  r.taureau,
               nni:      r.nni,
@@ -242,10 +257,52 @@ function ModalNouvelleCommande({ onClose, onAjouter }) {
             {articleObj && (
               <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-slate-500">
                 {typeIcon(articleType, 10)}
-                <span>Unité : <span className="text-slate-400 font-medium">{articleObj.uniteMesure}</span></span>
+                <span>{articleObj.designation}</span>
               </div>
             )}
           </div>
+
+          {/* Type Produit */}
+          {articleObj && (
+            <div>
+              <label className={labelCls}>Type de produit <span className="text-red-400">*</span></label>
+              <div className="relative">
+                <select
+                  value={typeProduit}
+                  onChange={e => setTypeProduit(e.target.value)}
+                  className={inputCls}
+                >
+                  <option value="" className="bg-slate-800">— Sélectionner un type —</option>
+                  {TYPES_PRODUIT.map(t => (
+                    <option key={t} value={t} className="bg-slate-800">{t}</option>
+                  ))}
+                </select>
+                <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+              </div>
+            </div>
+          )}
+
+          {/* Prix Achat + Unité Mesure */}
+          {typeProduit && (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className={labelCls}>Prix d'achat unitaire (DH) <span className="text-red-400">*</span></label>
+                <input
+                  type="number" min="0" step="0.01" value={prixAchatUnitaire}
+                  onChange={e => setPrixAchatUnitaire(e.target.value)}
+                  placeholder="ex: 125.00"
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className={labelCls}>Unité de mesure</label>
+                <div className="flex items-center gap-2 bg-slate-800/50 border border-slate-700 rounded-xl px-3 py-2.5">
+                  <span className="text-sm text-slate-400">{uniteMesure}</span>
+                  <span className="ml-auto text-[10px] font-bold text-slate-500 bg-slate-700/50 px-2 py-0.5 rounded-full shrink-0">Auto</span>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Quantité + Date côte à côte */}
           <div className="grid grid-cols-2 gap-4">
@@ -267,15 +324,15 @@ function ModalNouvelleCommande({ onClose, onAjouter }) {
             </div>
           </div>
 
-          {/* ── Fiche Technique Cuve (semences uniquement) ── */}
-          {articleType === 'semence' && (
+          {/* ── Fiche Technique Conteneur Semence (semences uniquement) ── */}
+          {isSemence && (
             <div className="border border-slate-700 rounded-xl overflow-hidden">
 
               {/* En-tête */}
               <div className="flex items-center justify-between px-4 py-2.5 bg-slate-800 border-b border-slate-700">
                 <div className="flex items-center gap-2">
                   <Dna size={13} className="text-blue-400" />
-                  <p className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">Fiche Technique de la Cuve</p>
+                  <p className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">Fiche Technique du Conteneur Semence</p>
                 </div>
                 <button type="button" onClick={addFicheLigne}
                   className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-400 hover:text-emerald-300 transition-colors">
@@ -368,7 +425,7 @@ function ModalNouvelleCommande({ onClose, onAjouter }) {
             <div className="flex items-center gap-2 text-xs text-emerald-300">
               {typeIcon(articleType, 11)}
               <span className="flex-1">{articleObj.designation}</span>
-              <span className="font-mono font-bold">{Number(qte).toLocaleString()} {articleObj.uniteMesure}</span>
+              <span className="font-mono font-bold">{Number(qte).toLocaleString()} {uniteMesure}</span>
             </div>
             <p className="text-[11px] text-emerald-400/70 mt-1">
               🌍 {fournisseurObj.nom} · Arrivée le {new Date(dateArrivee).toLocaleDateString("fr-FR")}
@@ -487,7 +544,7 @@ export default function ApprovisionnementsFournisseurs({ userRole }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const isAdmin = userRole === "ADMIN_FEDERAL";
+  const isAdmin = userRole === "ADMIN";
 
   /* ─ Conformité — PUT + optimistic update ─────────────── */
   async function handleSave(id, resultat, note) {
@@ -533,7 +590,7 @@ export default function ApprovisionnementsFournisseurs({ userRole }) {
             <p className="text-xs text-slate-400 ml-10">Commandes émises par la Direction · Hub Central</p>
           </div>
 
-          {/* Bouton conditionnel ADMIN_FEDERAL */}
+          {/* Bouton conditionnel ADMIN */}
           {isAdmin ? (
             <button
               onClick={() => setShowNouveau(true)}

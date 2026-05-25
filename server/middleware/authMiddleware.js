@@ -3,8 +3,10 @@ const User = require('../models/User');
 
 /* ═══════════════════════════════════════════════════════════
    protect
-   Vérifie le token JWT dans Authorization: Bearer <token>
-   Attache req.user à chaque requête protégée
+   Vérifie le token JWT dans Authorization: Bearer <token>.
+   Recharge toujours l'utilisateur depuis la DB pour que toute
+   révocation de permissions soit effective immédiatement.
+   Attache req.user (document Mongoose complet) à la requête.
 ═══════════════════════════════════════════════════════════ */
 const protect = async (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -27,7 +29,7 @@ const protect = async (req, res, next) => {
       return res.status(403).json({ message: 'Compte suspendu.' });
     }
     if (user.statut === 'En attente') {
-      return res.status(403).json({ message: "Compte en attente de validation." });
+      return res.status(403).json({ message: 'Compte en attente de validation.' });
     }
 
     req.user = user;
@@ -40,21 +42,46 @@ const protect = async (req, res, next) => {
   }
 };
 
+/* ─── Helper interne ────────────────────────────────────────
+   Construit un middleware qui refuse l'accès si aucun des
+   flags n'est accordé. isAdmin bypass tous les autres checks.
+──────────────────────────────────────────────────────────── */
+function makePermissionGuard(flag, label) {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ message: 'Non authentifié.' });
+    }
+    const p = req.user.permissions ?? {};
+    if (p.isAdmin || p[flag]) return next();
+    return res.status(403).json({
+      message: `Accès refusé — permission '${label}' requise.`,
+    });
+  };
+}
+
 /* ═══════════════════════════════════════════════════════════
-   authorize(...roles)
-   Utilisation : router.get('/route', protect, authorize('ADMIN_FEDERAL'), handler)
-   Retourne 403 si le rôle de l'utilisateur n'est pas dans la liste
+   Middlewares de permission granulaires
+   Utilisation : router.get('/route', protect, requireAdmin, handler)
+
+   Règle commune : isAdmin = super-accès (bypass tous les flags)
 ═══════════════════════════════════════════════════════════ */
-const authorize = (...roles) => (req, res, next) => {
+
+/** Gestion globale, quotas, administration des utilisateurs */
+const requireAdmin = (req, res, next) => {
   if (!req.user) {
     return res.status(401).json({ message: 'Non authentifié.' });
   }
-  if (!roles.includes(req.user.role)) {
-    return res.status(403).json({
-      message: `Accès refusé — rôle '${req.user.role}' insuffisant. Requis : ${roles.join(', ')}.`,
-    });
-  }
-  next();
+  if (req.user.permissions?.isAdmin) return next();
+  return res.status(403).json({ message: "Accès refusé — droits d'administration requis." });
 };
 
-module.exports = { protect, authorize };
+/** Création et suivi des bons de commande (Acheteur / Demandeur) */
+const requireDemand = makePermissionGuard('canDemand', 'canDemand');
+
+/** Réception des livraisons fournisseur */
+const requireReceive = makePermissionGuard('canReceive', 'canReceive');
+
+/** Bons d'enlèvement et bons de livraison (Magasinier) */
+const requireDispatch = makePermissionGuard('canDispatch', 'canDispatch');
+
+module.exports = { protect, requireAdmin, requireDemand, requireReceive, requireDispatch };

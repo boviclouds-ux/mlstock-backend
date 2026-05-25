@@ -1,20 +1,20 @@
 import { Navigate } from 'react-router-dom';
 
 /**
- * Protège une route en vérifiant le rôle JWT stocké dans l'état App.
+ * Protège une route par vérification des permissions V2.
  *
  * Props :
- *   roles    — tableau des roleKey autorisés (ex: ['ADMIN_FEDERAL', 'ADMIN'])
- *   userRole — roleKey de l'utilisateur connecté (vient du state App)
- *   children — la page à rendre si le rôle est autorisé
+ *   check       — fonction (permissions) => boolean.
+ *                 Reçoit l'objet permissions { canDemand, canReceive, canDispatch, isAdmin }.
+ *   permissions — objet permissions de l'utilisateur connecté (depuis user.permissions).
+ *   children    — la page à rendre si la vérification réussit.
  *
  * Comportement si accès refusé :
- *   Redirige vers "/" avec replace — l'accueil rend le bon composant selon
- *   le rôle (DashboardDirection / MagasinierCentral / EspaceCooperative),
- *   donc la redirection reste cohérente pour tous les rôles.
+ *   Redirige vers "/" avec replace — l'accueil affiche le bon composant
+ *   selon les permissions (DashboardDirection / DashboardMagasinier / EspaceCooperative).
  */
-export default function ProtectedRoute({ roles, userRole, children }) {
-  if (!roles || !roles.includes(userRole)) {
+export default function ProtectedRoute({ check, permissions, children }) {
+  if (!check || !check(permissions ?? {})) {
     return <Navigate to="/" replace />;
   }
   return children;

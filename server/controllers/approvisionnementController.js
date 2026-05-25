@@ -2,6 +2,9 @@ const Approvisionnement = require('../models/Approvisionnement');
 const Lot               = require('../models/Lot');
 const Cuve              = require('../models/Cuve');
 
+const TYPES_SEMENCE = ['Conventionnelle', 'Sexée'];
+const TYPES_VALIDES = [...TYPES_SEMENCE, 'Azote'];
+
 function validationMessage(err) {
   return Object.values(err.errors).map(e => e.message).join(' | ');
 }
@@ -58,7 +61,7 @@ const createApprovisionnement = async (req, res) => {
 
 /* ═══════════════════════════════════════════════════════════
    PUT /api/approvisionnements/:id
-   Utilisé pour : mise à jour du statut et de la conformité.
+   Mise à jour du statut et de la conformité.
 ═══════════════════════════════════════════════════════════ */
 const updateApprovisionnement = async (req, res) => {
   try {
@@ -82,14 +85,20 @@ const updateApprovisionnement = async (req, res) => {
 /* ═══════════════════════════════════════════════════════════
    PUT /api/approvisionnements/:id/reception
    Body : {
-     decision     : 'conforme' | 'partiel' | 'retour'   (défaut: 'conforme')
-     note         : string                               (optionnel)
-     quantiteRecue: number                               (requis si decision='partiel')
+     decision          : 'conforme' | 'partiel' | 'retour'  (défaut: 'conforme')
+     note              : string                              (optionnel)
+     quantiteRecue     : number                              (requis si decision='partiel')
+     ficheTechnique    : [{ taureau, nni, couleur, quantite, cuveRef }]
+     conteneurs        : [{ ref, capacite, niveauActuel, _id? }]
    }
 
-   Décision conforme  → Lots créés avec quantité commandée     · statut = 'conforme'
-   Décision partiel   → Lots créés avec quantiteRecue (ratio)  · statut = 'partiel'
-   Décision retour    → Aucun lot créé (retour fournisseur)    · statut = 'retour_fournisseur'
+   Décision conforme  → Lots créés avec quantité commandée    · statut = 'conforme'
+   Décision partiel   → Lots créés avec quantiteRecue (ratio) · statut = 'partiel'
+   Décision retour    → Aucun lot créé (retour fournisseur)   · statut = 'retour_fournisseur'
+
+   Chaque Lot créé porte obligatoirement :
+     typeProduit, uniteMesure, prixAchatUnitaire (depuis la ligne de commande)
+     fournisseurId (depuis l'approvisionnement)
 ═══════════════════════════════════════════════════════════ */
 const receptionApprovisionnement = async (req, res) => {
   try {
@@ -101,21 +110,18 @@ const receptionApprovisionnement = async (req, res) => {
       return res.status(400).json({ message: 'Cette commande a déjà été traitée.' });
     }
 
-    console.log('[Appro] BODY REÇU DU FRONTEND:', JSON.stringify(req.body, null, 2));
-
-    const decision     = req.body?.decision ?? 'conforme';
-    const note         = (req.body?.note    ?? '').trim();
+    const decision      = req.body?.decision ?? 'conforme';
+    const note          = (req.body?.note ?? '').trim();
     const quantiteRecue = Number(req.body?.quantiteRecue) || null;
 
-    /* ficheTechnique envoyée par la modale de réception (niveau req.body) */
+    /* Fiche technique envoyée par la modale de réception */
     const ficheTechBody = Array.isArray(req.body?.ficheTechnique) ? req.body.ficheTechnique : [];
 
-    // Quantité totale commandée (somme de toutes les lignes)
     const totalQteAttendue = appro.lignes.reduce((s, l) => s + l.qte, 0);
 
     /* ── 1. Mise à jour du statut ────────────────────────── */
     if (decision === 'retour') {
-      appro.statut    = 'retour_fournisseur';
+      appro.statut     = 'retour_fournisseur';
       appro.conformite = { resultat: 'retour', note, quantiteAttendue: totalQteAttendue, quantiteRecue: 0 };
       await appro.save();
       return res.json({
@@ -132,25 +138,26 @@ const receptionApprovisionnement = async (req, res) => {
       if (quantiteRecue > totalQteAttendue) {
         return res.status(400).json({ message: 'La quantité reçue ne peut pas dépasser la quantité commandée.' });
       }
-      appro.statut    = 'partiel';
+      appro.statut     = 'partiel';
       appro.conformite = { resultat: 'partiel', note, quantiteAttendue: totalQteAttendue, quantiteRecue };
     } else {
-      // conforme
-      appro.statut    = 'conforme';
+      appro.statut     = 'conforme';
       appro.conformite = { resultat: 'conforme', note, quantiteAttendue: totalQteAttendue, quantiteRecue: totalQteAttendue };
     }
     await appro.save();
 
-    /* ── 2. Upsert des Cuves de l'arrivage ──────────────────
-       Le frontend envoie cuves: [{ ref, capacite, niveauActuel, _id? }]
+    /* ── 2. Upsert des Conteneurs Semences de l'arrivage ────
+       Le frontend envoie conteneurs: [{ ref, capacite, niveauActuel, _id? }]
        On mappe ref → nom (champ requis du modèle Cuve).
        Si _id fourni → update ; sinon → findOneAndUpdate upsert par nom.
     ─────────────────────────────────────────────────────────── */
-    const cuvesPayload  = Array.isArray(req.body?.cuves) ? req.body.cuves : [];
-    const cuveRefToId   = {}; // nom (ref) → ObjectId, pour lier les lots
-    const cuvesUpserted = [];
+    const conteneursPayload  = Array.isArray(req.body?.conteneurs) ? req.body.conteneurs
+                             : Array.isArray(req.body?.cuves)      ? req.body.cuves  // rétrocompat
+                             : [];
+    const conteneurRefToId   = {}; // nom → ObjectId, pour lier les lots
+    const conteneursUpserted = [];
 
-    for (const c of cuvesPayload) {
+    for (const c of conteneursPayload) {
       const nom = (c.ref ?? c.nom ?? '').trim();
       if (!nom) continue;
 
@@ -169,23 +176,35 @@ const receptionApprovisionnement = async (req, res) => {
               { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true }
             );
         if (doc) {
-          cuvesUpserted.push(doc.nom);
-          cuveRefToId[nom] = doc._id;
+          conteneursUpserted.push(doc.nom);
+          conteneurRefToId[nom] = doc._id;
         }
-      } catch (cuveErr) {
-        console.warn(`[Appro] Cuve "${nom}" non enregistrée :`, cuveErr.message);
+      } catch (conteneurErr) {
+        console.warn(`[Appro] Conteneur "${nom}" non enregistré :`, conteneurErr.message);
       }
     }
 
-    /* ── 3. Création des Lots ────────────────────────────── */
-    // Ratio de réception (1.0 pour conforme, <1.0 pour partiel)
+    /* ── 3. Création des Lots ────────────────────────────────
+       Chaque Lot reçoit les champs financiers et de nomenclature
+       obligatoires définis dans le schéma V2.
+    ─────────────────────────────────────────────────────────── */
     const ratio = decision === 'partiel' ? (quantiteRecue / totalQteAttendue) : 1;
 
     const lotsCreated    = [];
     const lignesIgnorees = [];
 
     for (const ligne of appro.lignes) {
-      if (!ligne.articleId) { lignesIgnorees.push(ligne.label); continue; }
+      if (!ligne.articleId) {
+        lignesIgnorees.push(ligne.label);
+        continue;
+      }
+
+      // Ignore les lignes sans typeProduit valide (ex : anciennes données 'materiel')
+      if (!TYPES_VALIDES.includes(ligne.typeProduit)) {
+        console.warn(`[Appro] Ligne "${ligne.label}" ignorée — typeProduit invalide : ${ligne.typeProduit}`);
+        lignesIgnorees.push(ligne.label);
+        continue;
+      }
 
       const qteACreer = decision === 'partiel'
         ? Math.round(ligne.qte * ratio)
@@ -198,36 +217,38 @@ const receptionApprovisionnement = async (req, res) => {
         ? ficheTechBody
         : (Array.isArray(ligne.ficheTechnique) ? ligne.ficheTechnique : []);
 
-      // Liaison cuve : cherche via cuveRef de la fiche, sinon première cuve reçue
+      /* Liaison conteneur semence : cherche via cuveRef de la fiche, sinon premier conteneur reçu */
       let cuveId = null;
-      if (ligne.type === 'semence' || ligne.type === 'azote') {
+      if (TYPES_VALIDES.includes(ligne.typeProduit)) {
         const ref = ficheTech.length > 0 ? (ficheTech[0].cuveRef ?? '') : '';
-        cuveId = (ref && cuveRefToId[ref]) ? cuveRefToId[ref]
-               : (Object.values(cuveRefToId)[0] ?? null);
+        cuveId = (ref && conteneurRefToId[ref]) ? conteneurRefToId[ref]
+               : (Object.values(conteneurRefToId)[0] ?? null);
       }
 
       try {
         const numLot = await generateNumLot();
         const lot = await Lot.create({
           numLot,
-          type:          ligne.type ?? 'materiel',
-          articleId:     ligne.articleId,
-          fournisseurId: appro.fournisseurId ?? null,
-          qteDisponible: qteACreer,
-          statut:        'disponible',
+          typeProduit:       ligne.typeProduit,
+          uniteMesure:       ligne.uniteMesure,
+          prixAchatUnitaire: ligne.prixAchatUnitaire,
+          articleId:         ligne.articleId,
+          fournisseurId:     appro.fournisseurId,
+          qteDisponible:     qteACreer,
+          statut:            'disponible',
           ...(cuveId ? { cuveId } : {}),
-          /* ficheTechnique — champ unifié, mappé depuis le payload frontend */
-          ...(ligne.type === 'semence' && ficheTech.length > 0 ? {
+          /* ficheTechnique — uniquement pour les semences génétiques */
+          ...(TYPES_SEMENCE.includes(ligne.typeProduit) && ficheTech.length > 0 ? {
             ficheTechnique: ficheTech.map(ft => ({
-              taureau: ft.taureau  ?? '',
-              nni:     ft.nni      ?? '',
-              couleur: ft.couleur  ?? '',
-              qte:     Number(ft.quantite) || 0,
-              cuve:    ft.cuveRef  ?? '',
+              taureau:          ft.taureau  ?? '',
+              nni:              ft.nni      ?? '',
+              couleur:          ft.couleur  ?? '',
+              qte:              Number(ft.quantite) || 0,
+              conteneurSemence: ft.cuveRef  ?? '',
             })),
           } : {}),
         });
-        console.log(`[Appro] Lot créé : ${lot.numLot} | ficheTechnique : ${lot.ficheTechnique?.length ?? 0} ligne(s)`);
+        console.log(`[Appro] Lot créé : ${lot.numLot} | typeProduit : ${lot.typeProduit} | ficheTechnique : ${lot.ficheTechnique?.length ?? 0} ligne(s)`);
         lotsCreated.push(lot.numLot);
       } catch (lotErr) {
         console.warn(`[Appro] Lot non créé pour "${ligne.label}" :`, lotErr.message);
@@ -235,15 +256,15 @@ const receptionApprovisionnement = async (req, res) => {
       }
     }
 
-    const cuvesMsg = cuvesUpserted.length > 0
-      ? ` · ${cuvesUpserted.length} cuve(s) enregistrée(s) : ${cuvesUpserted.join(', ')}`
+    const conteneursMsg = conteneursUpserted.length > 0
+      ? ` · ${conteneursUpserted.length} conteneur(s) semences enregistré(s) : ${conteneursUpserted.join(', ')}`
       : '';
 
     const msg = decision === 'partiel'
-      ? `Litige enregistré · ${lotsCreated.length} lot(s) créé(s) (${quantiteRecue}/${totalQteAttendue} reçu${quantiteRecue > 1 ? 's' : ''})${cuvesMsg}.`
-      : `Réception conforme · ${lotsCreated.length} lot(s) créé(s)${cuvesMsg}.`;
+      ? `Litige enregistré · ${lotsCreated.length} lot(s) créé(s) (${quantiteRecue}/${totalQteAttendue} reçu${quantiteRecue > 1 ? 's' : ''})${conteneursMsg}.`
+      : `Réception conforme · ${lotsCreated.length} lot(s) créé(s)${conteneursMsg}.`;
 
-    res.json({ approvisionnement: appro, lotsCreated, lignesIgnorees, cuvesUpserted, message: msg });
+    res.json({ approvisionnement: appro, lotsCreated, lignesIgnorees, conteneursUpserted, message: msg });
   } catch (err) {
     console.error('[Appro] reception :', err.message);
     res.status(500).json({ message: err.message });
