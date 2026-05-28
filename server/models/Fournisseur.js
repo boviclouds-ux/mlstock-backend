@@ -32,10 +32,9 @@ const fournisseurSchema = new mongoose.Schema(
       trim:    true,
       default: '🌍',
     },
-    specialite: {
-      type:    String,
-      trim:    true,
-      default: 'Autres',
+    specialites: {
+      type:    [{ type: String, trim: true }],
+      default: ['Autres'],
     },
     contact: {
       type:    contactSchema,

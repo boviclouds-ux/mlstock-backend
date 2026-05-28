@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 
 const ficheTechniqueSchema = new mongoose.Schema(
   {
+    race:             { type: String, trim: true, default: '' },
     taureau:          { type: String, trim: true, default: '' },
     nni:              { type: String, trim: true, default: '' },
     couleur:          { type: String, trim: true, default: '' },
@@ -18,19 +19,13 @@ const lotSchema = new mongoose.Schema(
     typeProduit: {
       type:     String,
       required: [true, 'Le type de produit est requis'],
-      enum: {
-        values:  ['Conventionnelle', 'Sexée', 'Azote'],
-        message: 'typeProduit invalide : {VALUE}',
-      },
+      trim:     true,
     },
 
     uniteMesure: {
       type:     String,
       required: [true, "L'unité de mesure est requise"],
-      enum: {
-        values:  ['Unité', 'Litre'],
-        message: 'uniteMesure invalide : {VALUE}',
-      },
+      trim:     true,
     },
 
     prixAchatUnitaire: {

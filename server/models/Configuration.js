@@ -72,6 +72,35 @@ const configurationSchema = new mongoose.Schema(
       type:    Date,
       default: null,
     },
+
+    /* ─ Finance & Valorisation ─ */
+    methodeValorisation: {
+      type:    String,
+      enum:    ['CUMP', 'FIFO', 'LIFO'],
+      default: 'CUMP',
+    },
+
+    /* ─ Marque Blanche / Personnalisation PDF ─ */
+    nomEntreprise: {
+      type:    String,
+      trim:    true,
+      default: 'Maroc Lait',
+    },
+    slogan: {
+      type:    String,
+      trim:    true,
+      default: 'Hub Central National · Agadir',
+    },
+    piedDePage: {
+      type:    String,
+      trim:    true,
+      default: '',
+    },
+    logoUrl: {
+      type:    String,
+      trim:    true,
+      default: '',
+    },
   },
   {
     timestamps: true,

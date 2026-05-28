@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { api } from "./lib/api";
+import DataGridV2 from './components/DataGridV2';
 import {
   BarChart3, Download, Database, Shield, Activity,
   FileText, FileSpreadsheet, ChevronDown, TrendingUp,
@@ -32,6 +33,8 @@ function fromTxToAudit(t, idx) {
     action:      meta.action,
     cible:       `${t.reference} → ${dest}`,
     type:        meta.type,
+    ip:          t.clientIp ?? t.ip ?? '—',
+    module:      t.type === 'RECEPTION' ? 'Réceptions' : t.type === 'EXPEDITION' ? 'Expéditions' : 'Ordres Admin',
   };
 }
 
@@ -297,6 +300,77 @@ export default function TracabiliteRapports() {
   const filteredLogs = auditFilter === "tous"
     ? auditLogs
     : auditLogs.filter(l => l.type === auditFilter);
+
+  const [filtreUtilisateur, setFiltreUtilisateur] = useState('');
+  const [filtreModule,      setFiltreModule]      = useState('');
+  const [filtreCriticite,   setFiltreCriticite]   = useState('');
+
+  const auditFiltres = useMemo(() => filteredLogs.filter(l => {
+    if (filtreUtilisateur && l.utilisateur !== filtreUtilisateur) return false;
+    if (filtreModule      && l.module      !== filtreModule)      return false;
+    if (filtreCriticite   && l.type        !== filtreCriticite)   return false;
+    return true;
+  }), [filteredLogs, filtreUtilisateur, filtreModule, filtreCriticite]);
+
+  const SEL_T = "text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400";
+
+  const colonnesAudit = [
+    {
+      key: 'id', label: '#', minWidth: 48,
+      render: (_v, _r, i) => (
+        <span className="text-xs font-mono text-gray-300">{String(i + 1).padStart(3, '0')}</span>
+      ),
+      exportValue: (_r, i) => String(i + 1).padStart(3, '0'),
+    },
+    {
+      key: 'datetime', label: 'Date / Heure', sortable: true,
+      render: v => (
+        <div className="flex items-center gap-1 text-xs text-gray-500 whitespace-nowrap">
+          <Clock size={10} className="text-gray-300 shrink-0" />{v}
+        </div>
+      ),
+    },
+    {
+      key: 'utilisateur', label: 'Utilisateur', sortable: true,
+      render: (v, row) => (
+        <div className="flex items-center gap-1.5">
+          <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
+            <User size={9} className="text-slate-500" />
+          </div>
+          <div>
+            <p className="text-xs font-medium text-gray-800 whitespace-nowrap">{v}</p>
+            <p className="text-[10px] text-gray-400">{row.role}</p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'module', label: 'Module', sortable: true,
+      render: v => <span className="text-xs text-gray-500">{v}</span>,
+    },
+    {
+      key: 'ip', label: 'Adresse IP',
+      render: v => <span className="text-xs font-mono text-gray-400">{v}</span>,
+    },
+    {
+      key: 'action', label: 'Action Réalisée',
+      render: v => <p className="text-xs text-gray-700 whitespace-nowrap">{v}</p>,
+    },
+    {
+      key: 'cible', label: 'Cible',
+      render: v => (
+        <div className="flex items-center gap-1 text-xs text-gray-500">
+          <MapPin size={10} className="text-gray-300 shrink-0" />
+          <span className="whitespace-nowrap">{v}</span>
+        </div>
+      ),
+    },
+    {
+      key: 'type', label: 'Statut',
+      render: v => <AuditBadge type={v} />,
+      exportValue: row => row.type,
+    },
+  ];
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
@@ -566,7 +640,6 @@ export default function TracabiliteRapports() {
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              {/* Filtre type */}
               {[
                 { id:"tous",    label:"Tous"      },
                 { id:"success", label:"Succès"    },
@@ -584,73 +657,40 @@ export default function TracabiliteRapports() {
               ))}
             </div>
           </div>
-
-          <div className="overflow-x-auto">
-            <div className="min-w-[680px]">
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-gray-50/80 border-b border-gray-100">
-                    {["#","Date / Heure","Utilisateur","Action Réalisée","Cible","Statut"].map(h => (
-                      <th key={h} className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide px-4 py-3 whitespace-nowrap">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {filteredLogs.length === 0 && (
-                    <tr><td colSpan={6} className="text-center py-10 text-sm text-gray-400">
-                      {isLoading ? 'Chargement des logs…' : 'Aucune activité enregistrée pour le moment.'}
-                    </td></tr>
-                  )}
-                  {filteredLogs.map((log, i) => (
-                    <tr key={log.id} className={`transition-colors hover:bg-gray-50/60
-                      ${log.type === "error" ? "bg-red-50/20" : ""}`}>
-                      <td className="px-4 py-3 text-xs font-mono text-gray-300">
-                        {String(log.id).padStart(3, "0")}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="flex items-center gap-1 text-xs text-gray-500">
-                          <Clock size={10} className="text-gray-300 shrink-0" />
-                          {log.datetime}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
-                            <User size={9} className="text-slate-500" />
-                          </div>
-                          <div>
-                            <p className="text-xs font-medium text-gray-800 whitespace-nowrap">{log.utilisateur}</p>
-                            <p className="text-[10px] text-gray-400">{log.role}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="text-xs text-gray-700 whitespace-nowrap">{log.action}</p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1 text-xs text-gray-500">
-                          <MapPin size={10} className="text-gray-300 shrink-0" />
-                          <span className="whitespace-nowrap">{log.cible}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <AuditBadge type={log.type} />
-                      </td>
-                    </tr>
+          <DataGridV2
+            columns={colonnesAudit}
+            data={auditFiltres}
+            rowKey="id"
+            title="Registre d'Audit"
+            exportFilename="audit-tracabilite"
+            loading={isLoading}
+            emptyMessage="Aucune activité enregistrée pour le moment."
+            actions={
+              <div className="flex flex-wrap items-center gap-1.5" onClick={e => e.stopPropagation()}>
+                <select value={filtreUtilisateur} onChange={e => setFiltreUtilisateur(e.target.value)} className={SEL_T}>
+                  <option value="">Tout utilisateur</option>
+                  {[...new Set(auditLogs.map(l => l.utilisateur).filter(v => v && v !== '—'))].sort().map(u => (
+                    <option key={u} value={u}>{u}</option>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div className="px-5 py-3 border-t border-gray-100 flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5 text-xs text-gray-400">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse inline-block" />
-              {filteredLogs.length} événement{filteredLogs.length > 1 ? "s" : ""} · Chiffrement SHA-256 · Horodatage certifié
-            </div>
-            <button className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50 transition-colors">
-              <Download size={12} /> Exporter le registre
-            </button>
+                </select>
+                <select value={filtreModule} onChange={e => setFiltreModule(e.target.value)} className={SEL_T}>
+                  <option value="">Tout module</option>
+                  {['Réceptions', 'Expéditions', 'Ordres Admin'].map(m => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+                <select value={filtreCriticite} onChange={e => setFiltreCriticite(e.target.value)} className={SEL_T}>
+                  <option value="">Toute criticité</option>
+                  {[{v:'success',l:'Succès'},{v:'info',l:'Info'},{v:'warning',l:'Attention'},{v:'error',l:'Erreur'}].map(({v,l}) => (
+                    <option key={v} value={v}>{l}</option>
+                  ))}
+                </select>
+              </div>
+            }
+          />
+          <div className="px-5 py-3 border-t border-gray-100 flex items-center gap-1.5 text-xs text-gray-400">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse inline-block" />
+            Chiffrement SHA-256 · Horodatage certifié
           </div>
         </div>
 

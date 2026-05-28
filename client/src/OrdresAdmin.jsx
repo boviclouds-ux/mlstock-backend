@@ -1,11 +1,13 @@
 // OrdresAdmin.jsx — Ordres Push Administration Centrale · Section 4
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { api } from "./lib/api";
+import DataGridV2 from './components/DataGridV2';
+import { NouvelleCommandeModal } from './EspaceCooperative.jsx';
 import {
   Zap, Send, ShieldAlert, Plus, X,
   Dna, FlaskConical, Wrench, HeartPulse,
   ChevronDown, CheckCircle, Clock, Building2, FileText,
-  AlertTriangle,
+  AlertTriangle, ArrowRightLeft,
 } from "lucide-react";
 
 /* ─── Motifs statiques ──────────────────────────────── */
@@ -37,7 +39,10 @@ function fromApiOrdre(t) {
     id:         t.reference,
     date:       (t.createdAt ?? new Date().toISOString()).slice(0, 10),
     uniteCible: t.uniteCible?.nom ?? "—",
-    motif:      t.motif ?? "",
+    motif:           t.motif ?? "",
+    adminValidateur: t.initiatedBy
+      ? (`${t.initiatedBy.prenom ?? ''} ${t.initiatedBy.nom ?? ''}`).trim() || '—'
+      : '—',
     articles:   (t.lignes ?? []).map(l => ({
       label: l.article?.designation ?? "—",
       qte:   l.quantite,
@@ -56,13 +61,15 @@ function typeIcon(type, sz = 11) {
   return                         <Wrench       size={sz} className="text-slate-400 shrink-0" />;
 }
 
-/* Mapping DB statut → badge (clés = valeurs Mongoose enum) */
+/* Mapping DB statut V2 → badge */
 const STATUT_UI = {
-  "En attente":  { label:"En attente Magasinier", bg:"bg-amber-50",   text:"text-amber-700",   dot:"bg-amber-500"   },
-  "Validé":      { label:"En préparation",        bg:"bg-blue-50",    text:"text-blue-700",    dot:"bg-blue-500"    },
-  "Expédié":     { label:"En transit",            bg:"bg-indigo-50",  text:"text-indigo-700",  dot:"bg-indigo-500"  },
-  "Réceptionné": { label:"Réceptionné ✓",         bg:"bg-emerald-50", text:"text-emerald-700", dot:"bg-emerald-500" },
-  "Rejeté":      { label:"Rejeté",                bg:"bg-red-50",     text:"text-red-700",     dot:"bg-red-500"     },
+  "Brouillon":              { label:"Brouillon",            bg:"bg-gray-50",    text:"text-gray-500",    dot:"bg-gray-400"    },
+  "Demandée":               { label:"En attente",           bg:"bg-gray-50",    text:"text-gray-500",    dot:"bg-gray-400"    },
+  "Validée_BE":             { label:"Prêt à expédier",      bg:"bg-amber-50",   text:"text-amber-700",   dot:"bg-amber-500"   },
+  "Partiellement_Livrée":  { label:"Livraison en cours",   bg:"bg-blue-50",    text:"text-blue-700",    dot:"bg-blue-500"    },
+  "Totalement_Livrée":     { label:"Totalement livré",     bg:"bg-indigo-50",  text:"text-indigo-700",  dot:"bg-indigo-500"  },
+  "Réceptionnée_Cloturée": { label:"Réceptionné ✓",        bg:"bg-emerald-50", text:"text-emerald-700", dot:"bg-emerald-500" },
+  "Rejeté":                { label:"Rejeté",               bg:"bg-red-50",     text:"text-red-700",     dot:"bg-red-500"     },
 };
 
 function StatutBadge({ statut }) {
@@ -78,6 +85,32 @@ function StatutBadge({ statut }) {
 /* ─── Styles formulaire ─────────────────────────────── */
 const lbl = "text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 block";
 const sel = "w-full bg-slate-900 border border-slate-600 rounded-xl px-3 py-2.5 text-sm text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all appearance-none";
+
+/* ─── Impression Bon d'Enlèvement ───────────────────── */
+function imprimerBE(ordre) {
+  const date = new Date().toLocaleDateString('fr-FR', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+  const lignesHtml = (ordre.articles ?? []).map((a, i) => `
+    <tr>
+      <td style="width:32px;text-align:center;color:#94a3b8">${i + 1}</td>
+      <td><strong>${a.label}</strong></td>
+      <td style="text-align:right;font-weight:700">${Number(a.qte ?? 0).toLocaleString()}</td>
+      <td>${a.unite ?? '—'}</td>
+    </tr>`).join('');
+  const totalQte = (ordre.articles ?? []).reduce((s, a) => s + Number(a.qte ?? 0), 0);
+  const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>BE-${ordre.id}</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#1a1a1a;padding:15mm 18mm}.hdr{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:14px;border-bottom:3px solid #4f46e5;margin-bottom:20px}.logo{font-size:26px;font-weight:900;color:#1e293b;letter-spacing:-1px}.logo span{color:#2563eb}.logo-sub{font-size:10px;color:#64748b;margin-top:3px}.doc-tag{font-size:9px;font-weight:700;letter-spacing:2px;color:#64748b;text-transform:uppercase;text-align:right}.doc-title{font-size:22px;font-weight:900;color:#4f46e5;text-align:right;margin:2px 0}.doc-ref{font-size:11px;color:#64748b;text-align:right;font-family:monospace}.meta{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px}.mbox{border:1px solid #e2e8f0;border-radius:8px;padding:12px}.mbox h4{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;margin-bottom:6px}.mbox p{line-height:1.65}.motif-box{background:#f5f3ff;border:1px solid #c4b5fd;border-radius:8px;padding:12px;margin-bottom:20px}.motif-box h4{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#7c3aed;margin-bottom:4px}table{width:100%;border-collapse:collapse;margin-bottom:22px;font-size:11px}thead tr{background:#4f46e5;color:#fff}thead th{padding:9px 10px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:1px;font-weight:700}tbody tr:nth-child(even){background:#f8fafc}tbody td{padding:8px 10px;border-bottom:1px solid #f1f5f9}.tot{background:#4f46e5!important;color:#fff!important;font-weight:700}.tot td{color:#fff!important}.sig{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-top:22px}.sbox{border:1px solid #e2e8f0;border-radius:8px;padding:14px;min-height:90px}.sbox h4{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;margin-bottom:3px}.sline{border-top:1px solid #cbd5e1;margin-top:52px}.ftr{margin-top:18px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:9px;color:#94a3b8;display:flex;justify-content:space-between}@media print{body{padding:8mm 10mm}}</style></head>
+<body>
+<div class="hdr"><div><div class="logo">ML<span>APP</span></div><div class="logo-sub">Gestion du Stock de Semences Bovines</div></div><div><div class="doc-tag">Document officiel · Administration Centrale</div><div class="doc-title">BON D'ENLÈVEMENT</div><div class="doc-ref">${ordre.id} &nbsp;·&nbsp; ${ordre.date ?? date}</div></div></div>
+<div class="meta"><div class="mbox"><h4>Émetteur</h4><p><strong>MLAPP — Administration Centrale</strong></p><p style="font-size:11px;color:#64748b">Ordre de sortie de stock autorisé</p></div><div class="mbox"><h4>Unité Destinataire</h4><p><strong>${ordre.uniteCible ?? '—'}</strong></p></div><div class="mbox"><h4>Date d'émission</h4><p><strong>${ordre.date ?? '—'}</strong></p></div><div class="mbox"><h4>Statut</h4><p><strong>${ordre.statut ?? '—'}</strong></p></div></div>
+<div class="motif-box"><h4>⚡ Motif de l'Ordre Admin</h4><p style="font-size:12px;color:#1e1b4b">${ordre.motif ?? '—'}</p></div>
+<table><thead><tr><th>#</th><th>Désignation Article</th><th style="text-align:right">Quantité Autorisée</th><th>Unité</th></tr></thead>
+<tbody>${lignesHtml}<tr class="tot"><td colspan="2" style="text-align:right;padding-right:12px;font-size:11px">TOTAL AUTORISÉ</td><td style="text-align:right">${totalQte.toLocaleString()}</td><td></td></tr></tbody></table>
+<div class="sig"><div class="sbox"><h4>Admin Fédéral — Émetteur</h4><p style="font-size:10px;color:#64748b;margin-top:3px">Signature &amp; Cachet</p><div class="sline"></div></div><div class="sbox"><h4>Magasinier Central</h4><p style="font-size:10px;color:#64748b;margin-top:3px">Signature de prise en charge</p><div class="sline"></div></div><div class="sbox"><h4>Responsable Unité</h4><p style="font-size:10px;color:#64748b;margin-top:3px">Signature de réception</p><div class="sline"></div></div></div>
+<div class="ftr"><span>Imprimé le ${date} · MLAPP v2.0</span><span>Réf Ordre : ${ordre.id} — Ce document autorise la sortie de stock.</span></div>
+</body></html>`;
+  const win = window.open('', '_blank', 'width=960,height=720');
+  if (win) { win.document.write(html); win.document.close(); setTimeout(() => { try { win.print(); } catch (_) {} }, 600); }
+}
 
 /* ══════════════════════════════════════════════════════════
    COMPOSANT PRINCIPAL
@@ -102,6 +135,17 @@ export default function OrdresAdmin() {
   const [submitting, setSubmitting] = useState(false);
   const [success,    setSuccess]    = useState(false);
   const [submitErr,  setSubmitErr]  = useState(null);
+
+  /* ─ Mode Proxy (Saisie pour coopérative) ─────────── */
+  const [showProxyModal, setShowProxyModal] = useState(false);
+  const [proxyOk,        setProxyOk]        = useState(false);
+  const [proxyError,     setProxyError]     = useState(null);
+
+  /* Quota nul — l'admin saisit pour une coop tierce, pas pour lui-même */
+  const PROXY_QUOTA = { semences: {alloue:0, consomme:0, unite:'doses'}, azote: {alloue:0, consomme:0, unite:'litres'} };
+
+  /* Articles au format attendu par NouvelleCommandeModal */
+  const articlesProxy = catalogue.map(a => ({ ...a, id: a._id }));
 
   /* ─── Chargement initial ────────────────────────── */
   useEffect(() => {
@@ -166,6 +210,28 @@ export default function OrdresAdmin() {
     }
   }
 
+  /* ─── Commande Proxy (EXPEDITION pour une coop tierce) ─
+     Crée une demande de type EXPEDITION au nom de l'admin,
+     avec uniteCible = la coopérative sélectionnée dans la modale.
+     La traçabilité est assurée via initiatedBy = req.user._id.
+  ─────────────────────────────────────────────────────── */
+  async function nouvelleCommandeProxy({ articleId, qte, motif: motifProxy, uniteCibleId }) {
+    setProxyError(null);
+    try {
+      await api.post("/api/transactions", {
+        type:   "EXPEDITION",
+        statut: "En attente",
+        motif:  motifProxy || "Saisie proxy — commande téléphonique coopérative",
+        lignes: [{ article: articleId, quantite: qte }],
+        ...(uniteCibleId ? { uniteCible: uniteCibleId } : {}),
+      });
+      setProxyOk(true);
+      setTimeout(() => setProxyOk(false), 4000);
+    } catch (err) {
+      setProxyError(err.message);
+    }
+  }
+
   /* ─── Soumission ────────────────────────────────── */
   async function handleSubmit() {
     if (!formValid || submitting) return;
@@ -174,7 +240,7 @@ export default function OrdresAdmin() {
 
     const payload = {
       type:       "ORDRE_ADMIN",
-      statut:     "En attente",  // Magasinier doit préparer → workflow picking complet
+      statut:     "Validée_BE",          // Ordre Admin = validé d'office (belt-and-suspenders)
       motif,
       uniteCible,
       lignes: lignes.map(l => ({ article: l.articleId, quantite: Number(l.qte) })),
@@ -199,11 +265,139 @@ export default function OrdresAdmin() {
     }
   }
 
+  /* ─── Filtres & colonnes DataGridV2 ─────────────── */
+  const [filtreAdmin,  setFiltreAdmin]  = useState('');
+  const [filtreMotif,  setFiltreMotif]  = useState('');
+  const [filtreDateD,  setFiltreDateD]  = useState('');
+  const [filtreDateF,  setFiltreDateF]  = useState('');
+
+  const ordresFiltres = useMemo(() => ordres.filter(o => {
+    if (filtreAdmin && o.adminValidateur !== filtreAdmin) return false;
+    if (filtreMotif && o.motif !== filtreMotif) return false;
+    if (filtreDateD && o.date < filtreDateD) return false;
+    if (filtreDateF && o.date > filtreDateF) return false;
+    return true;
+  }), [ordres, filtreAdmin, filtreMotif, filtreDateD, filtreDateF]);
+
+  const SEL_O = "text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400";
+
+  const colonnesOrdres = [
+    { key: 'id', label: 'Réf Ordre', sortable: true,
+      render: (v) => (
+        <div>
+          <div className="flex items-center gap-1.5 mb-0.5">
+            <Zap size={10} className="text-purple-500 shrink-0" />
+            <span className="text-xs font-bold font-mono text-slate-800">{v}</span>
+          </div>
+          <span className="text-[9px] font-bold bg-purple-50 text-purple-600 border border-purple-200 px-1.5 py-0.5 rounded-full">⚡ Ordre Admin</span>
+        </div>
+      ),
+      exportValue: r => r.id,
+    },
+    { key: 'date', label: 'Date', sortable: true,
+      render: (v) => (
+        <div className="flex items-center gap-1 text-xs text-slate-500">
+          <Clock size={10} className="text-slate-400 shrink-0" />
+          {new Date(v).toLocaleDateString('fr-FR', { day:'2-digit', month:'short' })}
+        </div>
+      ),
+    },
+    { key: 'uniteCible', label: 'Unité Cible', sortable: true,
+      render: (v) => (
+        <div className="flex items-center gap-1.5 text-xs text-slate-700 min-w-0">
+          <Building2 size={11} className="text-slate-400 shrink-0" />
+          <span className="truncate">{v}</span>
+        </div>
+      ),
+    },
+    { key: 'adminValidateur', label: 'Admin Validateur', sortable: true },
+    { key: 'motif', label: 'Motif de l\'opération', sortable: true,
+      render: (v) => (
+        <div className="flex items-center gap-1.5 text-xs text-slate-600 min-w-0">
+          <FileText size={10} className="text-slate-400 shrink-0" />
+          <span className="truncate">{v || '—'}</span>
+        </div>
+      ),
+    },
+    { key: 'articles', label: 'Articles',
+      render: (v) => (
+        <div className="space-y-0.5">
+          {(v ?? []).map((a, i) => (
+            <div key={i} className="flex items-center gap-1.5">
+              {typeIcon(a.type ?? 'materiel', 10)}
+              <span className="text-[10px] text-slate-500 truncate">{a.label}</span>
+              <span className="text-[10px] font-mono text-slate-400 ml-auto shrink-0">{Number(a.qte).toLocaleString()} {a.unite}</span>
+            </div>
+          ))}
+        </div>
+      ),
+      exportValue: r => (r.articles ?? []).map(a => `${a.label} (${a.qte} ${a.unite})`).join(', '),
+    },
+    { key: 'statut', label: 'Statut', render: (v) => <StatutBadge statut={v} /> },
+    { key: '__a', label: '',
+      render: (_, r) => (
+        <div className="flex flex-col gap-1" onClick={e => e.stopPropagation()}>
+          {['Brouillon','Demandée','Validée_BE'].includes(r.statut) && (
+            <button onClick={() => handleReject(r._id)}
+              className="flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-lg bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-all whitespace-nowrap">
+              <X size={10} /> Rejeter
+            </button>
+          )}
+          {['Validée_BE','Partiellement_Livrée','Totalement_Livrée','Réceptionnée_Cloturée'].includes(r.statut) && (
+            <button onClick={() => imprimerBE(r)}
+              className="flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-200 hover:bg-indigo-100 transition-all whitespace-nowrap">
+              <FileText size={10}/> Impr. BE
+            </button>
+          )}
+        </div>
+      ),
+    },
+  ];
+
   /* ════════════════════════════════════════════════════
      RENDU
   ════════════════════════════════════════════════════ */
   return (
     <div className="space-y-6">
+
+      {/* ── Modal Saisie Proxy ────────────────────────── */}
+      {showProxyModal && (
+        <NouvelleCommandeModal
+          quota={PROXY_QUOTA}
+          onClose={() => setShowProxyModal(false)}
+          onSubmit={nouvelleCommandeProxy}
+          articles={articlesProxy}
+          articlesLoading={loadingData}
+          articlesError={null}
+          uniteName={null}
+          isProxy={true}
+          unites={unites}
+        />
+      )}
+
+      {/* ── Toast proxy succès ────────────────────────── */}
+      {proxyOk && (
+        <div className="flex items-center gap-3 bg-teal-500/10 border border-teal-500/30 rounded-2xl px-5 py-3"
+          style={{ animation:"fadeIn .2s ease" }}>
+          <CheckCircle size={16} className="text-teal-400 shrink-0" />
+          <div>
+            <p className="text-sm font-bold text-teal-300">Demande proxy transmise</p>
+            <p className="text-xs text-teal-400/70 mt-0.5">La commande a été enregistrée pour la coopérative sélectionnée et sera traitée par le Hub Central.</p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Toast proxy erreur ────────────────────────── */}
+      {proxyError && (
+        <div className="flex items-center gap-3 bg-red-500/10 border border-red-500/30 rounded-2xl px-5 py-3">
+          <AlertTriangle size={16} className="text-red-400 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-red-300">Erreur — Saisie Proxy</p>
+            <p className="text-xs text-red-400/70 mt-0.5 truncate">{proxyError}</p>
+          </div>
+          <button onClick={() => setProxyError(null)} className="text-red-400 hover:text-red-300 shrink-0"><X size={14} /></button>
+        </div>
+      )}
 
       {/* ── En-tête ─────────────────────────────────── */}
       <div className="rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 px-6 py-5 text-white shadow-lg">
@@ -217,17 +411,26 @@ export default function OrdresAdmin() {
               <p className="text-[11px] text-slate-400 mt-0.5">Flux push · Administration Centrale → Unités</p>
             </div>
           </div>
-          <span className="flex items-center gap-1.5 text-[11px] font-bold bg-purple-500/10 text-purple-300 border border-purple-500/25 px-3 py-1.5 rounded-full shrink-0">
-            <Zap size={10} /> Autorisation Direction
-          </span>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => setShowProxyModal(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold shadow-lg shadow-teal-900/40 transition-all"
+            >
+              <ArrowRightLeft size={13} />
+              Nouvelle Demande (Saisie Proxy)
+            </button>
+            <span className="flex items-center gap-1.5 text-[11px] font-bold bg-purple-500/10 text-purple-300 border border-purple-500/25 px-3 py-1.5 rounded-full">
+              <Zap size={10} /> Autorisation Direction
+            </span>
+          </div>
         </div>
 
         <div className="grid grid-cols-4 gap-2">
           {[
-            { label:"Total émis",   val:ordres.length,                                             col:"text-purple-300" },
-            { label:"En attente",   val:ordres.filter(o => o.statut === "Validé").length,          col:"text-amber-300"  },
-            { label:"Expédiés",     val:ordres.filter(o => o.statut === "Expédié").length,         col:"text-blue-300"   },
-            { label:"Réceptionnés", val:ordres.filter(o => o.statut === "Réceptionné").length,     col:"text-emerald-300"},
+            { label:"Total émis",   val:ordres.length,                                                                          col:"text-purple-300" },
+            { label:"À expédier",   val:ordres.filter(o => o.statut === "Validée_BE").length,                                   col:"text-amber-300"  },
+            { label:"En livraison", val:ordres.filter(o => ["Partiellement_Livrée","Totalement_Livrée"].includes(o.statut)).length, col:"text-blue-300"   },
+            { label:"Clôturés",     val:ordres.filter(o => o.statut === "Réceptionnée_Cloturée").length,                        col:"text-emerald-300"},
           ].map(s => (
             <div key={s.label} className="bg-white/5 rounded-xl px-3 py-2 text-center">
               <p className={`text-xl font-bold tabular-nums ${s.col}`}>{s.val}</p>
@@ -401,7 +604,6 @@ export default function OrdresAdmin() {
 
       {/* ══ HISTORIQUE ══════════════════════════════════ */}
       <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
-
         <div className="flex items-center gap-3 px-5 py-3.5 bg-slate-50 border-b border-slate-100">
           <Zap size={14} className="text-purple-500" />
           <p className="text-xs font-bold text-slate-700">Historique des Ordres Admin émis</p>
@@ -409,88 +611,31 @@ export default function OrdresAdmin() {
             {ordres.length} ordre{ordres.length > 1 ? "s" : ""}
           </span>
         </div>
-
-        <div className="grid grid-cols-[1fr_0.7fr_1.4fr_1.2fr_1fr_1fr_auto] gap-3 px-5 py-2.5 bg-slate-50 border-b border-slate-100">
-          {["Réf Ordre","Date","Unité Cible","Motif","Articles","Statut","Action"].map(h => (
-            <p key={h} className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{h}</p>
-          ))}
-        </div>
-
-        <div className="divide-y divide-slate-50">
-          {!loadingData && ordres.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-10 text-center">
-              <p className="text-sm font-semibold text-slate-500">Aucun ordre émis pour le moment.</p>
-              <p className="text-xs text-slate-400 mt-1">Les ordres créés via le formulaire apparaîtront ici.</p>
-            </div>
-          )}
-          {ordres.map(ordre => (
-            <div key={ordre.id}
-              className="grid grid-cols-[1fr_0.7fr_1.4fr_1.2fr_1fr_1fr_auto] gap-3 items-center px-5 py-3.5 hover:bg-slate-50/60 transition-colors">
-
-              <div>
-                <div className="flex items-center gap-1.5 mb-0.5">
-                  <Zap size={10} className="text-purple-500 shrink-0" />
-                  <p className="text-xs font-bold font-mono text-slate-800">{ordre.id}</p>
-                </div>
-                <span className="text-[9px] font-bold bg-purple-50 text-purple-600 border border-purple-200 px-1.5 py-0.5 rounded-full">
-                  ⚡ Ordre Admin
-                </span>
-              </div>
-
-              <div className="flex items-center gap-1 text-xs text-slate-500">
-                <Clock size={10} className="text-slate-400 shrink-0" />
-                {new Date(ordre.date).toLocaleDateString("fr-FR", { day:"2-digit", month:"short" })}
-              </div>
-
-              <div className="flex items-center gap-1.5 text-xs text-slate-700 min-w-0">
-                <Building2 size={11} className="text-slate-400 shrink-0" />
-                <span className="truncate">{ordre.uniteCible}</span>
-              </div>
-
-              <div className="flex items-center gap-1.5 text-xs text-slate-600 min-w-0">
-                <FileText size={10} className="text-slate-400 shrink-0" />
-                <span className="truncate">{ordre.motif}</span>
-              </div>
-
-              <div className="space-y-0.5">
-                {ordre.articles.map((a, i) => (
-                  <div key={i} className="flex items-center gap-1.5">
-                    {typeIcon(a.type ?? "materiel", 10)}
-                    <span className="text-[10px] text-slate-500 truncate">{a.label}</span>
-                    <span className="text-[10px] font-mono text-slate-400 ml-auto shrink-0">
-                      {Number(a.qte).toLocaleString()} {a.unite}
-                    </span>
-                  </div>
+        <DataGridV2
+          columns={colonnesOrdres}
+          data={ordresFiltres}
+          rowKey="_id"
+          title="Ordres Admin"
+          exportFilename="ordres-admin"
+          loading={loadingData}
+          emptyMessage="Aucun ordre émis pour le moment."
+          actions={
+            <div className="flex flex-wrap items-center gap-1.5" onClick={e => e.stopPropagation()}>
+              <select value={filtreAdmin} onChange={e => setFiltreAdmin(e.target.value)} className={SEL_O}>
+                <option value="">Tout admin</option>
+                {[...new Set(ordres.map(o => o.adminValidateur).filter(v => v && v !== '—'))].sort().map(a => (
+                  <option key={a} value={a}>{a}</option>
                 ))}
-              </div>
-
-              <StatutBadge statut={ordre.statut} />
-
-              <div>
-                {(ordre.statut === 'En attente' || ordre.statut === 'Brouillon') && (
-                  <button
-                    onClick={() => handleReject(ordre._id)}
-                    className="flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-lg bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 hover:border-red-300 transition-all whitespace-nowrap"
-                  >
-                    <X size={10} /> Rejeter
-                  </button>
-                )}
-              </div>
+              </select>
+              <select value={filtreMotif} onChange={e => setFiltreMotif(e.target.value)} className={SEL_O}>
+                <option value="">Tout motif</option>
+                {MOTIFS.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+              <input type="date" value={filtreDateD} onChange={e => setFiltreDateD(e.target.value)} className={SEL_O} />
+              <input type="date" value={filtreDateF} onChange={e => setFiltreDateF(e.target.value)} className={SEL_O} />
             </div>
-          ))}
-        </div>
-
-        <div className="px-5 py-2.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
-          <p className="text-[11px] text-slate-400">
-            {ordres.length} ordre{ordres.length > 1 ? "s" : ""} émis ·{" "}
-            <span className="text-purple-600 font-medium">
-              {ordres.filter(o => o.statut === "Validé").length} en attente de traitement
-            </span>
-          </p>
-          <p className="text-[10px] text-slate-400 flex items-center gap-1">
-            {loadingData ? "Synchronisation…" : apiError ? "Données locales" : "API MongoDB"}
-          </p>
-        </div>
+          }
+        />
       </div>
     </div>
   );

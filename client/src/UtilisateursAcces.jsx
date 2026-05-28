@@ -8,7 +8,7 @@ import {
   Ban, Key, CheckCircle, XCircle, X, Pencil,
   MoreVertical, Mail, Calendar,
   Clock, Building2, AlertTriangle, Lock, Info,
-  Package, Inbox, Send,
+  Package, Inbox, Send, ArrowRightLeft,
 } from "lucide-react";
 
 /* ─── Matrice de permissions V2 ────────────────────────── */
@@ -49,9 +49,27 @@ const PERM_DEFS = [
     iconActiveCls: 'text-emerald-400',
     toggleCls:   'bg-emerald-500',
   },
+  {
+    key:         'canManageAppro',
+    label:       "Gestionnaire d'Approvisionnement",
+    description: 'Création et gestion des commandes fournisseurs (bons de commande).',
+    badgeCls:    'bg-orange-100 text-orange-700 border-orange-300',
+    icon:        Package,
+    iconActiveCls: 'text-orange-400',
+    toggleCls:   'bg-orange-500',
+  },
+  {
+    key:         'canActAsProxy',
+    label:       'Agent de Saisie Proxy',
+    description: 'Saisie de commandes pour le compte de coopératives externes (commandes téléphoniques). Accorde le sélecteur "Unité Bénéficiaire" dans le formulaire de demande.',
+    badgeCls:    'bg-teal-100 text-teal-700 border-teal-300',
+    icon:        ArrowRightLeft,
+    iconActiveCls: 'text-teal-400',
+    toggleCls:   'bg-teal-500',
+  },
 ];
 
-const DEFAULT_PERMISSIONS = { isAdmin: false, canDispatch: false, canReceive: false, canDemand: false };
+const DEFAULT_PERMISSIONS = { isAdmin: false, canDispatch: false, canReceive: false, canDemand: false, canManageAppro: false, canActAsProxy: false };
 const HUB_CENTRAL = "Maroc Lait — Hub Central";
 
 /* Détermine si l'utilisateur est rattaché à une unité locale plutôt qu'au hub */
@@ -110,10 +128,11 @@ function PermissionBadges({ permissions }) {
 /* ══════════════════════════════════════════════════════════
    TOGGLE DE PERMISSION (réutilisable dans les modals)
 ══════════════════════════════════════════════════════════ */
-function PermissionToggle({ def, checked, onChange }) {
+function PermissionToggle({ def, checked, onChange, locked = false }) {
   const Icon = def.icon;
   return (
-    <label className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all select-none
+    <label className={`flex items-center gap-3 p-3 rounded-xl border transition-all select-none
+      ${locked ? 'cursor-default opacity-70' : 'cursor-pointer'}
       ${checked
         ? 'border-white/20 bg-white/5'
         : 'border-slate-700 bg-slate-800/30 hover:border-slate-600'}`}
@@ -243,8 +262,9 @@ function ModalModifierPermissions({ user, unites, onClose, onSave }) {
             <PermissionToggle
               key={def.key}
               def={def}
-              checked={!!permissions[def.key]}
-              onChange={val => togglePerm(def.key, val)}
+              checked={def.key === 'canActAsProxy' && permissions.isAdmin ? true : !!permissions[def.key]}
+              onChange={val => def.key === 'canActAsProxy' && permissions.isAdmin ? null : togglePerm(def.key, val)}
+              locked={def.key === 'canActAsProxy' && permissions.isAdmin}
             />
           ))}
 
@@ -252,7 +272,7 @@ function ModalModifierPermissions({ user, unites, onClose, onSave }) {
             <div className="flex items-start gap-2 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2.5 mt-1">
               <AlertTriangle size={13} className="text-amber-400 shrink-0 mt-0.5"/>
               <p className="text-[11px] text-amber-300 leading-relaxed">
-                Le droit Admin accorde un accès complet au système, incluant les données sensibles et les validations OTP.
+                Le droit Admin accorde un accès complet au système, incluant la saisie proxy et les validations OTP.
               </p>
             </div>
           )}
@@ -342,8 +362,9 @@ function ModalNouvelUtilisateur({ unites, onClose, onSave }) {
                 <PermissionToggle
                   key={def.key}
                   def={def}
-                  checked={!!permissions[def.key]}
-                  onChange={val => togglePerm(def.key, val)}
+                  checked={def.key === 'canActAsProxy' && permissions.isAdmin ? true : !!permissions[def.key]}
+                  onChange={val => def.key === 'canActAsProxy' && permissions.isAdmin ? null : togglePerm(def.key, val)}
+                  locked={def.key === 'canActAsProxy' && permissions.isAdmin}
                 />
               ))}
             </div>
@@ -502,8 +523,7 @@ export default function UtilisateursAcces({ userRole }) {
     setUsers(prev => prev.map(u =>
       u.id === userId ? { ...u, permissions, entite } : u
     ));
-    // Corps plat : { isAdmin, canDemand, canReceive, canDispatch }
-    api.patch(`/api/users/${userId}/permissions`, permissions)
+    api.patch(`/api/users/${userId}/permissions`, { ...permissions, entite })
       .catch(err => setApiError(err.message ?? "Erreur lors de la modification des droits."));
   }
 

@@ -27,6 +27,16 @@ const cuveSchema = new mongoose.Schema(
       trim:    true,
       default: '',
     },
+    statutPret: {
+      type:    String,
+      enum:    ['Disponible', 'En Prêt'],
+      default: 'Disponible',
+    },
+    localisationActuelle: {
+      type:    mongoose.Schema.Types.ObjectId,
+      ref:     'Unite',
+      default: null,
+    },
   },
   { timestamps: true }
 );

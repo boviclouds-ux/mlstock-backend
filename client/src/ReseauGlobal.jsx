@@ -35,7 +35,7 @@ const TAB_CONFIG = {
       { key:"nom",         label:"Nom du fournisseur",  placeholder:"ex: Sunnylodge B.V.", required:true },
       { key:"pays",        label:"Pays d'origine",      placeholder:"ex: Pays-Bas", required:true },
       { key:"pavillon",    label:"Pavillon (drapeau)",   placeholder:"🇳🇱" },
-      { key:"specialite",  label:"Spécialité",           type:"select", options:["Semences","Équipement","Médicaments","Autres"], required:true },
+      { key:"specialites", label:"Spécialités",          type:"multicheck", options:["Semences","Consommables","Équipement","Médicaments","Autres"], required:true },
       { key:"responsable", label:"Interlocuteur",        placeholder:"Nom du contact", required:true },
       { key:"tel",         label:"Téléphone",            placeholder:"+XX XX XX XX XX XX" },
       { key:"email",       label:"Email",                placeholder:"contact@fournisseur.com" },
@@ -96,6 +96,10 @@ function toApiUnite(code, form) {
 
 /* ─── Adaptateurs Fournisseur ─────────────────────────── */
 function fromApiFournisseur(f) {
+  // backward compat: old docs may have specialite (string) instead of specialites (array)
+  const specialites = Array.isArray(f.specialites) && f.specialites.length > 0
+    ? f.specialites
+    : f.specialite ? [f.specialite] : ['Autres'];
   return {
     _id:         f._id,
     id:          f.code,
@@ -103,7 +107,7 @@ function fromApiFournisseur(f) {
     nom:         f.nom,
     pays:        f.pays        ?? "",
     pavillon:    f.pavillon    ?? "🌍",
-    specialite:  f.specialite  ?? "Autres",
+    specialites,
     responsable: f.contact?.nom       ?? "",
     tel:         f.contact?.telephone ?? "",
     email:       f.contact?.email     ?? "",
@@ -113,10 +117,10 @@ function fromApiFournisseur(f) {
 function toApiFournisseur(code, form) {
   return {
     code,
-    nom:       form.nom,
-    pays:      form.pays      ?? "",
-    pavillon:  form.pavillon  ?? "🌍",
-    specialite: form.specialite,
+    nom:        form.nom,
+    pays:       form.pays      ?? "",
+    pavillon:   form.pavillon  ?? "🌍",
+    specialites: Array.isArray(form.specialites) ? form.specialites : [],
     contact: {
       nom:       form.responsable ?? "",
       telephone: form.tel         ?? "",
@@ -166,7 +170,7 @@ function nextId(data, prefix) {
 }
 
 const TYPE_UNITE   = { "Coopérative":"bg-emerald-50 text-emerald-700 border-emerald-200", "Entreprise":"bg-blue-50 text-blue-700 border-blue-200", "Individu":"bg-slate-100 text-slate-600 border-slate-200" };
-const SPEC_BADGE   = { "Semences":"bg-blue-50 text-blue-700 border-blue-200", "Équipement":"bg-violet-50 text-violet-700 border-violet-200", "Médicaments":"bg-rose-50 text-rose-700 border-rose-200", "Autres":"bg-slate-100 text-slate-600 border-slate-200" };
+const SPEC_BADGE   = { "Semences":"bg-blue-50 text-blue-700 border-blue-200", "Consommables":"bg-cyan-50 text-cyan-700 border-cyan-200", "Équipement":"bg-violet-50 text-violet-700 border-violet-200", "Médicaments":"bg-rose-50 text-rose-700 border-rose-200", "Autres":"bg-slate-100 text-slate-600 border-slate-200" };
 const TYPE_TRP     = { "Interne Maroc Lait":"bg-emerald-50 text-emerald-700 border-emerald-200", "Prestataire Externe":"bg-amber-50 text-amber-700 border-amber-200" };
 
 function badge(map, val) {
@@ -208,14 +212,27 @@ function ModalSaisie({ tab, item, allData, onClose, onSave }) {
 
   const initForm = () => {
     const f = {};
-    cfg.fields.forEach(field => { f[field.key] = item?.[field.key] ?? (field.type === "select" ? field.options[0] : ""); });
+    cfg.fields.forEach(field => {
+      if (field.type === "multicheck") {
+        f[field.key] = Array.isArray(item?.[field.key]) ? item[field.key] : (item?.[field.key] ? [item[field.key]] : []);
+      } else {
+        f[field.key] = item?.[field.key] ?? (field.type === "select" ? field.options[0] : "");
+      }
+    });
     return f;
   };
 
   const [form, setForm] = useState(initForm);
   const set = (k, v) => setForm(p => ({ ...p, [k]: k === "pavillon" ? getFlagEmoji(v) : v }));
+  const toggleCheck = (k, val) => setForm(p => {
+    const arr = Array.isArray(p[k]) ? p[k] : [];
+    return { ...p, [k]: arr.includes(val) ? arr.filter(x => x !== val) : [...arr, val] };
+  });
 
-  const valid = cfg.fields.filter(f => f.required).every(f => String(form[f.key] ?? "").trim());
+  const valid = cfg.fields.filter(f => f.required).every(f => {
+    if (f.type === "multicheck") return Array.isArray(form[f.key]) && form[f.key].length > 0;
+    return String(form[f.key] ?? "").trim();
+  });
   const codePreview = isEdit ? item.id : nextId(allData, cfg.prefix);
 
   function handleSubmit() {
@@ -272,7 +289,30 @@ function ModalSaisie({ tab, item, allData, onClose, onSave }) {
             return (
               <div key={field.key}>
                 <label className={lbl}>{field.label}{field.required && <span className="text-red-500 ml-0.5">*</span>}</label>
-                {field.type === "select" ? (
+                {field.type === "multicheck" ? (
+                  <div className="flex flex-wrap gap-2">
+                    {field.options.map(opt => {
+                      const checked = Array.isArray(form[field.key]) && form[field.key].includes(opt);
+                      return (
+                        <button
+                          key={opt}
+                          type="button"
+                          onClick={() => toggleCheck(field.key, opt)}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all
+                            ${checked
+                              ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300'
+                              : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:border-slate-500 hover:text-slate-300'}`}
+                        >
+                          <span className={`w-3 h-3 rounded border flex items-center justify-center shrink-0 transition-all
+                            ${checked ? 'bg-emerald-500 border-emerald-500' : 'border-slate-500'}`}>
+                            {checked && <span className="text-[8px] font-black text-white leading-none">✓</span>}
+                          </span>
+                          {opt}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : field.type === "select" ? (
                   <div className="relative">
                     <select value={form[field.key] ?? ""} onChange={e => set(field.key, e.target.value)} className={`${inp} appearance-none`}>
                       {field.options.map(o => <option key={o} value={o} className="bg-slate-800">{o}</option>)}
@@ -353,15 +393,19 @@ function TableUnites({ data, isAdmin, onEdit, onDelete }) {
 function TableFournisseurs({ data, isAdmin, onEdit, onDelete }) {
   return (
     <>
-      <div className={`grid grid-cols-[1.4fr_0.8fr_0.8fr_1fr_1.4fr_auto] gap-3 ${hdrCls}`}>
-        {["Fournisseur","Pays","Spécialité","Interlocuteur","Coordonnées",""].map(h => <p key={h} className={hdr}>{h}</p>)}
+      <div className={`grid grid-cols-[1.4fr_0.8fr_1fr_1fr_1.4fr_auto] gap-3 ${hdrCls}`}>
+        {["Fournisseur","Pays","Spécialités","Interlocuteur","Coordonnées",""].map(h => <p key={h} className={hdr}>{h}</p>)}
       </div>
       <div className="divide-y divide-slate-50">
         {data.map(f => (
-          <div key={f.id} className={`grid grid-cols-[1.4fr_0.8fr_0.8fr_1fr_1.4fr_auto] gap-3 items-center ${rowCls}`}>
+          <div key={f.id} className={`grid grid-cols-[1.4fr_0.8fr_1fr_1fr_1.4fr_auto] gap-3 items-center ${rowCls}`}>
             <div><p className="text-xs font-bold text-slate-800">{f.nom}</p><p className="text-[10px] text-slate-400 font-mono">{f.id}</p></div>
             <div className="flex items-center gap-1.5 text-xs text-slate-600"><span className="text-sm shrink-0">{f.pavillon}</span>{f.pays}</div>
-            {badge(SPEC_BADGE, f.specialite)}
+            <div className="flex flex-wrap gap-1">
+              {(Array.isArray(f.specialites) ? f.specialites : [f.specialites ?? 'Autres']).map(s => (
+                <span key={s}>{badge(SPEC_BADGE, s)}</span>
+              ))}
+            </div>
             <div className="flex items-center gap-1.5 text-xs text-slate-700"><User size={10} className="text-slate-400 shrink-0"/>{f.responsable}</div>
             <Coords tel={f.tel} email={f.email}/>
             <RowActions isAdmin={isAdmin} onEdit={() => onEdit(f)} onDelete={() => onDelete(f)}/>

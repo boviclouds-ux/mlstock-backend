@@ -151,8 +151,9 @@ const receptionApprovisionnement = async (req, res) => {
        On mappe ref → nom (champ requis du modèle Cuve).
        Si _id fourni → update ; sinon → findOneAndUpdate upsert par nom.
     ─────────────────────────────────────────────────────────── */
-    const conteneursPayload  = Array.isArray(req.body?.conteneurs) ? req.body.conteneurs
-                             : Array.isArray(req.body?.cuves)      ? req.body.cuves  // rétrocompat
+    const conteneursPayload  = Array.isArray(req.body?.conteneurs)         ? req.body.conteneurs
+                             : Array.isArray(req.body?.conteneursSemences) ? req.body.conteneursSemences
+                             : Array.isArray(req.body?.cuves)              ? req.body.cuves  // rétrocompat
                              : [];
     const conteneurRefToId   = {}; // nom → ObjectId, pour lier les lots
     const conteneursUpserted = [];
@@ -227,6 +228,8 @@ const receptionApprovisionnement = async (req, res) => {
 
       try {
         const numLot = await generateNumLot();
+        const peremption = req.body?.datePeremption ? new Date(req.body.datePeremption) : null;
+
         const lot = await Lot.create({
           numLot,
           typeProduit:       ligne.typeProduit,
@@ -236,10 +239,12 @@ const receptionApprovisionnement = async (req, res) => {
           fournisseurId:     appro.fournisseurId,
           qteDisponible:     qteACreer,
           statut:            'disponible',
-          ...(cuveId ? { cuveId } : {}),
+          ...(cuveId     ? { cuveId }     : {}),
+          ...(peremption ? { peremption } : {}),
           /* ficheTechnique — uniquement pour les semences génétiques */
           ...(TYPES_SEMENCE.includes(ligne.typeProduit) && ficheTech.length > 0 ? {
             ficheTechnique: ficheTech.map(ft => ({
+              race:             ft.race     ?? '',
               taureau:          ft.taureau  ?? '',
               nni:              ft.nni      ?? '',
               couleur:          ft.couleur  ?? '',

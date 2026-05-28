@@ -180,7 +180,7 @@ router.post('/', protect, requireAdmin, async (req, res) => {
           const tx = await Transaction.create({
             reference,
             type:        'ORDRE_ADMIN',
-            statut:      'Brouillon',
+            statut:      'Validée_BE',
             motif:       `Subvention — ${campagne.nom} · ${ligne.alloue} doses`,
             uniteCible:  unite._id,
             initiatedBy: req.user._id,
@@ -188,7 +188,7 @@ router.post('/', protect, requireAdmin, async (req, res) => {
               article:  articleDoc._id,
               quantite: Number(ligne.alloue),
             }],
-            repartGenetique: Array.isArray(ligne.repartGenetique)
+            repartGenetique: Array.isArray(ligne.repartGenetique) && ligne.repartGenetique.length > 0
               ? ligne.repartGenetique.map(g => ({
                   taureau:          g.taureau          ?? '',
                   nni:              g.nni              ?? '',
@@ -198,7 +198,12 @@ router.post('/', protect, requireAdmin, async (req, res) => {
                   articleId:        articleDoc._id,
                   quantiteDemandee: Number(g.quantiteDemandee ?? g.qte) || 0,
                 }))
-              : [],
+              : [{
+                  articleId:          articleDoc._id,
+                  quantiteAutorisee:  Number(ligne.alloue),
+                  quantiteDemandee:   Number(ligne.alloue),
+                  quantiteLivree:     0,
+                }],
           });
           ordresCreees.push(tx.reference);
         } catch (txErr) {

@@ -1,6 +1,7 @@
 // ReceptionsImportations.jsx — Hub Logistique Central · Déchargements en cours
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { api } from "./lib/api";
+import DataGridV2 from './components/DataGridV2';
 import {
   Truck, Snowflake, FlaskConical, Wrench, Dna,
   PackageCheck, ClipboardCheck, AlertTriangle, CheckCircle,
@@ -13,6 +14,8 @@ import {
 function typeFromProduit(tp) {
   if (tp === 'Conventionnelle' || tp === 'Sexée') return 'semence';
   if (tp === 'Azote') return 'azote';
+  const lower = (tp ?? '').toLowerCase();
+  if (lower.includes('consomm') || lower.includes('sant') || lower.includes('vaccin') || lower.includes('médic')) return 'consommable';
   return 'materiel';
 }
 
@@ -40,6 +43,9 @@ function fromApiApproToCamion(a) {
     heureArrivee: a.dateArriveePrevu
       ? new Date(a.dateArriveePrevu).toLocaleDateString('fr-FR')
       : '—',
+    dateEntreeStock: a.updatedAt
+      ? new Date(a.updatedAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
+      : '—',
     ref_bc:   a.numeroCommande,
     chargement: (a.lignes ?? []).map(l => ({
       label:          l.label,
@@ -49,8 +55,13 @@ function fromApiApproToCamion(a) {
       articleId:      l.articleId,
       ficheTechnique: l.ficheTechnique ?? [],
     })),
-    statut:   STATUT_APPRO_MAP[a.statut] ?? 'en_attente',
-    controle: a.conformite?.resultat ? a.conformite : null,
+    statut:          STATUT_APPRO_MAP[a.statut] ?? 'en_attente',
+    controle:        a.conformite?.resultat ? a.conformite : null,
+    dateReception:   a.updatedAt
+      ? new Date(a.updatedAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
+      : '—',
+    receptionnaire:  a.receptionnaire?.nom ?? a.updatedBy?.nom ?? '—',
+    refBcFournisseur: a.refBL ?? a.numeroCommande,
   };
 }
 
@@ -115,6 +126,7 @@ function ModalControle({ camion, onClose, onValider }) {
   const unite            = camion.chargement[0]?.unite ?? '';
   const hasSemence       = camion.chargement.some(c => c.type === 'semence');
   const semenceLigne     = camion.chargement.find(c => c.type === 'semence');
+  const showPeremption   = camion.chargement.some(c => c.type === 'semence' || c.type === 'consommable');
   const ficheAdmin       = semenceLigne?.ficheTechnique ?? [];
   const hasFicheAdmin    = ficheAdmin.length > 0;
 
@@ -126,8 +138,9 @@ function ModalControle({ camion, onClose, onValider }) {
   const [note,     setNote]     = useState('');
 
   /* ── État litige ── */
-  const [decision, setDecision] = useState('partiel');
-  const [qteRecue, setQteRecue] = useState(String(totalQteAttendue));
+  const [decision,       setDecision]       = useState('partiel');
+  const [qteRecue,       setQteRecue]       = useState(String(totalQteAttendue));
+  const [datePeremption, setDatePeremption] = useState('');
 
   /* ── État cuves ── */
   const [cuves, setCuves] = useState([{ ref: '', etat: 'Bon état', capacite: 50, niveauActuel: 50 }]);
@@ -167,10 +180,10 @@ function ModalControle({ camion, onClose, onValider }) {
   /* ── État fiche technique ── */
   const [ficheLines, setFicheLines] = useState(() =>
     hasFicheAdmin
-      ? ficheAdmin.map(f => ({ taureau: f.taureau ?? '', nni: f.nni ?? '', couleur: f.couleur ?? 'Rouge', quantite: String(f.quantite ?? ''), cuveRef: '' }))
+      ? ficheAdmin.map(f => ({ race: f.race ?? '', taureau: f.taureau ?? '', nni: f.nni ?? '', couleur: f.couleur ?? 'Rouge', quantite: String(f.quantite ?? ''), cuveRef: '' }))
       : []
   );
-  const addFicheLine    = () => setFicheLines(p => [...p, { taureau: '', nni: '', couleur: 'Rouge', quantite: '', cuveRef: '' }]);
+  const addFicheLine    = () => setFicheLines(p => [...p, { race: '', taureau: '', nni: '', couleur: 'Rouge', quantite: '', cuveRef: '' }]);
   const removeFicheLine = (i) => setFicheLines(p => p.filter((_, idx) => idx !== i));
   const updateFicheLine = (i, key, val) =>
     setFicheLines(p => p.map((r, idx) => idx === i ? { ...r, [key]: val } : r));
@@ -191,7 +204,7 @@ function ModalControle({ camion, onClose, onValider }) {
   /* ── Actions ── */
   function handleChecklistNext() {
     if (hasSemence) { setPhase('semences'); return; }
-    onValider(camion.id, { decision: 'conforme', note });
+    onValider(camion.id, { decision: 'conforme', note, ...(datePeremption ? { datePeremption } : {}) });
     onClose();
   }
 
@@ -200,7 +213,8 @@ function ModalControle({ camion, onClose, onValider }) {
     onValider(camion.id, {
       decision: 'conforme',
       note,
-      conteneursSemences: cuves.map(c => ({
+      ...(datePeremption ? { datePeremption } : {}),
+      cuves: cuves.map(c => ({
         ...(c._id ? { _id: c._id } : {}),
         ref:      c.ref.trim(),
         etat:     c.etat,
@@ -208,6 +222,7 @@ function ModalControle({ camion, onClose, onValider }) {
         niveauActuel: Number(c.niveauActuel) || 50,
       })),
       ficheTechnique: ficheLines.map(l => ({
+        race:     l.race ?? '',
         taureau:  l.taureau,
         nni:      l.nni,
         couleur:  l.couleur,
@@ -304,12 +319,25 @@ function ModalControle({ camion, onClose, onValider }) {
                   </label>
                 ))}
               </div>
-              <div className="px-6 pb-4">
+              <div className="px-6 pb-4 space-y-3">
                 <textarea value={note} onChange={e => setNote(e.target.value)}
                   placeholder="Observations (optionnel) — anomalie visuelle, remarque…"
                   className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-blue-400 text-slate-700 placeholder:text-slate-400"
                   rows={2}
                 />
+                {showPeremption && (
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                      Date de péremption <span className="font-normal normal-case text-slate-400">(Optionnel)</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={datePeremption}
+                      onChange={e => setDatePeremption(e.target.value)}
+                      className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-400 transition-colors w-full"
+                    />
+                  </div>
+                )}
               </div>
             </>
           )}
@@ -682,10 +710,13 @@ function ModalControle({ camion, onClose, onValider }) {
 
 /* ─── Composant principal ──────────────────────────────── */
 export default function ReceptionsImportations() {
-  const [camions,  setCamions]  = useState([]);
-  const [loading,  setLoading]  = useState(true);
-  const [apiError, setApiError] = useState(null);
-  const [modal,    setModal]    = useState(null);
+  const [camions,         setCamions]         = useState([]);
+  const [historique,      setHistorique]      = useState([]);
+  const [loading,         setLoading]         = useState(true);
+  const [loadingHist,     setLoadingHist]     = useState(true);
+  const [showHistorique,  setShowHistorique]  = useState(false);
+  const [apiError,        setApiError]        = useState(null);
+  const [modal,           setModal]           = useState(null);
 
   useEffect(() => {
     api.get("/api/approvisionnements?statut=prevu,en_transit,a_quai&limit=100")
@@ -697,6 +728,16 @@ export default function ReceptionsImportations() {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    api.get("/api/approvisionnements?statut=conforme,partiel,retour_fournisseur,non_conforme&limit=50")
+      .then(res => {
+        const list = Array.isArray(res) ? res : [];
+        setHistorique(list.map(fromApiApproToCamion));
+      })
+      .catch(() => setHistorique([]))
+      .finally(() => setLoadingHist(false));
+  }, []);
+
   const counts = {
     enAttente:  camions.filter(c => c.statut === "en_attente").length,
     enCours:    camions.filter(c => c.statut === "en_cours").length,
@@ -705,7 +746,7 @@ export default function ReceptionsImportations() {
   };
 
   /* ─ Validation après contrôle (checklist ou litige) ─── */
-  async function handleValider(id, { decision, note = '', quantiteRecue, cuves, ficheTechnique } = {}) {
+  async function handleValider(id, { decision, note = '', quantiteRecue, cuves, ficheTechnique, datePeremption } = {}) {
     const target = camions.find(c => c.id === id);
     if (!target?._id) return;
     setApiError(null);
@@ -714,8 +755,9 @@ export default function ReceptionsImportations() {
         decision,
         note,
         ...(quantiteRecue != null  ? { quantiteRecue }  : {}),
-        ...(cuves?.length          ? { conteneursSemences: cuves }  : {}),
+        ...(cuves?.length          ? { conteneurs: cuves }           : {}),
         ...(ficheTechnique?.length ? { ficheTechnique }  : {}),
+        ...(datePeremption         ? { datePeremption }  : {}),
       };
       console.log('PAYLOAD ENVOYÉ AU BACKEND:', payload);
       await api.put(`/api/approvisionnements/${target._id}/reception`, payload);
@@ -748,6 +790,73 @@ export default function ReceptionsImportations() {
       setApiError(err.message);
     }
   }
+
+  const [filtreReceptionnaire, setFiltreReceptionnaire] = useState('');
+  const [filtreFournisseurH,   setFiltreFournisseurH]   = useState('');
+  const [filtreDateH,          setFiltreDateH]          = useState('');
+
+  const historiqueFiltres = useMemo(() => historique.filter(h => {
+    if (filtreReceptionnaire && h.receptionnaire !== filtreReceptionnaire) return false;
+    if (filtreFournisseurH   && h.origine         !== filtreFournisseurH)  return false;
+    if (filtreDateH          && h.dateReception   && h.dateReception.slice(0,10) < filtreDateH) return false;
+    return true;
+  }), [historique, filtreReceptionnaire, filtreFournisseurH, filtreDateH]);
+
+  const SEL_R = "text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400";
+
+  const colonnesHistorique = [
+    {
+      key: 'id', label: 'N° BC', sortable: true,
+      render: v => <p className="text-xs font-bold font-mono text-slate-700">{v}</p>,
+    },
+    {
+      key: 'origine', label: 'Fournisseur', sortable: true,
+      render: (v, row) => (
+        <div className="flex items-center gap-1.5">
+          <span className="text-sm shrink-0">{row.pavillon}</span>
+          <p className="text-xs text-slate-700 truncate">{v}</p>
+        </div>
+      ),
+    },
+    {
+      key: 'chargement', label: 'Articles',
+      render: v => (
+        <div className="space-y-0.5">
+          {(v ?? []).map((c, i) => (
+            <div key={i} className="flex items-center gap-1.5">
+              {typeIcon(c.type, 10)}
+              <span className="text-[11px] text-slate-500 truncate">{c.label}</span>
+              <span className="text-[11px] font-mono text-slate-400 ml-auto shrink-0">{c.qte?.toLocaleString()} {c.unite}</span>
+            </div>
+          ))}
+        </div>
+      ),
+      exportValue: row => (row.chargement ?? []).map(c => `${c.label} x${c.qte}`).join(', '),
+    },
+    {
+      key: 'receptionnaire', label: 'Réceptionnaire', sortable: true,
+      render: v => <span className="text-xs text-slate-600">{v}</span>,
+    },
+    {
+      key: 'refBcFournisseur', label: 'N° BC Fournisseur',
+      render: v => <span className="text-xs font-mono text-slate-500">{v ?? '—'}</span>,
+    },
+    {
+      key: 'statut', label: 'Statut final', sortable: true,
+      render: v => <StatutBadge statut={v} />,
+      exportValue: row => row.statut,
+    },
+    {
+      key: 'dateReception', label: 'Date réelle réception', sortable: true,
+      render: v => (
+        <div className="flex items-center gap-1 text-xs text-slate-500">
+          <PackageCheck size={11} className="text-emerald-500 shrink-0" />
+          {v ? new Date(v).toLocaleDateString('fr-FR', { day:'2-digit', month:'short', year:'numeric' }) : '—'}
+        </div>
+      ),
+      exportValue: row => row.dateReception ? new Date(row.dateReception).toLocaleDateString('fr-FR') : '—',
+    },
+  ];
 
   return (
     <div className="space-y-6">
@@ -910,6 +1019,58 @@ export default function ReceptionsImportations() {
             </div>
           );
         })}
+      </div>
+
+      {/* ═══ Historique des Réceptions ═══ */}
+      <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+        <button
+          onClick={() => setShowHistorique(v => !v)}
+          className="w-full flex items-center justify-between px-5 py-4 hover:bg-slate-50 transition-colors"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-xl bg-emerald-50 flex items-center justify-center shrink-0">
+              <Archive size={14} className="text-emerald-600" />
+            </div>
+            <div className="text-left">
+              <p className="text-sm font-bold text-slate-800">Historique des Réceptions</p>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Commandes clôturées · {loadingHist ? '…' : historique.length} entrée{historique.length !== 1 ? 's' : ''}
+              </p>
+            </div>
+          </div>
+          <ChevronDown size={16} className={`text-slate-400 transition-transform ${showHistorique ? 'rotate-180' : ''}`} />
+        </button>
+
+        {showHistorique && (
+          <div className="border-t border-slate-100">
+            <DataGridV2
+              columns={colonnesHistorique}
+              data={historiqueFiltres}
+              rowKey="id"
+              title="Historique Réceptions"
+              exportFilename="historique-receptions"
+              loading={loadingHist}
+              emptyMessage="Aucune réception clôturée pour le moment."
+              actions={
+                <div className="flex flex-wrap items-center gap-1.5" onClick={e => e.stopPropagation()}>
+                  <select value={filtreReceptionnaire} onChange={e => setFiltreReceptionnaire(e.target.value)} className={SEL_R}>
+                    <option value="">Tout réceptionnaire</option>
+                    {[...new Set(historique.map(h => h.receptionnaire).filter(v => v && v !== '—'))].sort().map(r => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                  </select>
+                  <select value={filtreFournisseurH} onChange={e => setFiltreFournisseurH(e.target.value)} className={SEL_R}>
+                    <option value="">Tout fournisseur</option>
+                    {[...new Set(historique.map(h => h.origine).filter(Boolean))].sort().map(f => (
+                      <option key={f} value={f}>{f}</option>
+                    ))}
+                  </select>
+                  <input type="date" value={filtreDateH} onChange={e => setFiltreDateH(e.target.value)} className={SEL_R} />
+                </div>
+              }
+            />
+          </div>
+        )}
       </div>
 
       {/* Modal contrôle */}

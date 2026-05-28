@@ -1,12 +1,13 @@
 // ApprovisionnementsFournisseurs.jsx — Suivi des commandes Direction → Fournisseurs
 // Règle métier : le Magasinier consulte uniquement. Seul l'Admin Fédéral crée des commandes.
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { api } from "./lib/api";
+import DataGridV2 from './components/DataGridV2';
 import {
   Truck, Dna, FlaskConical, Wrench, X,
   CheckCircle, XCircle, Clock, FileText,
   ShieldCheck, PlusCircle, Building2, Calendar,
-  ChevronDown,
+  ChevronDown, Download,
 } from "lucide-react";
 
 /* Mapping typeProduit V2 → type icône interne */
@@ -16,10 +17,15 @@ function typeFromProduit(tp) {
   return 'materiel';
 }
 
-const TYPES_PRODUIT   = ['Conventionnelle', 'Sexée', 'Azote'];
-const UNITES_MESURE   = ['Unité', 'Litre'];
-/* Dérive l'unité de mesure depuis le type produit */
-const uniteMesureAuto = tp => tp === 'Azote' ? 'Litre' : 'Unité';
+/* Mapping catégorie article API → type interne (ne dépend PAS de typeProduit) */
+function articleCatToType(cat) {
+  if (cat === 'Semences') return 'semence';
+  if (cat === 'Azote')    return 'azote';
+  return 'materiel';
+}
+
+const TYPES_PRODUIT    = ['Conventionnelle', 'Sexée', 'Azote'];
+const UNITES_MATERIEL  = ['Unité', 'Boîte', 'Kg'];   // dropdown matériel uniquement
 
 const LIEU_STOCKAGE_DEFAUT = "Magasin Central National · Agadir";
 
@@ -32,10 +38,11 @@ function fromApiAppro(a) {
     pays:         a.fournisseurPays     ?? '—',
     pavillon:     a.fournisseurPavillon ?? '🌍',
     articles:     (a.lignes ?? []).map(l => ({
-      label: l.label,
-      qte:   l.qte,
-      unite: l.uniteMesure ?? l.unite,
-      type:  typeFromProduit(l.typeProduit),
+      label:             l.label,
+      qte:               l.qte,
+      unite:             l.uniteMesure ?? l.unite,
+      type:              typeFromProduit(l.typeProduit),
+      prixAchatUnitaire: l.prixAchatUnitaire ?? null,
     })),
     dateCommande: (a.createdAt ?? '').slice(0, 10),
     dateArrivee:  a.dateArriveePrevu ? a.dateArriveePrevu.slice(0, 10) : null,
@@ -44,6 +51,12 @@ function fromApiAppro(a) {
     ref_bl:       a.refBL ?? null,
     conformite:   a.conformite?.resultat ? a.conformite : null,
     lieuStockage: a.lieuStockage,
+    demandeur:    a.createdBy
+      ? (`${a.createdBy.prenom ?? ''} ${a.createdBy.nom ?? ''}`).trim() || 'Admin Fédéral'
+      : 'Admin Fédéral',
+    montantTotal: (a.lignes ?? []).reduce(
+      (s, l) => s + (Number(l.qte) * (Number(l.prixAchatUnitaire) || 0)), 0
+    ),
   };
 }
 
@@ -88,6 +101,12 @@ const inputCls  = "w-full bg-slate-800/80 border border-slate-700 rounded-xl px-
 
 const COULEURS_PAILLETTE = ['Rouge', 'Jaune', 'Vert', 'Bleu', 'Rose', 'Orange', 'Blanc', 'Noir'];
 
+const RACES_BOVINES = [
+  'Holstein', "Prim'Holstein", 'Montbéliarde', 'Brune des Alpes',
+  'Normande', 'Jersiaise', 'Simmental', 'Tarentaise', 'Abondance',
+  'Charolaise', 'Limousine', "Blonde d'Aquitaine", 'Autres',
+];
+
 /* ─── Modal Nouvelle Commande (Admin Fédéral) ───────────── */
 function ModalNouvelleCommande({ onClose, onAjouter }) {
   /* ── Listes dynamiques ── */
@@ -115,23 +134,33 @@ function ModalNouvelleCommande({ onClose, onAjouter }) {
 
   const [typeProduit,       setTypeProduit]       = useState("");
   const [prixAchatUnitaire, setPrixAchatUnitaire] = useState("");
+  const [uniteMateriel,     setUniteMateriel]     = useState("Unité");
 
   const fournisseurObj = fournisseurs.find(f => f._id === fournisseurId) ?? null;
   const articleObj     = articles.find(a => a._id === articleId) ?? null;
-  const uniteMesure    = uniteMesureAuto(typeProduit);
-  const articleType    = typeFromProduit(typeProduit);
+  // articleType est dérivé de la catégorie article, PAS du typeProduit saisi
+  const articleType    = articleObj ? articleCatToType(articleObj.categorie) : null;
   const isSemence      = articleType === 'semence';
-  const valid          = fournisseurId && articleId && typeProduit && Number(qte) > 0 && dateArrivee && prixAchatUnitaire !== '';
+  const isAzote        = articleType === 'azote';
+  // Pour les non-semences, typeProduit est auto-dérivé (Azote → 'Azote', autre → catégorie brute)
+  const effectiveTypeProduit = isSemence ? typeProduit
+    : isAzote ? 'Azote'
+    : (articleObj?.categorie ?? '');
+  const uniteMesure    = isSemence ? 'Paillette' : isAzote ? 'Litre' : uniteMateriel;
+  // Le garde valid ne bloque plus sur typeProduit pour le matériel classique
+  const valid          = fournisseurId && articleId &&
+    (articleType !== 'semence' || typeProduit) &&
+    Number(qte) > 0 && dateArrivee && prixAchatUnitaire !== '';
 
   /* ── Fiche Technique Cuve — visible si type = semence ── */
   const [ficheTechnique, setFicheTechnique] = useState([]);
   const ficheTotal = ficheTechnique.reduce((s, r) => s + (Number(r.quantite) || 0), 0);
-  const addFicheLigne    = () => setFicheTechnique(p => [...p, { taureau: '', nni: '', couleur: 'Rouge', quantite: '' }]);
+  const addFicheLigne    = () => setFicheTechnique(p => [...p, { race: '', taureau: '', nni: '', couleur: 'Rouge', quantite: '' }]);
   const removeFicheLigne = (i) => setFicheTechnique(p => p.filter((_, idx) => idx !== i));
   const updateFicheLigne = (i, key, val) =>
     setFicheTechnique(p => p.map((r, idx) => idx === i ? { ...r, [key]: val } : r));
 
-  useEffect(() => { setFicheTechnique([]); setTypeProduit(""); setPrixAchatUnitaire(""); }, [articleId]);
+  useEffect(() => { setFicheTechnique([]); setTypeProduit(""); setPrixAchatUnitaire(""); setUniteMateriel("Unité"); }, [articleId]);
 
   /* Catégories uniques pour les optgroups */
   const categoriesUniques = [...new Set(articles.map(a => a.categorie))].sort();
@@ -154,11 +183,12 @@ function ModalNouvelleCommande({ onClose, onAjouter }) {
           articleId:         articleObj._id ?? null,
           label:             articleObj.designation,
           qte:               Number(qte),
-          typeProduit,
+          typeProduit:       effectiveTypeProduit,
           uniteMesure,
           prixAchatUnitaire: Number(prixAchatUnitaire),
           ...(isSemence && ficheTechnique.length > 0 ? {
             ficheTechnique: ficheTechnique.map(r => ({
+              race:     r.race,
               taureau:  r.taureau,
               nni:      r.nni,
               couleur:  r.couleur,
@@ -262,18 +292,18 @@ function ModalNouvelleCommande({ onClose, onAjouter }) {
             )}
           </div>
 
-          {/* Type Produit */}
-          {articleObj && (
+          {/* Type Produit — visible uniquement pour les semences */}
+          {isSemence && (
             <div>
-              <label className={labelCls}>Type de produit <span className="text-red-400">*</span></label>
+              <label className={labelCls}>Type de semence <span className="text-red-400">*</span></label>
               <div className="relative">
                 <select
                   value={typeProduit}
                   onChange={e => setTypeProduit(e.target.value)}
                   className={inputCls}
                 >
-                  <option value="" className="bg-slate-800">— Sélectionner un type —</option>
-                  {TYPES_PRODUIT.map(t => (
+                  <option value="" className="bg-slate-800">— Conventionnelle ou Sexée ? —</option>
+                  {['Conventionnelle', 'Sexée'].map(t => (
                     <option key={t} value={t} className="bg-slate-800">{t}</option>
                   ))}
                 </select>
@@ -283,7 +313,7 @@ function ModalNouvelleCommande({ onClose, onAjouter }) {
           )}
 
           {/* Prix Achat + Unité Mesure */}
-          {typeProduit && (
+          {articleObj && (
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className={labelCls}>Prix d'achat unitaire (DH) <span className="text-red-400">*</span></label>
@@ -296,10 +326,25 @@ function ModalNouvelleCommande({ onClose, onAjouter }) {
               </div>
               <div>
                 <label className={labelCls}>Unité de mesure</label>
-                <div className="flex items-center gap-2 bg-slate-800/50 border border-slate-700 rounded-xl px-3 py-2.5">
-                  <span className="text-sm text-slate-400">{uniteMesure}</span>
-                  <span className="ml-auto text-[10px] font-bold text-slate-500 bg-slate-700/50 px-2 py-0.5 rounded-full shrink-0">Auto</span>
-                </div>
+                {(isSemence || isAzote) ? (
+                  <div className="flex items-center gap-2 bg-slate-800/50 border border-slate-700 rounded-xl px-3 py-2.5">
+                    <span className="text-sm text-slate-400">{uniteMesure}</span>
+                    <span className="ml-auto text-[10px] font-bold text-slate-500 bg-slate-700/50 px-2 py-0.5 rounded-full shrink-0">Auto</span>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <select
+                      value={uniteMateriel}
+                      onChange={e => setUniteMateriel(e.target.value)}
+                      className={inputCls}
+                    >
+                      {UNITES_MATERIEL.map(u => (
+                        <option key={u} value={u} className="bg-slate-800">{u}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -357,6 +402,21 @@ function ModalNouvelleCommande({ onClose, onAjouter }) {
                   </p>
                 ) : ficheTechnique.map((row, i) => (
                   <div key={i} className="px-4 py-3 space-y-2">
+                    {/* Race (dropdown) */}
+                    <div className="relative">
+                      <select
+                        value={row.race}
+                        onChange={e => updateFicheLigne(i, 'race', e.target.value)}
+                        className={inputCls}
+                      >
+                        <option value="" className="bg-slate-800">— Race bovine —</option>
+                        {RACES_BOVINES.map(r => (
+                          <option key={r} value={r} className="bg-slate-800">{r}</option>
+                        ))}
+                      </select>
+                      <ChevronDown size={11} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                    </div>
+                    {/* Taureau + NNI */}
                     <div className="grid grid-cols-2 gap-2">
                       <input
                         value={row.taureau}
@@ -367,7 +427,7 @@ function ModalNouvelleCommande({ onClose, onAjouter }) {
                       <input
                         value={row.nni}
                         onChange={e => updateFicheLigne(i, 'nni', e.target.value)}
-                        placeholder="Code NNI / Race"
+                        placeholder="Code NNI"
                         className={inputCls}
                       />
                     </div>
@@ -530,7 +590,113 @@ function ModalConformite({ bc, onClose, onSave }) {
 }
 
 /* ─── Composant principal ──────────────────────────────── */
-export default function ApprovisionnementsFournisseurs({ userRole }) {
+/* ─── Impression BC Fournisseur (HTML → Print) ──────────── */
+function imprimerBC(bc) {
+  const lignes = bc.articles.map(a => {
+    const pu   = a.prixAchatUnitaire != null ? Number(a.prixAchatUnitaire) : null;
+    const total = pu != null ? (pu * a.qte).toLocaleString('fr-FR', { minimumFractionDigits: 2 }) : '—';
+    const puFmt = pu != null ? pu.toLocaleString('fr-FR', { minimumFractionDigits: 2 }) : '—';
+    return `
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #f0e8de;">${a.label}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #f0e8de;text-align:center;">${a.qte.toLocaleString('fr-FR')} ${a.unite}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #f0e8de;text-align:right;">${puFmt} MAD</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #f0e8de;text-align:right;font-weight:600;">${total} MAD</td>
+      </tr>`;
+  }).join('');
+
+  const totalGeneral = bc.articles.reduce((s, a) => {
+    const pu = a.prixAchatUnitaire != null ? Number(a.prixAchatUnitaire) : 0;
+    return s + pu * a.qte;
+  }, 0);
+
+  const html = `<!DOCTYPE html>
+<html lang="fr"><head><meta charset="UTF-8">
+<title>BC ${bc.id}</title>
+<style>
+  body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 32px; color: #1a1a1a; font-size: 13px; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #ea580c; padding-bottom: 20px; margin-bottom: 24px; }
+  .logo-zone h1 { margin: 0; font-size: 22px; color: #ea580c; letter-spacing: -0.5px; }
+  .logo-zone p  { margin: 2px 0 0; color: #6b7280; font-size: 11px; }
+  .bc-ref { text-align: right; }
+  .bc-ref .num  { font-size: 18px; font-weight: 700; color: #1a1a1a; }
+  .bc-ref .date { color: #6b7280; font-size: 11px; margin-top: 4px; }
+  .fournisseur-block { background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 16px 20px; margin-bottom: 24px; }
+  .fournisseur-block h3 { margin: 0 0 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: #ea580c; }
+  .fournisseur-block p  { margin: 3px 0; color: #374151; }
+  table { width: 100%; border-collapse: collapse; }
+  thead tr { background: #ea580c; color: #fff; }
+  thead th { padding: 10px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+  thead th:not(:first-child) { text-align: center; }
+  thead th:last-child { text-align: right; }
+  tbody tr:nth-child(even) { background: #fafafa; }
+  .total-row td { padding: 10px 12px; font-weight: 700; font-size: 14px; border-top: 2px solid #ea580c; }
+  .signatures { display: flex; justify-content: space-between; margin-top: 40px; gap: 32px; }
+  .sig-box { flex: 1; border-top: 1px solid #d1d5db; padding-top: 10px; }
+  .sig-box p { margin: 0; font-size: 11px; color: #6b7280; }
+  .sig-box .name { margin-top: 32px; font-size: 12px; color: #1a1a1a; font-weight: 600; }
+  .footer { margin-top: 32px; text-align: center; font-size: 10px; color: #9ca3af; border-top: 1px solid #e5e7eb; padding-top: 12px; }
+</style></head><body>
+  <div class="header">
+    <div class="logo-zone">
+      <h1>Maroc Lait</h1>
+      <p>Hub Central National · Agadir</p>
+      <p style="margin-top:6px;font-size:11px;color:#374151;">Bon de Commande Fournisseur</p>
+    </div>
+    <div class="bc-ref">
+      <div class="num">${bc.id}</div>
+      <div class="date">Date commande : ${bc.dateCommande || '—'}</div>
+      ${bc.dateArrivee ? `<div class="date">Arrivée prévue : ${bc.dateArrivee}</div>` : ''}
+    </div>
+  </div>
+
+  <div class="fournisseur-block">
+    <h3>Fournisseur</h3>
+    <p><strong>${bc.pavillon} ${bc.fournisseur}</strong></p>
+    <p>Pays : ${bc.pays}</p>
+    ${bc.transporteur && bc.transporteur !== '—' ? `<p>Transporteur : ${bc.transporteur}</p>` : ''}
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Désignation</th>
+        <th style="text-align:center;">Quantité</th>
+        <th style="text-align:right;">Prix unitaire</th>
+        <th style="text-align:right;">Montant HT</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${lignes}
+      <tr class="total-row">
+        <td colspan="3" style="text-align:right;color:#ea580c;">TOTAL HT</td>
+        <td style="text-align:right;color:#ea580c;">${totalGeneral.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} MAD</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="signatures">
+    <div class="sig-box">
+      <p>Établi par</p>
+      <div class="name">Direction Générale · Maroc Lait</div>
+    </div>
+    <div class="sig-box">
+      <p>Lu et approuvé — Fournisseur</p>
+      <div class="name">${bc.fournisseur}</div>
+    </div>
+  </div>
+
+  <div class="footer">Document généré par MLstock · ${new Date().toLocaleDateString('fr-FR')} — Usage interne confidentiel</div>
+</body></html>`;
+
+  const win = window.open('', '_blank', 'width=900,height=700');
+  if (!win) return;
+  win.document.write(html);
+  win.document.close();
+  setTimeout(() => win.print(), 600);
+}
+
+export default function ApprovisionnementsFournisseurs({ userRole, canManageAppro = false }) {
   const [bons,        setBons]        = useState([]);
   const [loading,     setLoading]     = useState(true);
   const [apiError,    setApiError]    = useState(null);
@@ -544,7 +710,7 @@ export default function ApprovisionnementsFournisseurs({ userRole }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const isAdmin = userRole === "ADMIN";
+  const isAdmin = userRole === "ADMIN" || canManageAppro;
 
   /* ─ Conformité — PUT + optimistic update ─────────────── */
   async function handleSave(id, resultat, note) {
@@ -573,6 +739,118 @@ export default function ApprovisionnementsFournisseurs({ userRole }) {
     conformes:  bons.filter(b => b.statut === "conforme").length,
     incidents:  bons.filter(b => b.statut === "non_conforme").length,
   };
+
+  const [filtreFournisseur, setFiltreFournisseur] = useState('');
+  const [filtreStatut,      setFiltreStatut]      = useState('');
+  const [filtreDateD,       setFiltreDateD]       = useState('');
+  const [filtreDateF,       setFiltreDateF]       = useState('');
+
+  const bonsFiltres = useMemo(() => bons.filter(b => {
+    if (filtreFournisseur && b.fournisseur !== filtreFournisseur) return false;
+    if (filtreStatut      && b.statut      !== filtreStatut)      return false;
+    if (filtreDateD && b.dateArrivee && b.dateArrivee.slice(0,10) < filtreDateD) return false;
+    if (filtreDateF && b.dateArrivee && b.dateArrivee.slice(0,10) > filtreDateF) return false;
+    return true;
+  }), [bons, filtreFournisseur, filtreStatut, filtreDateD, filtreDateF]);
+
+  const SEL_A = "text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400";
+
+  const colonnesAppro = [
+    {
+      key: 'id', label: 'N° BC', sortable: true,
+      render: (v, row) => (
+        <div>
+          <p className="text-xs font-bold font-mono text-slate-800">{v}</p>
+          {row.ref_bl
+            ? <p className="text-[10px] text-slate-400 mt-0.5 font-mono">BL {row.ref_bl}</p>
+            : row.statut === 'prevu' && <p className="text-[10px] text-slate-400 mt-0.5">BL à recevoir</p>}
+        </div>
+      ),
+    },
+    {
+      key: 'fournisseur', label: 'Fournisseur', sortable: true,
+      render: (v, row) => (
+        <div>
+          <div className="flex items-center gap-1.5 mb-1">
+            <span className="text-sm">{row.pavillon}</span>
+            <p className="text-xs font-semibold text-slate-800">{v}</p>
+          </div>
+          <div className="space-y-0.5">
+            {row.articles.map((a, i) => (
+              <div key={i} className="flex items-center gap-1.5">
+                {typeIcon(a.type, 10)}
+                <span className="text-[11px] text-slate-500 truncate">{a.label}</span>
+                <span className="text-[11px] font-mono text-slate-400 ml-auto shrink-0">{a.qte.toLocaleString()} {a.unite}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ),
+      exportValue: row => row.fournisseur,
+    },
+    {
+      key: 'demandeur', label: 'Demandeur', sortable: true,
+      render: v => <span className="text-xs text-slate-600">{v}</span>,
+    },
+    {
+      key: 'dateArrivee', label: 'Arrivée prévue', sortable: true,
+      render: (_v, row) => {
+        const arr = dateRelative(row.dateArrivee);
+        return (
+          <div>
+            <p className={`text-xs font-semibold tabular-nums ${arr.urgent ? 'text-amber-600' : arr.past ? 'text-slate-400' : 'text-slate-700'}`}>
+              {arr.label}
+            </p>
+            <p className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1">
+              <Clock size={9} /> {row.transporteur}
+            </p>
+          </div>
+        );
+      },
+      exportValue: row => row.dateArrivee ? new Date(row.dateArrivee).toLocaleDateString('fr-FR') : '—',
+    },
+    {
+      key: 'montantTotal', label: 'Montant Total', sortable: true, align: 'right',
+      render: v => (
+        <span className="text-xs font-mono font-semibold text-slate-700">
+          {v > 0 ? v.toLocaleString('fr-MA', { style: 'currency', currency: 'MAD', maximumFractionDigits: 0 }) : '—'}
+        </span>
+      ),
+      exportValue: row => row.montantTotal > 0 ? String(row.montantTotal) : '0',
+    },
+    {
+      key: 'statut', label: 'Statut', sortable: true,
+      render: v => <StatutBadge statut={v} />,
+      exportValue: row => STATUT_META[row.statut]?.label ?? row.statut,
+    },
+    {
+      key: '__a', label: 'Action',
+      render: (_v, row) => {
+        const termine = row.statut === 'conforme' || row.statut === 'non_conforme';
+        return (
+          <div className="flex flex-col items-end gap-1.5" onClick={e => e.stopPropagation()}>
+            {row.statut === 'prevu' ? (
+              <span className="text-[11px] text-slate-400 italic">En attente expédition</span>
+            ) : termine ? (
+              <button onClick={() => setModal(row)}
+                className="text-[11px] font-semibold text-slate-400 hover:text-slate-700 underline underline-offset-2 transition-colors">
+                Modifier
+              </button>
+            ) : (
+              <button onClick={() => setModal(row)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 text-white text-[11px] font-bold hover:bg-blue-500 transition-all whitespace-nowrap">
+                <ShieldCheck size={11} /> Noter conformité
+              </button>
+            )}
+            <button onClick={() => imprimerBC(row)}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-orange-200 bg-orange-50 text-orange-600 text-[10px] font-semibold hover:bg-orange-100 transition-colors whitespace-nowrap">
+              <Download size={10} /> Télécharger BC
+            </button>
+          </div>
+        );
+      },
+    },
+  ];
 
   return (
     <div className="space-y-6">
@@ -625,101 +903,34 @@ export default function ApprovisionnementsFournisseurs({ userRole }) {
       </div>
 
       {/* Tableau */}
-      <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-x-auto">
-
-        <div className="grid grid-cols-[1fr_1.4fr_1fr_1fr_auto] gap-4 px-5 py-3 bg-slate-50 border-b border-slate-100">
-          {["N° BC", "Fournisseur", "Arrivée prévue", "Statut", ""].map(h => (
-            <p key={h} className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{h}</p>
-          ))}
-        </div>
-
-        <div className="divide-y divide-slate-50">
-          {loading ? (
-            <div className="flex items-center justify-center gap-3 py-12">
-              <span className="w-5 h-5 border-2 border-slate-200 border-t-emerald-500 rounded-full animate-spin" />
-              <span className="text-sm text-slate-400">Chargement des commandes…</span>
+      <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+        <DataGridV2
+          columns={colonnesAppro}
+          data={bonsFiltres}
+          rowKey="id"
+          title="Approvisionnements Fournisseurs"
+          exportFilename="approvisionnements-fournisseurs"
+          loading={loading}
+          emptyMessage="Aucune commande fournisseur pour le moment."
+          actions={
+            <div className="flex flex-wrap items-center gap-1.5" onClick={e => e.stopPropagation()}>
+              <select value={filtreFournisseur} onChange={e => setFiltreFournisseur(e.target.value)} className={SEL_A}>
+                <option value="">Tout fournisseur</option>
+                {[...new Set(bons.map(b => b.fournisseur).filter(Boolean))].sort().map(f => (
+                  <option key={f} value={f}>{f}</option>
+                ))}
+              </select>
+              <select value={filtreStatut} onChange={e => setFiltreStatut(e.target.value)} className={SEL_A}>
+                <option value="">Tout statut</option>
+                {Object.entries(STATUT_META).map(([k, v]) => (
+                  <option key={k} value={k}>{v.label}</option>
+                ))}
+              </select>
+              <input type="date" value={filtreDateD} onChange={e => setFiltreDateD(e.target.value)} className={SEL_A} />
+              <input type="date" value={filtreDateF} onChange={e => setFiltreDateF(e.target.value)} className={SEL_A} />
             </div>
-          ) : bons.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-14 text-center">
-              <Truck size={32} className="text-slate-200 mb-3" />
-              <p className="text-sm font-semibold text-slate-600">Aucune commande fournisseur pour le moment</p>
-              <p className="text-xs text-slate-400 mt-1">Les bons de commande émis vers les fournisseurs apparaîtront ici.</p>
-              {apiError && <p className="text-xs text-red-400 mt-2">{apiError}</p>}
-            </div>
-          ) : bons.map(bc => {
-            const arr = dateRelative(bc.dateArrivee);
-            const termine = bc.statut === "conforme" || bc.statut === "non_conforme";
-            return (
-              <div key={bc.id} className={`grid grid-cols-[1fr_1.4fr_1fr_1fr_auto] gap-4 items-center px-5 py-4 hover:bg-slate-50/60 transition-colors
-                ${bc.statut === "prevu" ? "bg-slate-50/40" : ""}`}>
-
-                {/* N° BC */}
-                <div>
-                  <p className="text-xs font-bold font-mono text-slate-800">{bc.id}</p>
-                  {bc.ref_bl
-                    ? <p className="text-[10px] text-slate-400 mt-0.5 font-mono">BL {bc.ref_bl}</p>
-                    : bc.statut === "prevu" && <p className="text-[10px] text-slate-400 mt-0.5">BL à recevoir</p>
-                  }
-                </div>
-
-                {/* Fournisseur + articles */}
-                <div>
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <span className="text-sm">{bc.pavillon}</span>
-                    <p className="text-xs font-semibold text-slate-800">{bc.fournisseur}</p>
-                  </div>
-                  <div className="space-y-0.5">
-                    {bc.articles.map((a, i) => (
-                      <div key={i} className="flex items-center gap-1.5">
-                        {typeIcon(a.type, 10)}
-                        <span className="text-[11px] text-slate-500 truncate">{a.label}</span>
-                        <span className="text-[11px] font-mono text-slate-400 ml-auto shrink-0">{a.qte.toLocaleString()} {a.unite}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Date */}
-                <div>
-                  <p className={`text-xs font-semibold tabular-nums
-                    ${arr.urgent ? "text-amber-600" : arr.past ? "text-slate-400" : "text-slate-700"}`}>
-                    {arr.label}
-                  </p>
-                  <p className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1">
-                    <Clock size={9} /> {bc.transporteur}
-                  </p>
-                </div>
-
-                {/* Statut */}
-                <div>
-                  <StatutBadge statut={bc.statut} />
-                  {bc.conformite?.note && (
-                    <p className="text-[10px] text-slate-500 mt-1 max-w-[160px] truncate leading-snug" title={bc.conformite.note}>
-                      {bc.conformite.note}
-                    </p>
-                  )}
-                </div>
-
-                {/* Action */}
-                <div className="shrink-0">
-                  {bc.statut === "prevu" ? (
-                    <span className="text-[11px] text-slate-400 italic">En attente expédition</span>
-                  ) : termine ? (
-                    <button onClick={() => setModal(bc)}
-                      className="text-[11px] font-semibold text-slate-400 hover:text-slate-700 underline underline-offset-2 transition-colors">
-                      Modifier
-                    </button>
-                  ) : (
-                    <button onClick={() => setModal(bc)}
-                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 text-white text-[11px] font-bold hover:bg-blue-500 transition-all whitespace-nowrap">
-                      <ShieldCheck size={11} /> Noter conformité
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+          }
+        />
       </div>
 
       {/* Modal nouvelle commande */}

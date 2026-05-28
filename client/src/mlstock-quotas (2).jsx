@@ -116,6 +116,7 @@ const tabs     = [
   { id:"semences",     label:"Semences",         icon:Dna         },
   { id:"consommables", label:"Consommables",      icon:FlaskConical },
   { id:"materiel",     label:"Matériel & Outils", icon:Wrench      },
+  { id:"simulateur",   label:"Simulateur de Répartition", icon:BarChart3   },
 ];
 
 function distribute(total, n) {
@@ -815,6 +816,463 @@ function NouvelleCampagneDrawer({ onClose, onCreated, coopList = [], articleMap 
 }
 
 /* ══════════════════════════════════════════════════════
+   SIMULATEUR DE RÉPARTITION PONDÉRÉE — Mission 9
+══════════════════════════════════════════════════════ */
+function SimulateurPonderation({ coopList = [], articleMap = {} }) {
+  const now        = new Date();
+  const monthInput = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+  const [categorieId,  setCategorieId]  = useState('semences');
+  const [article,      setArticle]      = useState(() => (articleMap?.semences ?? [])[0] ?? '');
+  const [enveloppe,    setEnveloppe]    = useState(1000);
+  const [periodeLabel, setPeriodeLabel] = useState(`${MOIS_FR[now.getMonth()]} ${now.getFullYear()}`);
+  const [criteres,     setCriteres]     = useState([
+    { id: 1, nom: 'Cheptel (têtes)',            poids: 60 },
+    { id: 2, nom: 'Production laitière (L/an)', poids: 40 },
+  ]);
+  const [nextId,     setNextId]     = useState(3);
+  const [matrice,    setMatrice]    = useState({});
+  const [quotasManu, setQuotasManu] = useState({});
+  const [isApplying, setIsApplying] = useState(false);
+  const [applyDone,  setApplyDone]  = useState(false);
+  const [applyError, setApplyError] = useState(null);
+
+  /* Sync article quand catégorie ou articleMap change */
+  useEffect(() => {
+    setArticle(a => {
+      const arts = articleMap?.[categorieId] ?? [];
+      return arts.includes(a) ? a : (arts[0] ?? '');
+    });
+  }, [categorieId, articleMap]);
+
+  /* ── Poids ─────────────────────────────────────────── */
+  const totalPoids = criteres.reduce((s, c) => s + (Number(c.poids) || 0), 0);
+  const poidsOk    = Math.abs(totalPoids - 100) < 0.5;
+
+  function addCritere() {
+    const remaining = Math.max(0, Math.round(100 - totalPoids));
+    setCriteres(p => [...p, { id: nextId, nom: '', poids: remaining }]);
+    setNextId(n => n + 1);
+  }
+
+  function removeCritere(id) {
+    setCriteres(p => p.filter(c => c.id !== id));
+    setMatrice(prev => {
+      const next = {};
+      Object.keys(prev).forEach(coopId => {
+        const row = { ...(prev[coopId] ?? {}) };
+        delete row[id];
+        next[coopId] = row;
+      });
+      return next;
+    });
+  }
+
+  function updateCritere(id, field, raw) {
+    setCriteres(p => p.map(c => {
+      if (c.id !== id) return c;
+      if (field === 'poids') {
+        const v = raw === '' ? '' : Math.min(100, Math.max(0, Number(raw)));
+        return { ...c, poids: v };
+      }
+      return { ...c, [field]: raw };
+    }));
+  }
+
+  /* ── Matrice ────────────────────────────────────────── */
+  function setCell(coopId, critereId, raw) {
+    const val = raw === '' ? '' : Math.max(0, Number(raw));
+    setMatrice(p => ({ ...p, [coopId]: { ...(p[coopId] ?? {}), [critereId]: val } }));
+    setQuotasManu(p => { const n = { ...p }; delete n[coopId]; return n; });
+  }
+
+  /* ── Moteur de calcul (temps réel) ─────────────────── */
+  const computed = coopList.map(coop => {
+    const vals = matrice[coop.id] ?? {};
+    let score = 0;
+    criteres.forEach(c => { score += (Number(vals[c.id]) || 0) * (Number(c.poids) || 0) / 100; });
+    return { coop, score };
+  });
+  const totalScore = computed.reduce((s, x) => s + x.score, 0);
+
+  const suggestions = computed.map(({ coop, score }) => ({
+    coopId:    coop.id,
+    suggested: totalScore > 0 ? Math.round(enveloppe * (score / totalScore)) : 0,
+    score,
+    pct:       totalScore > 0 ? (score / totalScore * 100).toFixed(1) : '0.0',
+  }));
+
+  function getQF(coopId) {
+    if (quotasManu[coopId] !== undefined) return quotasManu[coopId];
+    return suggestions.find(s => s.coopId === coopId)?.suggested ?? 0;
+  }
+
+  const totalFinal   = coopList.reduce((s, c) => s + (Number(getQF(c.id)) || 0), 0);
+  const balance      = enveloppe - totalFinal;
+  const isBalancedOk = Math.abs(balance) <= 1;
+
+  /* ── Application ────────────────────────────────────── */
+  async function handleApply() {
+    if (!poidsOk || coopList.length === 0) return;
+    setIsApplying(true);
+    setApplyError(null);
+    try {
+      await api.post('/api/quotas', {
+        categorieId,
+        article,
+        volumeTotal: Number(enveloppe),
+        periode:     periodeLabel,
+        lignes: coopList.map(coop => ({
+          cooperative: coop.name,
+          region:      coop.region,
+          alloue:      Number(getQF(coop.id)) || 0,
+        })),
+      });
+      setApplyDone(true);
+      setTimeout(() => setApplyDone(false), 3000);
+    } catch (err) {
+      setApplyError(err.message ?? "Erreur lors de la création de la campagne.");
+    } finally {
+      setIsApplying(false);
+    }
+  }
+
+  return (
+    <div className="p-5 space-y-5">
+
+      {/* ── Bandeau ──────────────────────────────────────── */}
+      <div className="bg-gradient-to-r from-violet-50 to-indigo-50 border border-violet-100 rounded-xl p-4 flex gap-3">
+        <div className="bg-violet-100 rounded-lg p-1.5 shrink-0 self-start mt-0.5">
+          <BarChart3 size={14} className="text-violet-600" />
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-violet-900 mb-0.5">Moteur de Répartition Pondérée</p>
+          <p className="text-xs text-violet-700 leading-relaxed">
+            Définissez vos critères et leurs poids, saisissez les valeurs par coopérative, et obtenez les quotas calculés par :
+            <span className="font-mono ml-1 text-violet-900 bg-violet-100 px-1.5 py-0.5 rounded text-[11px]">
+              Quota = Enveloppe × (Score Coop / Score Total)
+            </span>
+          </p>
+        </div>
+      </div>
+
+      {/* ── Paramètres campagne ───────────────────────────── */}
+      <div className="bg-white rounded-xl border border-gray-100 p-4">
+        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Paramètres de campagne</p>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Catégorie</label>
+            <div className="relative">
+              <select value={categorieId} onChange={e => setCategorieId(e.target.value)}
+                className="w-full appearance-none border border-gray-200 rounded-lg pl-3 pr-8 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white hover:border-gray-300">
+                {Object.values(CATEGORIES).map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+              </select>
+              <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Article</label>
+            <div className="relative">
+              <select value={article} onChange={e => setArticle(e.target.value)}
+                className="w-full appearance-none border border-gray-200 rounded-lg pl-3 pr-8 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white hover:border-gray-300">
+                {(articleMap?.[categorieId] ?? []).length === 0
+                  ? <option value="">— Aucun article —</option>
+                  : (articleMap?.[categorieId] ?? []).map(a => <option key={a}>{a}</option>)}
+              </select>
+              <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Enveloppe globale (doses)</label>
+            <input type="number" value={enveloppe} min={1}
+              onChange={e => setEnveloppe(Math.max(1, Number(e.target.value) || 1))}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 hover:border-gray-300" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Période</label>
+            <input type="month" defaultValue={monthInput}
+              onChange={e => {
+                const [y, m] = e.target.value.split('-');
+                if (y && m) setPeriodeLabel(`${MOIS_FR[+m - 1]} ${y}`);
+              }}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 hover:border-gray-300" />
+          </div>
+        </div>
+      </div>
+
+      {/* ── Critères de pondération ───────────────────────── */}
+      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+          <div>
+            <p className="text-sm font-semibold text-gray-800">Critères de pondération</p>
+            <p className="text-xs text-gray-400 mt-0.5">Chaque critère a un poids en % — la somme doit être 100 %</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors ${
+              poidsOk
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : 'bg-red-50 text-red-700 border-red-200'
+            }`}>
+              {poidsOk ? <CheckCircle size={11} /> : <AlertTriangle size={11} />}
+              Total : {totalPoids.toFixed(0)} %
+            </span>
+            <button onClick={addCritere}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-violet-200 text-violet-600 bg-violet-50 hover:bg-violet-100 transition-all">
+              <Plus size={12} /> Ajouter un critère
+            </button>
+          </div>
+        </div>
+
+        <div className="divide-y divide-gray-50">
+          {criteres.map((c, i) => (
+            <div key={c.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50/40 transition-colors">
+              <div className="w-5 h-5 rounded-full bg-violet-50 flex items-center justify-center text-[10px] font-bold text-violet-500 shrink-0">
+                {i + 1}
+              </div>
+              <input type="text" value={c.nom}
+                placeholder={`Critère ${i + 1} (ex : Cheptel, Lait, Contribution…)`}
+                onChange={e => updateCritere(c.id, 'nom', e.target.value)}
+                className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 placeholder:text-gray-300 hover:border-gray-300" />
+              <div className="relative w-24 shrink-0">
+                <input type="number" value={c.poids} min={0} max={100}
+                  onChange={e => updateCritere(c.id, 'poids', e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 pr-7 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-violet-400 hover:border-gray-300" />
+                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none">%</span>
+              </div>
+              <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden shrink-0">
+                <div className="h-1.5 bg-violet-400 rounded-full transition-all duration-300"
+                  style={{ width: `${Math.min(100, Number(c.poids) || 0)}%` }} />
+              </div>
+              <button onClick={() => removeCritere(c.id)} disabled={criteres.length <= 1}
+                className="text-gray-300 hover:text-red-500 transition-colors disabled:opacity-30 disabled:cursor-not-allowed shrink-0 p-0.5">
+                <X size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {!poidsOk && (
+          <div className="px-4 py-2.5 bg-red-50 border-t border-red-100 flex items-center gap-2">
+            <AlertCircle size={12} className="text-red-500 shrink-0" />
+            <p className="text-xs text-red-700">
+              Total actuel : <strong>{totalPoids.toFixed(0)} %</strong> — ajustez les coefficients pour atteindre exactement <strong>100 %</strong>.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* ── Matrice de saisie ──────────────────────────────── */}
+      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+          <div>
+            <p className="text-sm font-semibold text-gray-800">Matrice de saisie</p>
+            <p className="text-xs text-gray-400 mt-0.5">Valeur brute de chaque critère par coopérative — les quotas se calculent en temps réel</p>
+          </div>
+          <button onClick={() => setQuotasManu({})}
+            className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-violet-600 hover:bg-violet-50 px-2.5 py-1.5 rounded-lg border border-transparent hover:border-violet-200 transition-all">
+            <RefreshCw size={11} /> Resync suggestions
+          </button>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="bg-gray-50/80">
+                <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide px-4 py-2.5 min-w-[180px]">
+                  Coopérative
+                </th>
+                {criteres.map((c, i) => (
+                  <th key={c.id} className="text-center text-xs font-semibold text-gray-400 uppercase tracking-wide px-3 py-2.5 min-w-[130px]">
+                    <span className="block truncate max-w-[120px] mx-auto">{c.nom || `Critère ${i + 1}`}</span>
+                    <span className="text-violet-500 font-bold normal-case tracking-normal text-[11px]">
+                      ({Number(c.poids) || 0} %)
+                    </span>
+                  </th>
+                ))}
+                <th className="text-center text-xs font-semibold text-violet-600 uppercase tracking-wide px-3 py-2.5 min-w-[90px] bg-violet-50/60">
+                  Score
+                </th>
+                <th className="text-center text-xs font-semibold text-blue-600 uppercase tracking-wide px-3 py-2.5 min-w-[90px] bg-blue-50/60">
+                  Suggéré
+                </th>
+                <th className="text-center text-xs font-semibold text-gray-700 uppercase tracking-wide px-3 py-2.5 min-w-[110px]">
+                  Quota Final
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {coopList.length === 0 ? (
+                <tr>
+                  <td colSpan={criteres.length + 4} className="text-center py-10">
+                    <Users size={28} className="mx-auto mb-2 text-gray-200" />
+                    <p className="text-sm text-gray-400">Aucune coopérative chargée depuis la base.</p>
+                  </td>
+                </tr>
+              ) : coopList.map(coop => {
+                const s       = suggestions.find(x => x.coopId === coop.id);
+                const qf      = getQF(coop.id);
+                const isManu  = quotasManu[coop.id] !== undefined;
+                const diverge = isManu && Number(quotasManu[coop.id]) !== (s?.suggested ?? 0);
+                const initials = coop.name.replace(/^Unité\s*/i, '').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+                return (
+                  <tr key={coop.id} className="hover:bg-gray-50/40 transition-colors">
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-full bg-violet-50 flex items-center justify-center text-[10px] font-bold text-violet-600 shrink-0">
+                          {initials}
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-800 leading-tight">{coop.name}</p>
+                          <p className="text-[10px] text-gray-400">{coop.region}</p>
+                        </div>
+                      </div>
+                    </td>
+                    {criteres.map(c => (
+                      <td key={c.id} className="px-3 py-2.5 text-center">
+                        <input type="number" min={0} placeholder="0"
+                          value={matrice[coop.id]?.[c.id] ?? ''}
+                          onChange={e => setCell(coop.id, c.id, e.target.value)}
+                          className="w-24 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent hover:border-gray-300 transition-colors" />
+                      </td>
+                    ))}
+                    <td className="px-3 py-2.5 text-center bg-violet-50/30">
+                      <p className="text-sm font-bold text-violet-700 tabular-nums">{(s?.score ?? 0).toFixed(1)}</p>
+                      <p className="text-[10px] text-violet-400">{s?.pct ?? '0.0'} %</p>
+                    </td>
+                    <td className="px-3 py-2.5 text-center bg-blue-50/30">
+                      <p className="text-sm font-bold text-blue-700 tabular-nums">{s?.suggested ?? 0}</p>
+                    </td>
+                    <td className="px-3 py-2.5 text-center">
+                      <div className="flex flex-col items-center gap-0.5">
+                        <input type="number" min={0} value={qf}
+                          onChange={e => {
+                            const v = e.target.value === '' ? 0 : Math.max(0, Number(e.target.value));
+                            setQuotasManu(p => ({ ...p, [coop.id]: v }));
+                          }}
+                          className={`w-24 border rounded-lg px-2 py-1.5 text-sm text-center font-semibold tabular-nums focus:outline-none focus:ring-2 transition-colors
+                            ${diverge
+                              ? 'border-amber-300 bg-amber-50 text-amber-800 focus:ring-amber-400'
+                              : 'border-gray-200 text-gray-800 focus:ring-violet-400 hover:border-gray-300'}`} />
+                        {diverge && (
+                          <span className="text-[9px] text-amber-500">suggéré : {s?.suggested}</span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-gray-200 bg-gray-50/80">
+                <td className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wide">Totaux</td>
+                {criteres.map(c => <td key={c.id} />)}
+                <td className="px-3 py-3 text-center bg-violet-50/30">
+                  <p className="text-sm font-bold text-violet-700 tabular-nums">{totalScore.toFixed(1)}</p>
+                </td>
+                <td className="px-3 py-3 text-center bg-blue-50/30">
+                  <p className="text-sm font-bold text-blue-700 tabular-nums">
+                    {suggestions.reduce((s, x) => s + x.suggested, 0)}
+                  </p>
+                </td>
+                <td className="px-3 py-3 text-center">
+                  <p className={`text-sm font-bold tabular-nums ${isBalancedOk ? 'text-emerald-600' : 'text-red-600'}`}>
+                    {totalFinal}
+                  </p>
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      {/* ── Résumé + Appliquer ─────────────────────────────── */}
+      <div className="bg-white rounded-xl border border-gray-100 p-4">
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          {[
+            {
+              label: 'Enveloppe',
+              value: enveloppe.toLocaleString(),
+              color: 'text-gray-900',
+              bg:    'bg-gray-50 border-gray-200',
+            },
+            {
+              label: 'Alloué',
+              value: totalFinal.toLocaleString(),
+              color: isBalancedOk ? 'text-emerald-700' : 'text-red-600',
+              bg:    isBalancedOk ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200',
+            },
+            {
+              label: 'Balance',
+              value: balance >= 0 ? `+${balance}` : String(balance),
+              color: isBalancedOk ? 'text-emerald-700' : 'text-red-600',
+              bg:    isBalancedOk ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200',
+            },
+          ].map(({ label, value, color, bg }) => (
+            <div key={label} className={`rounded-xl border p-3.5 text-center ${bg}`}>
+              <p className="text-xs text-gray-400 mb-1">{label}</p>
+              <p className={`text-2xl font-bold tabular-nums ${color}`}>{value}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="mb-4">
+          <div className="flex justify-between text-xs text-gray-400 mb-1.5">
+            <span>Consommation de l'enveloppe</span>
+            <span className="font-semibold tabular-nums">
+              {enveloppe > 0 ? Math.round((totalFinal / enveloppe) * 100) : 0} %
+            </span>
+          </div>
+          <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
+            <div
+              className={`h-3 rounded-full transition-all duration-700 ${
+                isBalancedOk ? 'bg-emerald-500' : totalFinal > enveloppe ? 'bg-red-500' : 'bg-blue-500'
+              }`}
+              style={{ width: `${Math.min(100, enveloppe > 0 ? (totalFinal / enveloppe) * 100 : 0)}%` }}
+            />
+          </div>
+        </div>
+
+        {applyError && (
+          <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3 text-xs text-red-700">
+            <AlertCircle size={13} className="shrink-0" /> {applyError}
+          </div>
+        )}
+
+        <div className="flex items-start justify-between gap-4">
+          <div className="text-xs text-gray-400 max-w-sm leading-relaxed">
+            {!poidsOk && (
+              <span className="text-red-600 font-medium block mb-1">
+                ⚠ La somme des poids est {totalPoids.toFixed(0)} % — corrigez avant de valider.
+              </span>
+            )}
+            {coopList.length === 0 && (
+              <span className="text-amber-600 font-medium block mb-1">⚠ Aucune coopérative chargée.</span>
+            )}
+            Cliquez <strong>Appliquer</strong> pour créer la campagne avec ces quotas pondérés.
+            Les Ordres d'Expédition seront générés automatiquement pour chaque unité.
+          </div>
+          <button onClick={handleApply}
+            disabled={!poidsOk || isApplying || applyDone || coopList.length === 0}
+            className={`flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-xl transition-all duration-200 shadow-sm shrink-0
+              ${applyDone
+                ? 'bg-emerald-500 text-white'
+                : isApplying
+                  ? 'bg-violet-400 text-white cursor-wait'
+                  : !poidsOk || coopList.length === 0
+                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                    : 'bg-violet-600 hover:bg-violet-700 text-white'}`}>
+            {applyDone
+              ? <><CheckCircle size={15} /> Campagne créée !</>
+              : isApplying
+                ? <><RefreshCw size={15} className="animate-spin" /> Création…</>
+                : <><Save size={15} /> Appliquer les quotas</>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════
    COMPOSANT PRINCIPAL
 ══════════════════════════════════════════════════════ */
 export default function GestionQuotas() {
@@ -888,7 +1346,7 @@ export default function GestionQuotas() {
   }, []);
 
   /* Filtrage : région puis période */
-  const allRows  = data[activeTab];
+  const allRows  = data[activeTab] ?? [];
   const byRegion = region === regions[0] ? allRows : allRows.filter(r => r.region === region);
   const rows     = filterByPeriode(byRegion, periode);
   const total      = rows.reduce((a, r) => a + r.dotation, 0);
@@ -975,10 +1433,12 @@ export default function GestionQuotas() {
               <Plus size={15} /> Nouvelle Campagne
             </button>
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <Select value={periode} onChange={setPeriode} options={periodes} />
-            <Select value={region}  onChange={setRegion}  options={regions}  />
-          </div>
+          {activeTab !== 'simulateur' && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <Select value={periode} onChange={setPeriode} options={periodes} />
+              <Select value={region}  onChange={setRegion}  options={regions}  />
+            </div>
+          )}
         </div>
 
         {/* KPI */}
@@ -1002,66 +1462,78 @@ export default function GestionQuotas() {
         {/* Table card */}
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
           <div className="flex border-b border-gray-100 px-4">
-            {tabs.map(({ id, label, icon:Icon }) => (
-              <button key={id} onClick={() => setActiveTab(id)}
-                className={`flex items-center gap-2 px-4 py-3.5 text-sm font-medium border-b-2 transition-colors
-                  ${activeTab===id ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
-                <Icon size={15} />{label}
-              </button>
-            ))}
+            {tabs.map(({ id, label, icon:Icon }) => {
+              const isActive = activeTab === id;
+              const activeClass = id === 'simulateur'
+                ? 'border-violet-600 text-violet-600'
+                : 'border-blue-600 text-blue-600';
+              return (
+                <button key={id} onClick={() => setActiveTab(id)}
+                  className={`flex items-center gap-2 px-4 py-3.5 text-sm font-medium border-b-2 transition-colors
+                    ${isActive ? activeClass : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+                  <Icon size={15} />{label}
+                </button>
+              );
+            })}
           </div>
 
-          <div className="overflow-x-auto -mx-px">
-            <div className="min-w-[640px]">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-gray-50/80">
-                  {["Coopérative","Article / Génétique","Dotation","Consommé","Progression","Statut","Action"].map(h => (
-                    <th key={h} className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide px-5 py-3 whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {rows.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="text-center py-14">
-                      <Package size={32} className="mx-auto mb-2 text-gray-200" />
-                      <p className="text-sm font-medium text-gray-400">Aucune donnée disponible pour le moment</p>
-                      <p className="text-xs text-gray-300 mt-1">Les quotas apparaîtront ici dès que l'API aura fourni des données.</p>
-                    </td>
-                  </tr>
-                ) : rows.map(row => (
-                  <tr key={row.id} className="hover:bg-gray-50/60 transition-colors">
-                    <td className="px-5 py-4">
-                      <div className="font-medium text-sm text-gray-900">{row.cooperative}</div>
-                      <div className="text-xs text-gray-400 mt-0.5">{row.region}</div>
-                    </td>
-                    <td className="px-5 py-4"><span className="text-sm text-gray-700">{row.article}</span></td>
-                    <td className="px-5 py-4"><span className="text-sm font-semibold text-gray-900">{row.dotation.toLocaleString()}</span></td>
-                    <td className="px-5 py-4"><span className="text-sm text-gray-700">{row.consomme.toLocaleString()}</span></td>
-                    <td className="px-5 py-4 min-w-[180px]">
-                      <ProgressBar dotation={row.dotation} consomme={row.consomme} statut={row.statut} />
-                    </td>
-                    <td className="px-5 py-4"><StatutBadge statut={row.statut} /></td>
-                    <td className="px-5 py-4">
-                      <button onClick={() => setAjusterRow(row)}
-                        className="flex items-center gap-1.5 text-xs font-medium text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-all">
-                        <Pencil size={12} /> Ajuster
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            </div>
-          </div>
+          {activeTab === 'simulateur' ? (
+            <SimulateurPonderation coopList={coopList} articleMap={articleMap} />
+          ) : (
+            <>
+              <div className="overflow-x-auto -mx-px">
+                <div className="min-w-[640px]">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50/80">
+                      {["Coopérative","Article / Génétique","Dotation","Consommé","Progression","Statut","Action"].map(h => (
+                        <th key={h} className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide px-5 py-3 whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {rows.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="text-center py-14">
+                          <Package size={32} className="mx-auto mb-2 text-gray-200" />
+                          <p className="text-sm font-medium text-gray-400">Aucune donnée disponible pour le moment</p>
+                          <p className="text-xs text-gray-300 mt-1">Les quotas apparaîtront ici dès que l'API aura fourni des données.</p>
+                        </td>
+                      </tr>
+                    ) : rows.map(row => (
+                      <tr key={row.id} className="hover:bg-gray-50/60 transition-colors">
+                        <td className="px-5 py-4">
+                          <div className="font-medium text-sm text-gray-900">{row.cooperative}</div>
+                          <div className="text-xs text-gray-400 mt-0.5">{row.region}</div>
+                        </td>
+                        <td className="px-5 py-4"><span className="text-sm text-gray-700">{row.article}</span></td>
+                        <td className="px-5 py-4"><span className="text-sm font-semibold text-gray-900">{row.dotation.toLocaleString()}</span></td>
+                        <td className="px-5 py-4"><span className="text-sm text-gray-700">{row.consomme.toLocaleString()}</span></td>
+                        <td className="px-5 py-4 min-w-[180px]">
+                          <ProgressBar dotation={row.dotation} consomme={row.consomme} statut={row.statut} />
+                        </td>
+                        <td className="px-5 py-4"><StatutBadge statut={row.statut} /></td>
+                        <td className="px-5 py-4">
+                          <button onClick={() => setAjusterRow(row)}
+                            className="flex items-center gap-1.5 text-xs font-medium text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-all">
+                            <Pencil size={12} /> Ajuster
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                </div>
+              </div>
 
-          <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between">
-            <span className="text-xs text-gray-400">{rows.length} coopérative{rows.length>1?"s":""} affichée{rows.length>1?"s":""}</span>
-            <span className="text-xs text-gray-400">
-              Total consommé : <span className="font-semibold text-gray-700">{totalConso.toLocaleString()} / {total.toLocaleString()}</span>
-            </span>
-          </div>
+              <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between">
+                <span className="text-xs text-gray-400">{rows.length} coopérative{rows.length>1?"s":""} affichée{rows.length>1?"s":""}</span>
+                <span className="text-xs text-gray-400">
+                  Total consommé : <span className="font-semibold text-gray-700">{totalConso.toLocaleString()} / {total.toLocaleString()}</span>
+                </span>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

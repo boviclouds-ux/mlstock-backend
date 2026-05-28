@@ -41,6 +41,7 @@ app.use(express.json());
 
 // Enregistrement explicite des modèles Mongoose
 // (nécessaire quand un modèle est référencé via ref: 'X' mais pas importé par une route)
+require('./models/Configuration');
 require('./models/User');
 require('./models/Fournisseur');
 require('./models/Unite');
@@ -66,8 +67,9 @@ const transporteurRoutes     = require('./routes/transporteurs');
 const approvisionnementRoutes = require('./routes/approvisionnements');
 const usersRoutes            = require('./routes/users');
 const dashboardRoutes    = require('./routes/dashboard');
-const quotasRoutes       = require('./routes/quotas');
-const validationsRoutes  = require('./routes/validations');
+const quotasRoutes         = require('./routes/quotas');
+const validationsRoutes    = require('./routes/validations');
+const configurationRoutes  = require('./routes/configuration');
 
 app.get('/api/status', (req, res) => {
   res.json({ status: 'ok', message: 'API MLstock opérationnelle', version: '2.0' });
@@ -85,7 +87,8 @@ app.use('/api/approvisionnements', approvisionnementRoutes);
 app.use('/api/users',              usersRoutes);
 app.use('/api/dashboard',    dashboardRoutes);
 app.use('/api/quotas',       quotasRoutes);
-app.use('/api',             validationsRoutes); // /api/otp/generate · /api/ordres/:id/valider-*
+app.use('/api',             validationsRoutes);    // /api/otp/generate · /api/ordres/:id/valider-*
+app.use('/api/configuration', configurationRoutes); // /api/configuration GET|PUT + /valorisation
 
 const PORT = process.env.PORT || 5000;
 

@@ -35,14 +35,15 @@ const ligneSchema = new mongoose.Schema(
 const repartGenetiqueSchema = new mongoose.Schema(
   {
     taureau:           { type: String, trim: true, default: '' },
+    race:              { type: String, trim: true, default: '' },
     nni:               { type: String, trim: true, default: '' },
     couleur:           { type: String, trim: true, default: '' },
     conteneurSemence:  { type: String, trim: true, default: '' },
 
     // Dénormalisé pour le moteur de facturation (Mission 8)
     typeProduit: {
-      type: String,
-      enum: { values: ['Conventionnelle', 'Sexée', 'Azote', ''], message: 'typeProduit invalide : {VALUE}' },
+      type:    String,
+      trim:    true,
       default: '',
     },
     articleId: {
@@ -96,8 +97,21 @@ const livraisonSchema = new mongoose.Schema(
       required: [true, 'La quantité expédiée est requise'],
       min:      [1, 'La quantité expédiée doit être ≥ 1'],
     },
+    // Flux déporté (Azote) : retrait chez le fournisseur, pas de stock local décrémenté
+    fluxDeporte: { type: Boolean, default: false },
   },
   { _id: true, timestamps: false }
+);
+
+/* ─── Matériel prêté lors d'une expédition ──────────────── */
+const materielPreteSchema = new mongoose.Schema(
+  {
+    conteneurRef:    { type: String, trim: true, required: true }, // Cuve._id as string
+    conteneurNom:    { type: String, trim: true, default: '' },    // Cuve.nom (dénormalisé)
+    description:     { type: String, trim: true, default: '' },
+    dateRetourPrevu: { type: Date, default: null },
+  },
+  { _id: false }
 );
 
 /* ═══════════════════════════════════════════════════════════
@@ -197,6 +211,12 @@ const transactionSchema = new mongoose.Schema(
       default: [],
     },
 
+    // Matériel prêté au bénéficiaire lors de l'expédition (conteneurs de transport)
+    materielPrete: {
+      type:    [materielPreteSchema],
+      default: [],
+    },
+
     // Données du transporteur (infos de la dernière remise)
     transporteur: {
       societe:   { type: String, trim: true, default: '' },
@@ -270,11 +290,21 @@ transactionSchema.pre('save', function (next) {
     return next(new Error('Un Ordre Admin doit obligatoirement avoir un motif.'));
   }
 
-  // Lors du passage à Validée_BE : s'assurer qu'au moins une quantité est autorisée
+  // Lors du passage à Validée_BE : s'assurer qu'au moins une quantité est autorisée.
+  // Exception : ORDRE_ADMIN en création (isNew) — le contrôleur a déjà seedé repartGenetique
+  // depuis lignes ; on accepte le save si les lignes elles-mêmes ont des quantités > 0.
   if (this.statut === 'Validée_BE') {
     const totalAutorise = (this.repartGenetique ?? []).reduce((s, g) => s + (g.quantiteAutorisee ?? 0), 0);
     if (totalAutorise <= 0) {
-      return next(new Error('Le Bon d\'Enlèvement exige au moins une quantité autorisée > 0 dans repartGenetique.'));
+      if (this.isNew && this.type === 'ORDRE_ADMIN') {
+        const totalLignes = (this.lignes ?? []).reduce((s, l) => s + (l.quantite ?? 0), 0);
+        if (totalLignes <= 0) {
+          return next(new Error('Un Ordre Admin doit avoir au moins une ligne avec une quantité > 0.'));
+        }
+        // repartGenetique seedé par le contrôleur — le save est autorisé
+      } else {
+        return next(new Error('Le Bon d\'Enlèvement exige au moins une quantité autorisée > 0 dans repartGenetique.'));
+      }
     }
   }
 

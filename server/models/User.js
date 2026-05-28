@@ -28,10 +28,12 @@ const userSchema = new mongoose.Schema(
       select: false, // jamais renvoyé par défaut dans les requêtes
     },
     permissions: {
-      canDemand:   { type: Boolean, default: false }, // Acheteur / Demandeur
-      canReceive:  { type: Boolean, default: false }, // Réceptionneur fournisseur
-      canDispatch: { type: Boolean, default: false }, // Magasinier — bons d'enlèvement et BL
-      isAdmin:     { type: Boolean, default: false }, // Gestion globale et quotas
+      canDemand:      { type: Boolean, default: false }, // Acheteur / Demandeur
+      canReceive:     { type: Boolean, default: false }, // Réceptionneur fournisseur
+      canDispatch:    { type: Boolean, default: false }, // Magasinier — bons d'enlèvement et BL
+      canManageAppro: { type: Boolean, default: false }, // Gestionnaire d'Approvisionnement
+      isAdmin:        { type: Boolean, default: false }, // Gestion globale et quotas
+      canActAsProxy:  { type: Boolean, default: false }, // Saisie déléguée pour coopératives externes
     },
     entite: {
       type: String,

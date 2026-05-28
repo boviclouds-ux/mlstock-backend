@@ -1,12 +1,14 @@
 // MagasinierCentral.jsx — Interface terrain Magasinier Central
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { api } from "./lib/api";
+import DataGridV2 from './components/DataGridV2';
+import { calculateAllValuations, METHODE_BADGE, METHODE_SHORT } from './lib/inventoryValuation';
 import {
   Truck, PackageCheck, AlertTriangle, CheckCircle, XCircle,
   ChevronDown, X, Snowflake, QrCode, Calendar, MapPin,
   Layers, Clock, Dna, FlaskConical, Wrench, BadgeCheck,
   ChevronRight, Plus, Trash2, ScanLine, Lock, FileText,
-  Shield, Package, Zap, Pencil, PlusCircle, Settings2
+  Shield, Package, Zap, Pencil, PlusCircle, Settings2, TrendingUp
 } from "lucide-react";
 
 
@@ -47,8 +49,10 @@ const COULEUR_SPOT = {
 function CuveCard({ cuve, onEdit, isAdmin }) {
   const pct     = Math.min(Math.round(((cuve.niveauActuel ?? 0) / (cuve.capacite || 1)) * 100), 100);
   const isCrit  = cuve.statut === "critique", isAl = cuve.statut === "alerte";
+  const isOnLoan = cuve.statutPret === 'En Prêt';
   const barC    = isCrit ? "bg-red-500" : isAl ? "bg-amber-400" : "bg-cyan-500";
   const bgC     = isCrit ? "bg-red-50/40 border-red-200" : isAl ? "bg-amber-50/40 border-amber-200" : "bg-white border-gray-100";
+  const unitNom = cuve.localisationActuelle?.nom ?? null;
   return (
     <div className={`rounded-2xl border p-4 flex flex-col gap-3 ${bgC}`}>
       <div className="flex items-center justify-between gap-2">
@@ -62,14 +66,20 @@ function CuveCard({ cuve, onEdit, isAdmin }) {
           </div>
         </div>
         <div className="flex items-center gap-1 shrink-0">
-          {(isCrit || isAl) && (
+          {isOnLoan && (
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700 border border-red-200">
+              {unitNom ? `En prêt à ${unitNom}` : 'En Prêt'}
+            </span>
+          )}
+          {!isOnLoan && (isCrit || isAl) && (
             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isCrit ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
               {isCrit ? "CRITIQUE" : "ALERTE"}
             </span>
           )}
           {isAdmin && (
-            <button onClick={() => onEdit(cuve)} title="Modifier"
-              className="p-1 rounded-lg text-gray-300 hover:text-blue-500 hover:bg-blue-50 transition-colors">
+            <button onClick={() => !isOnLoan && onEdit(cuve)} title={isOnLoan ? "Conteneur en prêt — modification impossible" : "Modifier"}
+              disabled={isOnLoan}
+              className={`p-1 rounded-lg transition-colors ${isOnLoan ? "text-gray-200 cursor-not-allowed" : "text-gray-300 hover:text-blue-500 hover:bg-blue-50"}`}>
               <Pencil size={11} />
             </button>
           )}
@@ -140,8 +150,8 @@ function ModalCuve({ cuve, onClose, onSave }) {
               <Snowflake size={16} className="text-cyan-500" />
             </div>
             <div>
-              <p className="text-sm font-bold text-gray-900">{isEdit ? "Modifier la cuve" : "Nouvelle Cuve"}</p>
-              <p className="text-[11px] text-gray-400 mt-0.5">Infrastructure d'azote liquide</p>
+              <p className="text-sm font-bold text-gray-900">{isEdit ? "Modifier l'infrastructure" : "Nouvelle Infrastructure"}</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">Conteneur du parc d'inventaire</p>
             </div>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors"><X size={18} /></button>
@@ -157,8 +167,8 @@ function ModalCuve({ cuve, onClose, onSave }) {
           )}
 
           <div>
-            <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Nom de la cuve</label>
-            <input value={nom} onChange={e => setNom(e.target.value)} placeholder="ex: Cuve Principale A-01" className={inp} required />
+            <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Nom de l'infrastructure</label>
+            <input value={nom} onChange={e => setNom(e.target.value)} placeholder="ex: Conteneur A-01 / Étagère B-03" className={inp} required />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -207,7 +217,7 @@ function ModalCuve({ cuve, onClose, onSave }) {
               className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 text-white text-xs font-bold transition-all">
               {saving
                 ? <><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />Enregistrement…</>
-                : isEdit ? <><Pencil size={12} /> Enregistrer</> : <><PlusCircle size={12} /> Créer la cuve</>}
+                : isEdit ? <><Pencil size={12} /> Enregistrer</> : <><PlusCircle size={12} /> Créer l'infrastructure</>}
             </button>
           </div>
         </form>
@@ -387,16 +397,24 @@ function fromApiTransaction(t) {
 }
 
 /* ─── Adaptateur API Lot → format UI Chambre Froide ──── */
+function typeFromProduit(tp) {
+  if (tp === 'Conventionnelle' || tp === 'Sexée') return 'semence';
+  if (tp === 'Azote') return 'azote';
+  return 'equipement';
+}
+
 function fromApiLot(l) {
   return {
-    id:             l.numLot,
-    article:        l.articleId?.designation ?? '—',
-    type:           l.type,
-    cuve:           l.cuveId?.nom ?? l.cuveId?.reference ?? '—',
-    rack:           l.rack ?? '—',
-    qte:            l.qteDisponible ?? 0,
-    peremption:     l.peremption ? new Date(l.peremption).toISOString().slice(0, 10) : '—',
-    ficheTechnique: Array.isArray(l.ficheTechnique) ? l.ficheTechnique : [],
+    id:                 l.numLot,
+    article:            l.articleId?.designation ?? '—',
+    type:               typeFromProduit(l.typeProduit),
+    cuve:               l.cuveId?.nom ?? l.cuveId?.reference ?? '—',
+    rack:               l.rack ?? '—',
+    qte:                l.qteDisponible ?? 0,
+    peremption:         l.peremption ? new Date(l.peremption).toISOString().slice(0, 10) : '—',
+    ficheTechnique:     Array.isArray(l.ficheTechnique) ? l.ficheTechnique : [],
+    prixAchatUnitaire:  l.prixAchatUnitaire ?? 0,
+    createdAt:          l.createdAt ?? null,
   };
 }
 
@@ -419,6 +437,13 @@ export default function MagasinierCentral({ userRole = null }) {
   const [lotsLoading,  setLotsLoading]  = useState(false);
   const [lotsError,    setLotsError]    = useState(null);
   const [toast,        setToast]        = useState(null);  // { ok, msg }
+  const [methodeValo,  setMethodeValo]  = useState('CUMP');
+
+  useEffect(() => {
+    api.get('/api/configuration')
+      .then(cfg => { if (cfg?.methodeValorisation) setMethodeValo(cfg.methodeValorisation); })
+      .catch(() => {});
+  }, []);
 
   function showToast(ok, msg) {
     setToast({ ok, msg });
@@ -446,12 +471,13 @@ export default function MagasinierCentral({ userRole = null }) {
 
   useEffect(() => { fetchCommandes(); }, []);
 
-  /* ─ Récupération des cuves au montage ────────────── */
+  /* ─ Récupération des conteneurs — re-fetch à chaque activation de l'onglet Chambre ─ */
   useEffect(() => {
+    if (activeTab !== 'chambre') return;
     api.get("/api/conteneurs-semences")
       .then(data => setCuves(Array.isArray(data) ? data : []))
-      .catch(() => {}); // silence : état vide si pas de conteneurs
-  }, []);
+      .catch(() => {});
+  }, [activeTab]);
 
   /* ─ Récupération des lots au montage ─────────────── */
   useEffect(() => {
@@ -519,6 +545,175 @@ export default function MagasinierCentral({ userRole = null }) {
   async function handleExpedition(id) { await handleUpdateStatut(id, 'Expédié'); }
 
   const actives = commandes.filter(c => c.statut !== 'Expédié' && c.statut !== 'Réceptionné');
+
+  const [filtreConteneur,  setFiltreConteneur]  = useState('');
+  const [filtreRace,       setFiltreRace]       = useState('');
+  const [filtreAlerte,     setFiltreAlerte]     = useState('');
+  const [filtreCategorie,  setFiltreCategorie]  = useState('');
+  const [filtreDateD,      setFiltreDateD]      = useState('');
+  const [filtreDateF,      setFiltreDateF]      = useState('');
+
+  /* Valorisation financière — recalculée à chaque changement de méthode ou de lots */
+  const inventoryValuations = useMemo(
+    () => calculateAllValuations(lots, methodeValo),
+    [lots, methodeValo]
+  );
+
+  /* Flatten lots + ficheTechnique → one row per taureau (semence) or per lot (other) */
+  const lotsFlat = useMemo(() => lots.flatMap(lot => {
+    const pm = peremptionMeta(lot.peremption);
+    const conteneur = lot.cuve !== '—' ? lot.cuve : lot.rack !== '—' ? lot.rack : '—';
+    const lotValuation = inventoryValuations.allLotValues[lot.id] ?? { unitCost: lot.prixAchatUnitaire, value: lot.qte * lot.prixAchatUnitaire };
+    const effectiveUnitCost = lotValuation.unitCost;
+
+    if (lot.type === 'semence' && lot.ficheTechnique.length > 0) {
+      return lot.ficheTechnique.map((ft, ftIdx) => ({
+        _rowKey: `${lot.id}-${ftIdx}`,
+        id: lot.id,
+        article: lot.article,
+        type: lot.type,
+        conteneur: ft.cuve && ft.cuve !== '—' ? ft.cuve : conteneur,
+        race: ft.race || ft.taureau || '—',
+        nni: ft.nni ?? '—',
+        couleur: ft.couleur,
+        qte: ft.qte ?? 0,
+        valeurTotale: (ft.qte ?? 0) * effectiveUnitCost,
+        createdAt: lot.createdAt,
+        peremption: lot.peremption,
+        pm,
+        subIdx: ftIdx,
+        subTotal: lot.ficheTechnique.length,
+      }));
+    }
+    return [{
+      _rowKey: lot.id,
+      id: lot.id,
+      article: lot.article,
+      type: lot.type,
+      conteneur,
+      race: '—',
+      nni: '—',
+      couleur: null,
+      qte: lot.qte,
+      valeurTotale: lotValuation.value,
+      createdAt: lot.createdAt,
+      peremption: lot.peremption,
+      pm,
+      subIdx: 0,
+      subTotal: 1,
+    }];
+  }), [lots, inventoryValuations]);
+
+  const lotsFiltres = useMemo(() => lotsFlat.filter(r => {
+    if (filtreConteneur && r.conteneur !== filtreConteneur) return false;
+    if (filtreRace      && r.race      !== filtreRace)      return false;
+    if (filtreAlerte === 'urgent'  && !r.pm.urgent)         return false;
+    if (filtreAlerte === 'proche'  && (r.pm.urgent || joursRestants(r.peremption) > 45)) return false;
+    if (filtreCategorie && r.type !== filtreCategorie) return false;
+    if (filtreDateD && r.createdAt && r.createdAt.slice(0, 10) < filtreDateD) return false;
+    if (filtreDateF && r.createdAt && r.createdAt.slice(0, 10) > filtreDateF) return false;
+    return true;
+  }), [lotsFlat, filtreConteneur, filtreRace, filtreAlerte, filtreCategorie, filtreDateD, filtreDateF]);
+
+  const SEL_M = "text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400";
+
+  const colonnesLots = [
+    {
+      key: 'id', label: 'N° de Lot', sortable: true,
+      render: (v, row) => (
+        <div>
+          <span className="text-xs font-mono font-semibold text-gray-600">{v}</span>
+          {row.subTotal > 1 && (
+            <span className="ml-1.5 text-[9px] text-gray-300 font-mono tabular-nums">
+              {row.subIdx + 1}/{row.subTotal}
+            </span>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: 'article', label: 'Article', sortable: true,
+      render: (v, row) => (
+        <div>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {typeIcon(row.type)}
+            <span className="text-xs text-gray-700">{v}</span>
+            {row.couleur && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border bg-white border-gray-200">
+                <span className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm"
+                  style={{ backgroundColor: COULEUR_SPOT[row.couleur] ?? '#94a3b8' }} />
+                <span className="text-[9px] font-bold text-gray-700">{row.taureau}</span>
+              </span>
+            )}
+          </div>
+          {row.nni && row.nni !== '—' && (
+            <p className="text-[9px] text-gray-400 mt-0.5 font-mono">{row.nni}</p>
+          )}
+        </div>
+      ),
+      exportValue: row => `${row.article}${row.race !== '—' ? ` (${row.race})` : ''}`,
+    },
+    {
+      key: 'conteneur', label: 'Conteneur actuel', sortable: true,
+      render: v => (
+        <div className="flex items-center gap-1 text-xs text-gray-500">
+          <span className="shrink-0 text-[11px]">📍</span>
+          <span>{v !== '—' ? v : 'Magasin Central'}</span>
+        </div>
+      ),
+    },
+    {
+      key: 'race', label: 'Race', sortable: true,
+      render: v => <span className="text-xs text-gray-500">{v}</span>,
+    },
+    {
+      key: 'qte', label: 'Qté', sortable: true, align: 'right',
+      render: v => <span className="text-sm font-bold text-gray-800 tabular-nums">{v.toLocaleString()}</span>,
+    },
+    {
+      key: 'peremption', label: 'Date péremption', sortable: true,
+      render: (_v, row) => {
+        const { pm } = row;
+        const j = joursRestants(row.peremption);
+        if (pm.urgent) return (
+          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border ${pm.bg} ${pm.color} ${pm.border}`}>
+            <AlertTriangle size={10}/>{pm.label} restants
+          </span>
+        );
+        if (j <= 45) return (
+          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${pm.bg} ${pm.color} ${pm.border}`}>
+            <Clock size={10}/>{pm.label}j
+          </span>
+        );
+        return <span className="text-xs text-gray-400 font-mono">{row.peremption}</span>;
+      },
+      exportValue: row => row.peremption,
+    },
+    {
+      key: 'valeurTotale', label: 'Valeur Totale', sortable: true, align: 'right',
+      render: v => (
+        <span className="text-xs font-mono font-semibold text-indigo-700">
+          {v > 0 ? v.toLocaleString('fr-MA', { style: 'currency', currency: 'MAD', maximumFractionDigits: 0 }) : '—'}
+        </span>
+      ),
+      exportValue: row => row.valeurTotale > 0 ? String(Math.round(row.valeurTotale)) : '0',
+    },
+  ];
+
+  const hideSemenceCols = filtreCategorie !== '' && filtreCategorie !== 'semence';
+  const colonnesLotsVisible = hideSemenceCols
+    ? colonnesLots.filter(col => !['conteneur', 'race', 'peremption'].includes(col.key))
+    : colonnesLots;
+
+  const lotsTotal = useMemo(() => {
+    const sum = lotsFiltres.reduce((s, r) => s + (r.valeurTotale ?? 0), 0);
+    if (sum <= 0) return null;
+    return {
+      _label: 'TOTAL GLOBAL',
+      valeurTotale: sum.toLocaleString('fr-MA', { style: 'currency', currency: 'MAD', maximumFractionDigits: 0 }),
+    };
+  }, [lotsFiltres]);
+
   return (
     <div className="space-y-6">
       {pickingCmd&&<PickingDrawer commande={pickingCmd} inventaire={lots} onClose={()=>setPickingCmd(null)} onSceller={handleSceller}/>}
@@ -565,8 +760,7 @@ export default function MagasinierCentral({ userRole = null }) {
           <div>
             <div className="flex items-center gap-2 mb-3">
               <Snowflake size={14} className="text-cyan-500"/>
-              <h2 className="text-sm font-bold text-gray-700">Cuves d'Azote Liquide</h2>
-              <span className="text-xs text-gray-400 ml-auto">Cible : −196°C</span>
+              <h2 className="text-sm font-bold text-gray-700">Infrastructures & Conteneurs</h2>
               {isAdmin && (
                 <button
                   onClick={() => setCuveEdit({})}
@@ -586,88 +780,83 @@ export default function MagasinierCentral({ userRole = null }) {
             ) : (
               <div className="flex flex-col items-center justify-center gap-2 py-8 bg-white border border-gray-100 rounded-2xl text-center">
                 <Snowflake size={24} className="text-gray-200"/>
-                <p className="text-sm font-semibold text-gray-400">Aucune cuve configurée</p>
+                <p className="text-sm font-semibold text-gray-400">Aucune infrastructure configurée</p>
                 <p className="text-xs text-gray-300">
-                  {isAdmin ? "Cliquez sur « Gérer les infrastructures » pour ajouter la première cuve." : "Les cuves apparaîtront ici une fois enregistrées."}
+                  {isAdmin ? "Cliquez sur « Gérer les infrastructures » pour ajouter la première infrastructure." : "Les infrastructures apparaîtront ici une fois enregistrées."}
                 </p>
               </div>
             )}
           </div>
           <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
-              <div className="flex items-center gap-2"><Layers size={15} className="text-gray-400"/><div><h2 className="text-sm font-bold text-gray-800">Registre des Lots</h2><p className="text-xs text-gray-400 mt-0.5">{lotsLoading ? "Chargement…" : `${lots.length} lot${lots.length !== 1 ? "s" : ""} actif${lots.length !== 1 ? "s" : ""}`}</p></div></div>
-              <div className="flex items-center gap-3 text-[10px] text-gray-400">
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400 inline-block"/>≤14j</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block"/>≤45j</span>
+              <div className="flex items-center gap-2">
+                <Layers size={15} className="text-gray-400"/>
+                <div>
+                  <h2 className="text-sm font-bold text-gray-800">Registre des Lots</h2>
+                  <p className="text-xs text-gray-400 mt-0.5">{lotsLoading ? "Chargement…" : `${lots.length} lot${lots.length !== 1 ? "s" : ""} actif${lots.length !== 1 ? "s" : ""}`}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full border ${METHODE_BADGE[methodeValo].bg} ${METHODE_BADGE[methodeValo].text} ${METHODE_BADGE[methodeValo].border}`}>
+                  <TrendingUp size={9}/> Valorisation : {methodeValo}
+                </span>
+                {inventoryValuations.grandTotal > 0 && (
+                  <span className="text-[10px] font-semibold text-indigo-600">
+                    {inventoryValuations.grandTotal.toLocaleString('fr-MA', { style: 'currency', currency: 'MAD', maximumFractionDigits: 0 })}
+                  </span>
+                )}
+                <span className="flex items-center gap-1 text-[10px] text-gray-400"><span className="w-2 h-2 rounded-full bg-red-400 inline-block"/>≤14j</span>
+                <span className="flex items-center gap-1 text-[10px] text-gray-400"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block"/>≤45j</span>
               </div>
             </div>
-            <div className="overflow-x-auto"><div className="min-w-[580px]">
-              <table className="w-full">
-                <thead><tr className="bg-gray-50/80 border-b border-gray-100">{["N° de Lot","Article","Emplacement","Qté","Péremption"].map(h=><th key={h} className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide px-4 py-3 whitespace-nowrap">{h}</th>)}</tr></thead>
-                <tbody className="divide-y divide-gray-50">
-                  {lotsError && (
-                    <tr><td colSpan={5} className="px-4 py-6 text-center text-xs text-red-500">{lotsError}</td></tr>
+            <DataGridV2
+              columns={colonnesLotsVisible}
+              data={lotsFiltres}
+              rowKey="_rowKey"
+              title="Registre des Lots"
+              exportFilename="lots-stock"
+              loading={lotsLoading}
+              emptyMessage="Aucun lot en stock."
+              totalRow={lotsTotal}
+              actions={
+                <div className="flex flex-wrap items-center gap-1.5" onClick={e => e.stopPropagation()}>
+                  <select value={filtreCategorie} onChange={e => {
+                    const v = e.target.value;
+                    setFiltreCategorie(v);
+                    if (v !== '' && v !== 'semence') { setFiltreConteneur(''); setFiltreRace(''); }
+                  }} className={SEL_M}>
+                    <option value="">Toute catégorie</option>
+                    <option value="semence">Semences</option>
+                    <option value="azote">Azote Liquide</option>
+                    <option value="consommable">Consommables</option>
+                    <option value="equipement">Équipement</option>
+                  </select>
+                  {!hideSemenceCols && (
+                    <select value={filtreConteneur} onChange={e => setFiltreConteneur(e.target.value)} className={SEL_M}>
+                      <option value="">Tout conteneur</option>
+                      {[...new Set(lotsFlat.map(r => r.conteneur).filter(v => v && v !== '—'))].sort().map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
                   )}
-                  {!lotsError && lots.length === 0 && !lotsLoading && (
-                    <tr><td colSpan={5} className="px-4 py-10 text-center text-xs text-gray-400">Aucun lot en stock</td></tr>
+                  {!hideSemenceCols && (
+                    <select value={filtreRace} onChange={e => setFiltreRace(e.target.value)} className={SEL_M}>
+                      <option value="">Toute race</option>
+                      {[...new Set(lotsFlat.map(r => r.race).filter(v => v && v !== '—'))].sort().map(r => (
+                        <option key={r} value={r}>{r}</option>
+                      ))}
+                    </select>
                   )}
-                  {lots.flatMap(lot => {
-                    const pm = peremptionMeta(lot.peremption);
-                    const peremCell = pm.urgent
-                      ? <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border ${pm.bg} ${pm.color} ${pm.border}`}><AlertTriangle size={10}/>{pm.label} restants</span>
-                      : joursRestants(lot.peremption) <= 45
-                      ? <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${pm.bg} ${pm.color} ${pm.border}`}><Clock size={10}/>{pm.label}j</span>
-                      : <span className="text-xs text-gray-400 font-mono">{lot.peremption}</span>;
-
-                    /* Vue éclatée — une ligne par taureau si ficheTechnique */
-                    if (lot.type === 'semence' && lot.ficheTechnique.length > 0) {
-                      return lot.ficheTechnique.map((ft, ftIdx) => (
-                        <tr key={`${lot.id}-${ftIdx}`} className={`hover:bg-blue-50/30 transition-colors ${pm.urgent ? 'bg-red-50/20' : ftIdx % 2 === 1 ? 'bg-blue-50/10' : ''}`}>
-                          <td className="px-4 py-2.5">
-                            <span className="text-xs font-mono font-semibold text-gray-600">{lot.id}</span>
-                            <span className="ml-1.5 text-[9px] text-gray-300 font-mono tabular-nums">{ftIdx + 1}/{lot.ficheTechnique.length}</span>
-                          </td>
-                          <td className="px-4 py-2.5">
-                            <div>
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                {typeIcon(lot.type)}
-                                <span className="text-xs text-gray-700">{lot.article}</span>
-                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border shrink-0 bg-white border-gray-200">
-                                  <span className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm"
-                                    style={{ backgroundColor: COULEUR_SPOT[ft.couleur] ?? '#94a3b8' }} />
-                                  <span className="text-[9px] font-bold text-gray-700">{ft.taureau || ft.nni || '—'}</span>
-                                </span>
-                              </div>
-                              {ft.nni && ft.nni !== '—' && (
-                                <p className="text-[9px] text-gray-400 mt-0.5 font-mono">{ft.nni}</p>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-4 py-2.5">
-                            <div className="flex items-center gap-1 text-xs text-gray-500">
-                              <span className="shrink-0 text-[11px]">📍</span>
-                              <span>Magasin Central{(ft.cuve && ft.cuve !== '—') ? ` • ${ft.cuve}` : ft.refLot ? ` • ${ft.refLot}` : lot.cuve !== '—' ? ` • ${lot.cuve}` : ''}</span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-2.5"><span className="text-sm font-bold text-gray-800 tabular-nums">{(ft.qte ?? 0).toLocaleString()}</span></td>
-                          <td className="px-4 py-2.5">{peremCell}</td>
-                        </tr>
-                      ));
-                    }
-                    /* Ligne normale (matériel, azote, etc.) */
-                    return [(
-                      <tr key={lot.id} className={`hover:bg-gray-50/60 transition-colors ${pm.urgent ? 'bg-red-50/20' : ''}`}>
-                        <td className="px-4 py-3"><span className="text-xs font-mono font-semibold text-gray-600">{lot.id}</span></td>
-                        <td className="px-4 py-3"><div className="flex items-center gap-1.5">{typeIcon(lot.type)}<span className="text-xs text-gray-700">{lot.article}</span></div></td>
-                        <td className="px-4 py-3"><div className="flex items-center gap-1 text-xs text-gray-500"><span className="shrink-0 text-[11px]">📍</span><span>Magasin Central{lot.cuve !== '—' ? ` • ${lot.cuve}` : ''}</span></div></td>
-                        <td className="px-4 py-3"><span className="text-sm font-bold text-gray-800 tabular-nums">{lot.qte.toLocaleString()}</span></td>
-                        <td className="px-4 py-3">{peremCell}</td>
-                      </tr>
-                    )];
-                  })}
-                </tbody>
-              </table>
-            </div></div>
+                  <select value={filtreAlerte} onChange={e => setFiltreAlerte(e.target.value)} className={SEL_M}>
+                    <option value="">Toute alerte</option>
+                    <option value="urgent">Urgents (≤14j)</option>
+                    <option value="proche">Proches (≤45j)</option>
+                  </select>
+                  <input type="date" value={filtreDateD} onChange={e => setFiltreDateD(e.target.value)} className={SEL_M} title="Créé depuis le" />
+                  <input type="date" value={filtreDateF} onChange={e => setFiltreDateF(e.target.value)} className={SEL_M} title="Créé jusqu'au" />
+                </div>
+              }
+            />
           </div>
         </div>
       )}

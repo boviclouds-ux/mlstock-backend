@@ -7,7 +7,7 @@ import {
   BadgeCheck, AlertTriangle, Plus, History, Calendar,
   MapPin, QrCode, ScanLine, ShieldCheck, Droplets,
   ChevronRight, FileSearch, Download, ImagePlus,
-  Receipt, FileCheck, CreditCard, Package,
+  Receipt, FileCheck, CreditCard, Package, Building2, ArrowRightLeft,
 } from "lucide-react";
 
 /* ─── Données ──────────────────────────────────────── */
@@ -391,8 +391,14 @@ function ClotureBeneficiaireDrawer({ expedition, onClose, onCloturer, clotureErr
         </div>
 
         {/* Footer */}
-        <div className="px-5 pb-5 pt-3 border-t border-gray-100 shrink-0 flex gap-2">
+        <div className="px-5 pb-5 pt-3 border-t border-gray-100 shrink-0 flex gap-2 flex-wrap">
           <button onClick={onClose} className="px-4 py-2.5 text-sm text-gray-500 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">Fermer</button>
+          {hist.length > 0 && (
+            <button onClick={() => imprimerBLFromHistorique(expedition)}
+              className="flex items-center gap-2 px-4 py-2.5 text-sm font-bold text-blue-600 border border-blue-200 bg-blue-50 rounded-xl hover:bg-blue-100 transition-colors whitespace-nowrap">
+              <Download size={14}/> Imprimer BL
+            </button>
+          )}
           {peutCloturer && (
             <button
               onClick={onCloturer}
@@ -416,22 +422,55 @@ function ClotureBeneficiaireDrawer({ expedition, onClose, onCloturer, clotureErr
 }
 
 /* ─── Modale Nouvelle Commande ──────────────────────── */
-function NouvelleCommandeModal({quota,onClose,onSubmit,articles,articlesLoading,articlesError,uniteName}){
+export function NouvelleCommandeModal({quota,onClose,onSubmit,articles,articlesLoading,articlesError,uniteName,isProxy,unites}){
   const [article,setArticle]=useState(null); const [qte,setQte]=useState(""); const [motif,setMotif]=useState(""); const [done,setDone]=useState(false);
+  const [uniteCibleId,setUniteCibleId]=useState("");
   useEffect(()=>{if(articles.length>0)setArticle(articles[0]);},[articles]);
   const quotaRestant=article?.type==="semence"?quota.semences.alloue-quota.semences.consomme:article?.type==="azote"?quota.azote.alloue-quota.azote.consomme:null;
   const needsDero=quotaRestant!==null&&Number(qte)>quotaRestant;
+  const proxyValide=!isProxy||(isProxy&&uniteCibleId);
+  const canSubmit=Number(qte)&&!done&&proxyValide;
   function changeArticle(label){const f=articles.find(a=>a.label===label);if(f){setArticle(f);setQte("");}}
+  const displayName=isProxy?(unites.find(u=>u._id===uniteCibleId)?.nom??'Coopérative cible'):uniteName??'Mon Unité';
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-[1px] flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e=>e.stopPropagation()} style={{animation:"modalIn .18s ease forwards"}}>
         <div className="px-5 pt-5 pb-4 border-b border-gray-100">
           <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-2.5"><div className="bg-blue-100 p-1.5 rounded-lg"><Send size={14} className="text-blue-600"/></div><div><h2 className="text-sm font-semibold text-gray-900">Nouvelle Demande</h2><p className="text-xs text-gray-400 mt-0.5">{uniteName ?? 'Mon Unité'} → Hub Central</p></div></div>
+            <div className="flex items-center gap-2.5">
+              <div className={`p-1.5 rounded-lg ${isProxy?'bg-teal-100':'bg-blue-100'}`}>
+                {isProxy?<ArrowRightLeft size={14} className="text-teal-600"/>:<Send size={14} className="text-blue-600"/>}
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">Nouvelle Demande</h2>
+                <p className="text-xs text-gray-400 mt-0.5">{displayName} → Hub Central{isProxy&&<span className="ml-1.5 text-[10px] font-bold text-teal-600 bg-teal-50 border border-teal-200 px-1.5 py-0.5 rounded-full">Mode Proxy</span>}</p>
+              </div>
+            </div>
             <button onClick={onClose} className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 p-1.5 rounded-lg transition-colors"><X size={15}/></button>
           </div>
         </div>
         <div className="px-5 py-5 space-y-4">
+
+          {/* Sélecteur Unité Bénéficiaire — visible uniquement en mode proxy */}
+          {isProxy&&(
+            <div>
+              <label className="block text-sm font-semibold text-gray-800 mb-1.5">
+                Unité Bénéficiaire <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <Building2 size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/>
+                <select value={uniteCibleId} onChange={e=>setUniteCibleId(e.target.value)}
+                  className={`w-full appearance-none border rounded-xl pl-9 pr-8 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 transition-colors cursor-pointer
+                    ${uniteCibleId?'border-teal-300 text-gray-800 focus:ring-teal-500':'border-red-200 text-gray-400 focus:ring-teal-500'}`}>
+                  <option value="">— Sélectionner la coopérative cliente —</option>
+                  {(unites??[]).map(u=><option key={u._id} value={u._id}>{u.nom}{u.region?` · ${u.region}`:''}</option>)}
+                </select>
+                <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/>
+              </div>
+              {!uniteCibleId&&<p className="text-[11px] text-red-500 mt-1">Requis — vous saisissez pour le compte d'une coopérative externe.</p>}
+            </div>
+          )}
+
           <div>
             <label className="block text-sm font-semibold text-gray-800 mb-1.5">Article demandé</label>
             <div className="relative">
@@ -465,8 +504,8 @@ function NouvelleCommandeModal({quota,onClose,onSubmit,articles,articlesLoading,
         </div>
         <div className="px-5 pb-5 flex gap-2">
           <button onClick={onClose} className="px-4 py-2.5 text-sm text-gray-500 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">Annuler</button>
-          <button onClick={()=>{setDone(true);setTimeout(()=>{onSubmit({article:article.label,articleId:article.id,qte:Number(qte),unite:article.unite,derogation:needsDero,motif});onClose();},900);}} disabled={!Number(qte)||done}
-            className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-bold rounded-xl transition-all ${done?"bg-emerald-500 text-white":Number(qte)?needsDero?"bg-amber-500 hover:bg-amber-600 text-white":"bg-blue-600 hover:bg-blue-700 text-white shadow-sm":"bg-gray-100 text-gray-400 cursor-not-allowed"}`}>
+          <button onClick={()=>{setDone(true);setTimeout(()=>{onSubmit({article:article.label,articleId:article.id,qte:Number(qte),unite:article.unite,derogation:needsDero,motif,...(isProxy&&uniteCibleId?{uniteCibleId}:{})});onClose();},900);}} disabled={!canSubmit}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-bold rounded-xl transition-all ${done?"bg-emerald-500 text-white":canSubmit?needsDero?"bg-amber-500 hover:bg-amber-600 text-white":isProxy?"bg-teal-600 hover:bg-teal-700 text-white shadow-sm":"bg-blue-600 hover:bg-blue-700 text-white shadow-sm":"bg-gray-100 text-gray-400 cursor-not-allowed"}`}>
             {done?<><BadgeCheck size={15}/>Demande envoyée !</>:needsDero?<><AlertCircle size={14}/>Envoyer avec dérogation</>:<><Send size={14}/>Envoyer la demande</>}
           </button>
         </div>
@@ -508,6 +547,71 @@ function fromApiToCommande(t) {
   };
 }
 
+/* ─── Impression Bon de Commande ───────────────────── */
+function imprimerBC(commande, uniteName) {
+  const date = new Date().toLocaleDateString('fr-FR', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+  const lignesHtml = (commande.articles ?? []).map((a, i) => `
+    <tr>
+      <td style="width:32px;text-align:center;color:#94a3b8">${i + 1}</td>
+      <td><strong>${a.label}</strong></td>
+      <td style="text-align:right;font-weight:700">${Number(a.qte ?? 0).toLocaleString()}</td>
+      <td>${a.unite ?? '—'}</td>
+    </tr>`).join('');
+  const totalQte = (commande.articles ?? []).reduce((s, a) => s + Number(a.qte ?? 0), 0);
+  const statutLabel = commande.statut === 'en_attente' ? 'En attente de validation'
+    : commande.statut === 'approuve' ? 'Approuvé'
+    : commande.statut === 'en_preparation' ? 'En cours de livraison'
+    : commande.statut === 'livre' ? 'Livré / Réceptionné'
+    : commande.statut ?? '—';
+  const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>BC-${commande.id}</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#1a1a1a;padding:15mm 18mm}.hdr{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:14px;border-bottom:3px solid #1e293b;margin-bottom:20px}.logo{font-size:26px;font-weight:900;color:#1e293b;letter-spacing:-1px}.logo span{color:#2563eb}.logo-sub{font-size:10px;color:#64748b;margin-top:3px}.doc-tag{font-size:9px;font-weight:700;letter-spacing:2px;color:#64748b;text-transform:uppercase;text-align:right}.doc-title{font-size:22px;font-weight:900;color:#1e293b;text-align:right;margin:2px 0}.doc-ref{font-size:11px;color:#64748b;text-align:right;font-family:monospace}.meta{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px}.mbox{border:1px solid #e2e8f0;border-radius:8px;padding:12px}.mbox h4{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;margin-bottom:6px}.mbox p{line-height:1.65}table{width:100%;border-collapse:collapse;margin-bottom:22px;font-size:11px}thead tr{background:#1e293b;color:#fff}thead th{padding:9px 10px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:1px;font-weight:700}tbody tr:nth-child(even){background:#f8fafc}tbody td{padding:8px 10px;border-bottom:1px solid #f1f5f9}.tot{background:#1e293b!important;color:#fff!important;font-weight:700}.tot td{color:#fff!important}.sig{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-top:22px}.sbox{border:1px solid #e2e8f0;border-radius:8px;padding:14px;min-height:90px}.sbox h4{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;margin-bottom:3px}.sline{border-top:1px solid #cbd5e1;margin-top:52px}.ftr{margin-top:18px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:9px;color:#94a3b8;display:flex;justify-content:space-between}@media print{body{padding:8mm 10mm}}</style></head>
+<body>
+<div class="hdr"><div><div class="logo">ML<span>APP</span></div><div class="logo-sub">Gestion du Stock de Semences Bovines</div></div><div><div class="doc-tag">Document officiel</div><div class="doc-title">BON DE COMMANDE</div><div class="doc-ref">${commande.id} &nbsp;·&nbsp; ${commande.date ?? date}</div></div></div>
+<div class="meta">
+  <div class="mbox"><h4>Unité Demandeuse</h4><p><strong>${uniteName ?? '—'}</strong></p></div>
+  <div class="mbox"><h4>Destinataire</h4><p><strong>MLAPP — Hub Central</strong></p><p style="font-size:11px;color:#64748b">Stock Central de Semences Bovines</p></div>
+  <div class="mbox"><h4>Date de la demande</h4><p><strong>${commande.date ?? '—'}</strong></p></div>
+  <div class="mbox"><h4>Statut</h4><p><strong>${statutLabel}</strong></p></div>
+</div>
+<table><thead><tr><th>#</th><th>Désignation Article</th><th style="text-align:right">Quantité</th><th>Unité</th></tr></thead>
+<tbody>${lignesHtml}<tr class="tot"><td colspan="2" style="text-align:right;padding-right:12px;font-size:11px">TOTAL DEMANDÉ</td><td style="text-align:right">${totalQte.toLocaleString()}</td><td></td></tr></tbody></table>
+<div class="sig"><div class="sbox"><h4>Responsable Unité</h4><p style="font-size:10px;color:#64748b;margin-top:3px">Signature</p><div class="sline"></div></div><div class="sbox"><h4>Hub Central — Accusé de Réception</h4><p style="font-size:10px;color:#64748b;margin-top:3px">Signature &amp; Cachet</p><div class="sline"></div></div><div class="sbox"><h4>Date</h4><p style="font-size:10px;color:#64748b;margin-top:3px">${commande.date ?? '—'}</p><div class="sline"></div></div></div>
+<div class="ftr"><span>Imprimé le ${date} · MLAPP v2.0</span><span>Réf : ${commande.id}</span></div>
+</body></html>`;
+  const win = window.open('', '_blank', 'width=960,height=720');
+  if (win) { win.document.write(html); win.document.close(); setTimeout(() => { try { win.print(); } catch (_) {} }, 600); }
+}
+
+/* ─── Impression BL depuis historique (côté bénéficiaire) ── */
+function imprimerBLFromHistorique(expedition) {
+  const hist = expedition.historiqueLivraisons ?? [];
+  if (!hist.length) return;
+  const blRef = hist[hist.length - 1]?.referenceBL ?? expedition.id;
+  const date  = new Date().toLocaleDateString('fr-FR', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+  const repMap = {};
+  (expedition.repartGenetique ?? []).forEach(g => { if (g.conteneurSemence) repMap[g.conteneurSemence] = g; });
+  const totalQte = hist.reduce((s, h) => s + (h.quantiteExpediee ?? 0), 0);
+  const couleurStyles = { Rouge:'background:#fee2e2;color:#dc2626', Bleu:'background:#dbeafe;color:#2563eb', Vert:'background:#dcfce7;color:#16a34a', Jaune:'background:#fef9c3;color:#ca8a04' };
+  const lignesHtml = hist.map((h, i) => {
+    const g  = repMap[h.conteneurSemence] ?? {};
+    const cs = couleurStyles[g.couleur];
+    const badge = cs ? `<span style="${cs};display:inline-block;padding:1px 8px;border-radius:99px;font-size:10px;font-weight:600">${g.couleur}</span>` : '—';
+    return `<tr><td style="width:32px;text-align:center;color:#94a3b8">${i + 1}</td><td><strong>${g.taureau ?? '—'}</strong></td><td style="font-family:monospace;font-size:11px">${g.nni ?? '—'}</td><td>${badge}</td><td style="font-family:monospace;font-size:11px">${h.conteneurSemence ?? '—'}</td><td style="text-align:right;font-weight:700">${h.quantiteExpediee ?? 0} doses</td></tr>`;
+  }).join('');
+  const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>${blRef}</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#1a1a1a;padding:15mm 18mm}.hdr{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:14px;border-bottom:3px solid #1e293b;margin-bottom:20px}.logo{font-size:26px;font-weight:900;color:#1e293b;letter-spacing:-1px}.logo span{color:#2563eb}.logo-sub{font-size:10px;color:#64748b;margin-top:3px}.doc-tag{font-size:9px;font-weight:700;letter-spacing:2px;color:#64748b;text-transform:uppercase;text-align:right}.doc-title{font-size:22px;font-weight:900;color:#1e293b;text-align:right;margin:2px 0}.doc-ref{font-size:11px;color:#64748b;text-align:right;font-family:monospace}.meta{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px}.mbox{border:1px solid #e2e8f0;border-radius:8px;padding:12px}.mbox h4{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;margin-bottom:6px}.mbox p{line-height:1.65}table{width:100%;border-collapse:collapse;margin-bottom:22px;font-size:11px}thead tr{background:#1e293b;color:#fff}thead th{padding:9px 10px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:1px;font-weight:700}thead th:last-child{text-align:right}tbody tr:nth-child(even){background:#f8fafc}tbody td{padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:middle}.tot{background:#1e293b!important;color:#fff!important;font-weight:700;font-size:12px}.tot td{color:#fff!important}.sig{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-top:22px}.sbox{border:1px solid #e2e8f0;border-radius:8px;padding:14px;min-height:90px}.sbox h4{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;margin-bottom:3px}.sline{border-top:1px solid #cbd5e1;margin-top:52px}.ftr{margin-top:18px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:9px;color:#94a3b8;display:flex;justify-content:space-between}@media print{body{padding:8mm 10mm}}</style></head>
+<body>
+<div class="hdr"><div><div class="logo">ML<span>APP</span></div><div class="logo-sub">Gestion du Stock de Semences Bovines</div></div><div><div class="doc-tag">Document officiel</div><div class="doc-title">BON DE LIVRAISON</div><div class="doc-ref">${blRef} &nbsp;·&nbsp; ${date}</div></div></div>
+<div class="meta"><div class="mbox"><h4>Expéditeur</h4><p><strong>MLAPP — Magasin Central</strong></p><p style="font-size:11px;color:#64748b">Stock Central de Semences Bovines</p></div><div class="mbox"><h4>Référence Ordre</h4><p><strong style="font-family:monospace">${expedition.id}</strong></p><p style="font-size:11px;color:#64748b">Demande du ${expedition.dateEnvoi}</p></div><div class="mbox"><h4>Total Livré</h4><p><strong>${totalQte} doses</strong></p></div><div class="mbox"><h4>Expéditions</h4><p><strong>${hist.length} bon${hist.length > 1 ? 's' : ''} de livraison</strong></p></div></div>
+<table><thead><tr><th>#</th><th>Taureau / Race</th><th>NNI</th><th>Couleur Paillette</th><th>Cuve d'Origine</th><th style="text-align:right">Qté Livrée</th></tr></thead>
+<tbody>${lignesHtml}<tr class="tot"><td colspan="5" style="text-align:right;padding-right:12px;font-size:11px">TOTAL LIVRÉ</td><td style="text-align:right">${totalQte} doses</td></tr></tbody></table>
+<div class="sig"><div class="sbox"><h4>Magasinier Central</h4><p style="font-size:10px;color:#64748b;margin-top:3px">Nom &amp; Signature</p><div class="sline"></div></div><div class="sbox"><h4>Réceptionnaire</h4><p style="font-size:10px;color:#64748b;margin-top:3px">Signature Unité</p><div class="sline"></div></div><div class="sbox"><h4>Cachet &amp; Date</h4><p style="font-size:10px;color:#64748b;margin-top:3px">Cachet officiel</p><div class="sline"></div></div></div>
+<div class="ftr"><span>Généré le ${date} · MLAPP v2.0</span><span>Ce BL engage la responsabilité du transporteur à la signature.</span></div>
+</body></html>`;
+  const win = window.open('', '_blank', 'width=960,height=720');
+  if (win) { win.document.write(html); win.document.close(); setTimeout(() => { try { win.print(); } catch (_) {} }, 600); }
+}
+
 /* ══════════════════════════════════════════════════════
    COMPOSANT PRINCIPAL
 ══════════════════════════════════════════════════════ */
@@ -525,6 +629,9 @@ export default function EspaceCooperative({ user }){
   const [articles,setArticles]=useState([]);
   const [articlesLoading,setArticlesLoading]=useState(false);
   const [articlesError,setArticlesError]=useState(null);
+  const [proxyUnites,setProxyUnites]=useState([]);
+
+  const isProxy = Boolean(user?.permissions?.canActAsProxy || user?.permissions?.isAdmin);
 
   // Type normalisé pour les contrôles de quota (quota.semences / quota.azote)
   const CAT_TYPE = { Semences:'semence', Azote:'azote' };
@@ -589,13 +696,23 @@ export default function EspaceCooperative({ user }){
     api.get("/api/articles?actif=true")
       .then(data=>setArticles(data.map(a=>({
         id:    a._id,
-        label: a.designation,                         // désignation lisible
-        type:  CAT_TYPE[a.categorie] ?? 'materiel',   // semence | azote | materiel
-        unite: a.uniteMesure,                         // Dose, L, U…
+        label: a.designation,
+        type:  CAT_TYPE[a.categorie] ?? 'materiel',
+        unite: a.uniteMesure,
       }))))
       .catch(err=>setArticlesError(err.message))
       .finally(()=>setArticlesLoading(false));
   },[]);
+
+  /* ─ Unités disponibles pour le mode proxy ──────────────
+     Chargé une seule fois si l'agent possède canActAsProxy.
+  ─────────────────────────────────────────────────────── */
+  useEffect(()=>{
+    if(!isProxy) return;
+    api.get("/api/unites?actif=true&limit=200")
+      .then(data=>setProxyUnites(Array.isArray(data)?data:[]))
+      .catch(()=>setProxyUnites([]));
+  },[isProxy]);
 
   const [clotureTx,    setClotureTx]    = useState(null);
   const [clotureError, setClotureError] = useState(null);
@@ -659,7 +776,7 @@ export default function EspaceCooperative({ user }){
     }
   }
 
-  async function nouvelleCommande({ article, articleId, qte, unite, derogation, motif }) {
+  async function nouvelleCommande({ article, articleId, qte, unite, derogation, motif, uniteCibleId }) {
     setCommandeError(null);
     try {
       await api.post("/api/transactions", {
@@ -667,6 +784,7 @@ export default function EspaceCooperative({ user }){
         statut: "En attente",
         motif:  motif || (derogation ? "Dérogation — demande hors quota" : ""),
         lignes: [{ article: articleId, quantite: qte }],
+        ...(uniteCibleId ? { uniteCible: uniteCibleId } : {}),
       });
       // Re-fetch depuis l'API pour avoir la vraie référence et les données peuplées
       await fetchCommandes();
@@ -686,7 +804,7 @@ export default function EspaceCooperative({ user }){
       {recModal&&<ReceptionModal expedition={recModal} onClose={()=>setRecModal(null)} onValider={validerReception}/>}
       {ficheModal&&<FicheTechniqueModal expedition={ficheModal} onClose={()=>setFicheModal(null)}/>}
       {clotureTx&&<ClotureBeneficiaireDrawer expedition={clotureTx} onClose={()=>{setClotureTx(null);setClotureError(null);setClotureDone(false);}} onCloturer={cloturer} clotureError={clotureError} clotureDone={clotureDone}/>}
-      {showCommande&&<NouvelleCommandeModal quota={quota} onClose={()=>setShowCommande(false)} onSubmit={nouvelleCommande} articles={articles} articlesLoading={articlesLoading} articlesError={articlesError} uniteName={user?.unite}/>}
+      {showCommande&&<NouvelleCommandeModal quota={quota} onClose={()=>setShowCommande(false)} onSubmit={nouvelleCommande} articles={articles} articlesLoading={articlesLoading} articlesError={articlesError} uniteName={user?.unite} isProxy={isProxy} unites={proxyUnites}/>}
 
       {/* Toast succès API */}
       {commandeOk && (
@@ -843,7 +961,13 @@ export default function EspaceCooperative({ user }){
                           </div>
                         )}
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                        {exp.historiqueLivraisons.length > 0 && (
+                          <button onClick={() => imprimerBLFromHistorique(exp)}
+                            className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2.5 rounded-xl bg-white border border-gray-200 text-gray-600 hover:border-blue-300 hover:text-blue-600 hover:bg-blue-50 transition-all whitespace-nowrap">
+                            <Download size={12}/> BL
+                          </button>
+                        )}
                         <button
                           onClick={() => { setClotureError(null); setClotureDone(false); setClotureTx(exp); }}
                           className={`flex items-center gap-2 text-xs font-bold px-4 py-2.5 rounded-xl transition-colors whitespace-nowrap ${
@@ -953,7 +1077,15 @@ export default function EspaceCooperative({ user }){
                             <td className="px-4 py-3.5"><span className="text-xs text-gray-500 flex items-center gap-1"><Calendar size={10} className="text-gray-300"/>{cmd.date}</span></td>
                             <td className="px-4 py-3.5 max-w-[220px]">{cmd.articles.map((a,i)=><div key={i} className="flex items-center gap-1 text-xs text-gray-700">{articleIcon(a.type,10)}<span className="font-semibold tabular-nums">{a.qte}</span><span className="text-gray-400 mr-0.5">{a.unite}</span><span className="truncate">{a.label}</span></div>)}</td>
                             <td className="px-4 py-3.5"><span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${sm.bg} ${sm.text} ${sm.border}`}><span className={`w-1.5 h-1.5 rounded-full ${sm.dot} ${sm.pulse?"animate-pulse":""}`}/>{sm.label}</span></td>
-                            <td className="px-4 py-3.5">{cmd.derogation&&<span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full"><AlertTriangle size={9}/>Dérogation</span>}</td>
+                            <td className="px-4 py-3.5">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {cmd.derogation&&<span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full"><AlertTriangle size={9}/>Dérogation</span>}
+                                <button onClick={() => imprimerBC(cmd, user?.unite ?? user?.nom ?? '—')}
+                                  className="flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 transition-all whitespace-nowrap">
+                                  <Download size={9}/> BC
+                                </button>
+                              </div>
+                            </td>
                           </tr>
                         );
                       })}
@@ -988,7 +1120,15 @@ export default function EspaceCooperative({ user }){
                             <td className="px-4 py-3"><span className="text-xs text-gray-400 flex items-center gap-1"><Calendar size={10}/>{cmd.date}</span></td>
                             <td className="px-4 py-3 max-w-[220px]">{cmd.articles.map((a,i)=><div key={i} className="flex items-center gap-1 text-xs text-gray-500">{articleIcon(a.type,10)}<span className="font-semibold tabular-nums">{a.qte}</span><span className="text-gray-400 mr-0.5">{a.unite}</span><span className="truncate">{a.label}</span></div>)}</td>
                             <td className="px-4 py-3"><span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${sm.bg} ${sm.text} ${sm.border}`}><span className={`w-1.5 h-1.5 rounded-full ${sm.dot}`}/>{sm.label}</span></td>
-                            <td className="px-4 py-3">{cmd.derogation&&<span className="text-[10px] text-amber-600">Dérogation</span>}</td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {cmd.derogation&&<span className="text-[10px] text-amber-600">Dérogation</span>}
+                                <button onClick={() => imprimerBC(cmd, user?.unite ?? user?.nom ?? '—')}
+                                  className="flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 transition-all whitespace-nowrap">
+                                  <Download size={9}/> BC
+                                </button>
+                              </div>
+                            </td>
                           </tr>
                         );
                       })}

@@ -185,7 +185,7 @@ function AppLayout({ user, onLogout }) {
             <Route path="/cooperative"       element={guard(pDemand, <EspaceCooperative user={user} />)} />
 
             {/* ── Logistique & Stock (Magasinier + Admin) ────────── */}
-            <Route path="/approvisionnements" element={guard(pOps, <ApprovisionnementsFournisseurs userRole={user?.roleKey} />)} />
+            <Route path="/approvisionnements" element={guard(p => Boolean(p?.isAdmin || p?.canDispatch || p?.canManageAppro), <ApprovisionnementsFournisseurs userRole={user?.roleKey} canManageAppro={!!user?.permissions?.canManageAppro} />)} />
             <Route path="/receptions"         element={guard(pOps, <ReceptionsImportations />)} />
             <Route path="/magasinier"         element={guard(pOps, <MagasinierCentral userRole={user?.roleKey} />)} />
             <Route path="/expeditions"        element={guard(pOps, <PreparationsExpeditions />)} />
@@ -233,18 +233,27 @@ export default function App() {
 
   /* ─ Restauration de session depuis localStorage ──────── */
   useEffect(() => {
-    const token     = localStorage.getItem(TOKEN_KEY);
-    const savedUser = localStorage.getItem(USER_KEY);
-    if (!token || !savedUser) return;
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) return;
 
-    try {
-      const userData = JSON.parse(savedUser);
-      setUser(userData);
-      setIsAuthenticated(true);
-    } catch {
-      localStorage.removeItem(TOKEN_KEY);
-      localStorage.removeItem(USER_KEY);
-    }
+    // Re-valide le token en demandant les données fraîches depuis la DB.
+    // Cela empêche qu'un utilisateur précédent (session périmée) soit affiché.
+    fetch(`${window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+      ? 'http://localhost:5000'
+      : 'https://mlstock-backend-2.onrender.com'}/api/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(apiUser => {
+        const frontendUser = mapApiUser(apiUser);
+        localStorage.setItem(USER_KEY, JSON.stringify(frontendUser));
+        setUser(frontendUser);
+        setIsAuthenticated(true);
+      })
+      .catch(() => {
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(USER_KEY);
+      });
   }, []);
 
   /* ─ Connexion ────────────────────────────────────────── */
@@ -260,6 +269,7 @@ export default function App() {
   function handleLogout() {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
+    sessionStorage.clear();
     setUser(null);
     setIsAuthenticated(false);
     navigate('/login', { replace: true });

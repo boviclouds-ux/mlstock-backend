@@ -79,10 +79,12 @@ router.post('/', protect, requireAdmin, async (req, res) => {
       entite:      entite || 'Maroc Lait — Hub Central',
       statut:      'Actif',
       permissions: {
-        canDemand:   permissions.canDemand   ?? false,
-        canReceive:  permissions.canReceive  ?? false,
-        canDispatch: permissions.canDispatch ?? false,
-        isAdmin:     permissions.isAdmin     ?? false,
+        canDemand:      permissions.canDemand      ?? false,
+        canReceive:     permissions.canReceive     ?? false,
+        canDispatch:    permissions.canDispatch    ?? false,
+        canManageAppro: permissions.canManageAppro ?? false,
+        isAdmin:        permissions.isAdmin        ?? false,
+        canActAsProxy:  permissions.canActAsProxy  ?? false,
       },
     });
     res.status(201).json(toUserDTO(user));
@@ -140,12 +142,15 @@ router.delete('/demandes/:id', protect, requireAdmin, async (req, res) => {
 ═══════════════════════════════════════════════════════════ */
 router.patch('/:id/permissions', protect, requireAdmin, async (req, res) => {
   try {
-    const { canDemand, canReceive, canDispatch, isAdmin } = req.body;
+    const { canDemand, canReceive, canDispatch, canManageAppro, isAdmin, canActAsProxy, entite } = req.body;
     const patch = {};
-    if (canDemand   !== undefined) patch['permissions.canDemand']   = canDemand;
-    if (canReceive  !== undefined) patch['permissions.canReceive']  = canReceive;
-    if (canDispatch !== undefined) patch['permissions.canDispatch'] = canDispatch;
-    if (isAdmin     !== undefined) patch['permissions.isAdmin']     = isAdmin;
+    if (canDemand      !== undefined) patch['permissions.canDemand']      = canDemand;
+    if (canReceive     !== undefined) patch['permissions.canReceive']     = canReceive;
+    if (canDispatch    !== undefined) patch['permissions.canDispatch']    = canDispatch;
+    if (canManageAppro !== undefined) patch['permissions.canManageAppro'] = canManageAppro;
+    if (isAdmin        !== undefined) patch['permissions.isAdmin']        = isAdmin;
+    if (canActAsProxy  !== undefined) patch['permissions.canActAsProxy']  = canActAsProxy;
+    if (entite         !== undefined) patch['entite']                     = entite;
 
     const user = await User.findByIdAndUpdate(
       req.params.id,
@@ -153,7 +158,7 @@ router.patch('/:id/permissions', protect, requireAdmin, async (req, res) => {
       { new: true, runValidators: true }
     );
     if (!user) return res.status(404).json({ message: 'Utilisateur introuvable.' });
-    res.json({ id: user._id, permissions: user.permissions });
+    res.json({ id: user._id, permissions: user.permissions, entite: user.entite });
   } catch (err) {
     console.error('[PATCH /api/users/:id/permissions]', err);
     res.status(500).json({ message: 'Erreur serveur.' });

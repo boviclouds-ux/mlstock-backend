@@ -7,7 +7,22 @@ function validationMessage(err) {
 /* GET /api/cuves */
 const getAllCuves = async (req, res) => {
   try {
-    const cuves = await Cuve.find().sort({ nom: 1 });
+    const filter = {};
+    if (req.query.statutPret) {
+      if (req.query.statutPret === 'Disponible') {
+        // Les anciens documents n'ont pas le champ — ils sont traités comme 'Disponible'.
+        filter.$or = [
+          { statutPret: 'Disponible' },
+          { statutPret: { $exists: false } },
+          { statutPret: null },
+        ];
+      } else {
+        filter.statutPret = req.query.statutPret;
+      }
+    }
+    const cuves = await Cuve.find(filter)
+      .sort({ nom: 1 })
+      .populate('localisationActuelle', 'nom region');
     res.status(200).json(cuves);
   } catch (err) {
     console.error('[Cuve] getAllCuves :', err.message);

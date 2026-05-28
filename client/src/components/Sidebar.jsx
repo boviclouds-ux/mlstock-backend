@@ -27,7 +27,7 @@ const NAV_GROUPS = [
   ],
   // Bloc 3 : Logistique & Stock (Magasinier + Admin)
   [
-    { label: 'Approvisionnements',         path: '/approvisionnements', icon: Truck,         canSee: isOps },
+    { label: 'Approvisionnements',         path: '/approvisionnements', icon: Truck,         canSee: p => Boolean(p.isAdmin || p.canDispatch || p.canManageAppro) },
     { label: 'Réceptions & Importations',  path: '/receptions',         icon: Inbox,         canSee: isOps },
     { label: 'Inventaire Central',         path: '/magasinier',         icon: ClipboardList, canSee: isOps },
     { label: 'Préparations & Expéditions', path: '/expeditions',        icon: Send,          canSee: isOps },

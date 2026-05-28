@@ -1,13 +1,15 @@
 // ConfigurationGenerale.jsx — Administration Système · Section 5
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "./lib/api.js";
+import { METHODE_LABELS, METHODE_BADGE } from "./lib/inventoryValuation.js";
 import {
   Archive, RefreshCw, Database, ShieldCheck,
   Bell, Wrench, AlertTriangle, Download, X,
   CheckCircle, Clock, Lock, ChevronDown, Zap,
-  Save, WifiOff,
+  Save, WifiOff, TrendingUp, FileText, Image,
 } from "lucide-react";
+import { clearBrandingCache } from "./lib/pdfBranding.js";
 
 /* ══════════════════════════════════════════════════════════
    TOGGLE
@@ -180,6 +182,71 @@ export default function ConfigurationGenerale({ userRole }) {
 
   /* ─ Modal ─ */
   const [modalAction,     setModalAction]     = useState(null);
+
+  /* ─ Valorisation financière ─ */
+  const [methodeValo,     setMethodeValo]     = useState('CUMP');
+  const [valoLoading,     setValoLoading]     = useState(false);
+  const [valoSaved,       setValoSaved]       = useState(false);
+
+  /* ─ Marque Blanche / PDF ─ */
+  const [pdfNom,          setPdfNom]          = useState('');
+  const [pdfSlogan,       setPdfSlogan]       = useState('');
+  const [pdfPiedDePage,   setPdfPiedDePage]   = useState('');
+  const [pdfLogoUrl,      setPdfLogoUrl]      = useState('');
+  const [pdfLoading,      setPdfLoading]      = useState(false);
+  const [pdfSaved,        setPdfSaved]        = useState(false);
+
+  useEffect(() => {
+    api.get('/api/configuration')
+      .then(cfg => {
+        if (cfg?.methodeValorisation) setMethodeValo(cfg.methodeValorisation);
+        if (cfg?.nomEntreprise)       setPdfNom(cfg.nomEntreprise);
+        if (cfg?.slogan)              setPdfSlogan(cfg.slogan);
+        if (cfg?.piedDePage)          setPdfPiedDePage(cfg.piedDePage);
+        if (cfg?.logoUrl)             setPdfLogoUrl(cfg.logoUrl);
+      })
+      .catch(() => {});
+  }, []);
+
+  async function handleSaveValo() {
+    setValoLoading(true);
+    try {
+      await api.put('/api/configuration', { methodeValorisation: methodeValo });
+      setValoSaved(true);
+      setTimeout(() => setValoSaved(false), 3000);
+    } catch (err) {
+      showFeedback(err.message ?? 'Erreur lors de la sauvegarde.', 'error');
+    } finally {
+      setValoLoading(false);
+    }
+  }
+
+  async function handleSavePdf() {
+    setPdfLoading(true);
+    try {
+      await api.put('/api/configuration', {
+        nomEntreprise: pdfNom.trim(),
+        slogan:        pdfSlogan.trim(),
+        piedDePage:    pdfPiedDePage.trim(),
+        logoUrl:       pdfLogoUrl.trim(),
+      });
+      clearBrandingCache();
+      setPdfSaved(true);
+      setTimeout(() => setPdfSaved(false), 3000);
+    } catch (err) {
+      showFeedback(err.message ?? 'Erreur lors de la sauvegarde.', 'error');
+    } finally {
+      setPdfLoading(false);
+    }
+  }
+
+  function handleLogoFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => setPdfLogoUrl(ev.target.result ?? '');
+    reader.readAsDataURL(file);
+  }
 
   /* ─ Handlers ─ */
   function handleBackup() {
@@ -467,6 +534,172 @@ export default function ConfigurationGenerale({ userRole }) {
           </button>
         </Card>
       </div>
+
+      {/* ─ CARTE FINANCE : Valorisation de l'Inventaire ──── */}
+      <Card
+        icon={TrendingUp}
+        iconBg="bg-indigo-500/15 border border-indigo-500/30 text-indigo-400"
+        title="Finance — Méthode de Valorisation de l'Inventaire"
+        subtitle="Règle comptable appliquée au calcul du coût du stock (CUMP / FIFO / LIFO)"
+      >
+        {/* Sélecteur méthode */}
+        <div>
+          <label className={lbl}>Méthode active de valorisation</label>
+          <div className="relative">
+            <select
+              value={methodeValo}
+              onChange={e => { setMethodeValo(e.target.value); setValoSaved(false); }}
+              className={`${inpDark} appearance-none`}
+            >
+              {Object.entries(METHODE_LABELS).map(([k, v]) => (
+                <option key={k} value={k} className="bg-slate-800">{v}</option>
+              ))}
+            </select>
+            <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none"/>
+          </div>
+        </div>
+
+        {/* Explication de la méthode choisie */}
+        <div className={`flex items-start gap-2.5 rounded-xl px-3 py-2.5 border ${METHODE_BADGE[methodeValo]?.bg ?? 'bg-slate-900/50'} ${METHODE_BADGE[methodeValo]?.border ?? 'border-slate-700'}`}>
+          <TrendingUp size={13} className={`shrink-0 mt-0.5 ${METHODE_BADGE[methodeValo]?.text ?? 'text-slate-400'}`}/>
+          <p className={`text-[11px] leading-relaxed font-medium ${METHODE_BADGE[methodeValo]?.text ?? 'text-slate-300'}`}>
+            {methodeValo === 'CUMP' && <>Tous les lots d'un article partagent le même coût unitaire moyen pondéré. Méthode la plus simple et la plus répandue.</>}
+            {methodeValo === 'FIFO' && <>Les lots les plus anciens sont supposés sortis en premier. Le stock restant est valorisé aux prix des acquisitions les plus récentes — favorise la valeur de marché actuelle.</>}
+            {methodeValo === 'LIFO' && <>Les lots les plus récents sont supposés sortis en premier. Le stock restant est valorisé aux prix historiques les plus anciens — réduit l'impact inflationniste sur le résultat.</>}
+          </p>
+        </div>
+
+        {/* Impact comptable */}
+        <div className="grid grid-cols-3 gap-2 text-center">
+          {[
+            { m: 'CUMP', label: 'Coût moyen',    detail: 'Simplicité comptable' },
+            { m: 'FIFO', label: 'Coût récent',   detail: 'Valeur bilan élevée en inflation' },
+            { m: 'LIFO', label: 'Coût historique', detail: 'Résultat fiscal optimisé' },
+          ].map(({ m, label, detail }) => (
+            <div key={m}
+              onClick={() => { setMethodeValo(m); setValoSaved(false); }}
+              className={`cursor-pointer rounded-xl px-2 py-2.5 border transition-all
+                ${methodeValo === m
+                  ? `${METHODE_BADGE[m].bg} ${METHODE_BADGE[m].border} ring-1 ring-offset-0 ${METHODE_BADGE[m].border}`
+                  : 'bg-slate-900/40 border-slate-700 hover:border-slate-500'}`}>
+              <p className={`text-xs font-bold ${methodeValo === m ? METHODE_BADGE[m].text : 'text-slate-300'}`}>{m}</p>
+              <p className={`text-[10px] font-semibold mt-0.5 ${methodeValo === m ? METHODE_BADGE[m].text : 'text-slate-400'}`}>{label}</p>
+              <p className="text-[9px] text-slate-500 mt-0.5 leading-tight">{detail}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Bouton Sauvegarder */}
+        <button
+          onClick={handleSaveValo}
+          disabled={valoLoading}
+          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white text-xs font-bold transition-all"
+        >
+          {valoLoading ? (
+            <><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"/>Enregistrement…</>
+          ) : valoSaved ? (
+            <><CheckCircle size={13}/> Méthode enregistrée !</>
+          ) : (
+            <><Save size={13}/> Appliquer la méthode {methodeValo}</>
+          )}
+        </button>
+        <p className="text-[10px] text-slate-600 -mt-1 text-center">
+          La modification est appliquée immédiatement à toutes les vues de valorisation de l'inventaire.
+        </p>
+      </Card>
+
+      {/* ─ CARTE PDF : Personnalisation des Documents ──────── */}
+      <Card
+        icon={FileText}
+        iconBg="bg-rose-500/15 border border-rose-500/30 text-rose-400"
+        title="Personnalisation des Documents (PDF)"
+        subtitle="Marque blanche — en-tête et pied de page de tous les exports"
+      >
+        {/* Aperçu logo */}
+        {pdfLogoUrl && (
+          <div className="flex items-center gap-3 bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3">
+            <img src={pdfLogoUrl} alt="Logo" className="max-h-12 max-w-[160px] object-contain rounded" />
+            <button onClick={() => setPdfLogoUrl('')}
+              className="ml-auto text-slate-500 hover:text-red-400 transition-colors">
+              <X size={14}/>
+            </button>
+          </div>
+        )}
+
+        {/* Upload ou URL logo */}
+        <div>
+          <label className={lbl}>Logo (URL ou fichier)</label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={pdfLogoUrl}
+              onChange={e => setPdfLogoUrl(e.target.value)}
+              placeholder="https://… ou laisser vide"
+              className={`${inpDark} flex-1`}
+            />
+            <label className="shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-slate-700/60 border border-slate-600 text-slate-300 text-xs font-semibold cursor-pointer hover:bg-slate-600 transition-all">
+              <Image size={13}/> Importer
+              <input type="file" accept="image/*" className="hidden" onChange={handleLogoFile} />
+            </label>
+          </div>
+          <p className="text-[10px] text-slate-600 mt-1">Formats acceptés : PNG, JPG, SVG · Converti en Base64 automatiquement</p>
+        </div>
+
+        {/* Nom entreprise */}
+        <div>
+          <label className={lbl}>Nom de l'entreprise</label>
+          <input
+            type="text"
+            value={pdfNom}
+            onChange={e => setPdfNom(e.target.value)}
+            placeholder="ex : Maroc Lait"
+            className={inpDark}
+          />
+        </div>
+
+        {/* Slogan */}
+        <div>
+          <label className={lbl}>Slogan / Sous-titre</label>
+          <input
+            type="text"
+            value={pdfSlogan}
+            onChange={e => setPdfSlogan(e.target.value)}
+            placeholder="ex : Hub Central National · Agadir"
+            className={inpDark}
+          />
+        </div>
+
+        {/* Pied de page */}
+        <div>
+          <label className={lbl}>Pied de page (mentions légales, RC, IF…)</label>
+          <textarea
+            rows={3}
+            value={pdfPiedDePage}
+            onChange={e => setPdfPiedDePage(e.target.value)}
+            placeholder="ex : RC : 12345 · IF : 67890 · Tél : +212 5XX XXX XXX"
+            className={`${inpDark} resize-none leading-relaxed`}
+          />
+          <p className="text-[10px] text-slate-600 mt-1">Affiché en bas à droite de tous les documents exportés (BL, Bon de Décharge, Bon de Retrait).</p>
+        </div>
+
+        {/* Bouton sauvegarder */}
+        <button
+          onClick={handleSavePdf}
+          disabled={pdfLoading}
+          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-60 text-white text-xs font-bold transition-all"
+        >
+          {pdfLoading ? (
+            <><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"/>Enregistrement…</>
+          ) : pdfSaved ? (
+            <><CheckCircle size={13}/> Configuration enregistrée !</>
+          ) : (
+            <><Save size={13}/> Appliquer la personnalisation</>
+          )}
+        </button>
+        <p className="text-[10px] text-slate-600 -mt-1 text-center">
+          Appliqué immédiatement sur tous les prochains exports PDF.
+        </p>
+      </Card>
 
       {/* Modal double validation */}
       {modalAction && (

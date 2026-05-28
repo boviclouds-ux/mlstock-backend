@@ -30,7 +30,10 @@
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\aitch\\\\OneDrive\\\\Desktop\\\\ml\\\\mlstock-backend\\\\mlstock-backend\" -Directory)",
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\aitch\\\\OneDrive\\\\Desktop\\\\ml\\\\mlstock-backend\\\\mlstock-backend\\\\client\\\\src\" -Recurse)",
       "Bash(Select-Object FullName, PSIsContainer)",
-      "Bash(Sort-Object FullName)"
+      "Bash(Sort-Object FullName)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\aitch\\\\OneDrive\\\\Desktop\\\\ml\\\\mlstock-backend\\\\mlstock-backend\\\\client\\\\src\\\\\" -Filter \"*.jsx\" -Recurse | Select-Object FullName)",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\aitch\\\\OneDrive\\\\Desktop\\\\ml\\\\mlstock-backend\\\\mlstock-backend\\\\client\\\\src\\\\\" -Recurse | Where-Object {$_.Name -match \"jsx$\"} | Select-Object FullName)",
+      "Bash(Select-Object Name)"
     ]
   }
 }

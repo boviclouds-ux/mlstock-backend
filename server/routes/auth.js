@@ -1,6 +1,7 @@
 const express = require('express');
 const jwt     = require('jsonwebtoken');
 const User    = require('../models/User');
+const { protect } = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
@@ -130,6 +131,28 @@ router.post('/login', async (req, res) => {
     console.error('[login]', err);
     res.status(500).json({ message: 'Erreur serveur lors de la connexion.' });
   }
+});
+
+/* ═══════════════════════════════════════════════════════════
+   GET /api/auth/me
+   Retourne les données fraîches de l'utilisateur connecté
+   (rechargées depuis la DB par protect()).
+   Utilisé au démarrage de l'app pour invalider les sessions
+   périmées stockées en localStorage.
+═══════════════════════════════════════════════════════════ */
+router.get('/me', protect, (req, res) => {
+  const u = req.user;
+  res.json({
+    id:                u._id,
+    prenom:            u.prenom,
+    nom:               u.nom,
+    email:             u.email,
+    entite:            u.entite,
+    statut:            u.statut,
+    mfa:               u.mfa,
+    derniereConnexion: u.derniereConnexion,
+    permissions:       u.permissions,
+  });
 });
 
 module.exports = router;
