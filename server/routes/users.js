@@ -3,6 +3,21 @@ const router  = express.Router();
 const { protect, requireAdmin } = require('../middleware/authMiddleware');
 const User = require('../models/User');
 
+/* ─── Sérialisation des permissions ─────────────────────────
+   Destructuration explicite pour éviter que le sous-document
+   Mongoose soit sérialisé comme {} (document DB partiel).
+─────────────────────────────────────────────────────────── */
+function serializePermissions(p) {
+  return {
+    canDemand:      Boolean(p?.canDemand),
+    canReceive:     Boolean(p?.canReceive),
+    canDispatch:    Boolean(p?.canDispatch),
+    canManageAppro: Boolean(p?.canManageAppro),
+    isAdmin:        Boolean(p?.isAdmin),
+    canActAsProxy:  Boolean(p?.canActAsProxy),
+  };
+}
+
 /* Formate un objet User Mongoose → format attendu par le frontend */
 function toUserDTO(u) {
   return {
@@ -11,7 +26,7 @@ function toUserDTO(u) {
     nom:               u.nom,
     email:             u.email,
     entite:            u.entite,
-    permissions:       u.permissions,
+    permissions:       serializePermissions(u.permissions),
     derniereConnexion: u.derniereConnexion
       ? u.derniereConnexion.toISOString().replace('T', ' ').slice(0, 16)
       : null,
@@ -87,7 +102,7 @@ router.post('/', protect, requireAdmin, async (req, res) => {
         canActAsProxy:  permissions.canActAsProxy  ?? false,
       },
     });
-    res.status(201).json(toUserDTO(user));
+    res.status(201).json({ ...toUserDTO(user), tempPassword: tempPwd });
   } catch (err) {
     if (err.code === 11000) {
       return res.status(409).json({ message: 'Cet email est déjà utilisé.' });

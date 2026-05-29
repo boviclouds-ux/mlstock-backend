@@ -22,9 +22,12 @@ export default function Login({ onLogin }) {
     setLoading(true);
     try {
       const data = await api.post("/api/auth/login", { email: email.trim().toLowerCase(), password });
+      if (!data?.token || !data?.user) {
+        throw new Error("Réponse inattendue du serveur. Réessayez dans quelques secondes.");
+      }
       onLogin(data.token, data.user);
     } catch (err) {
-      setError(err.message || "Identifiants incorrects.");
+      setError(err.message || "Identifiants incorrects ou serveur indisponible.");
     } finally {
       setLoading(false);
     }

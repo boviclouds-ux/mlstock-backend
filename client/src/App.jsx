@@ -233,9 +233,10 @@ export default function App() {
 
     // Re-valide le token en demandant les données fraîches depuis la DB.
     // Cela empêche qu'un utilisateur précédent (session périmée) soit affiché.
-    fetch(`${window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-      ? 'http://localhost:5000'
-      : 'https://mlstock-backend-2.onrender.com'}/api/auth/me`, {
+    const baseUrl = (import.meta.env.VITE_API_URL ?? '').trim()
+      || ((window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+          ? 'http://localhost:5000' : '');
+    fetch(`${baseUrl}/api/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(r => r.ok ? r.json() : Promise.reject())
@@ -253,6 +254,7 @@ export default function App() {
 
   /* ─ Connexion ────────────────────────────────────────── */
   function handleLogin(token, apiUser) {
+    if (!token || !apiUser) return;   // garde : données manquantes → ne pas écraser l'état
     const frontendUser = mapApiUser(apiUser);
     localStorage.setItem(TOKEN_KEY, token);
     localStorage.setItem(USER_KEY,  JSON.stringify(frontendUser));

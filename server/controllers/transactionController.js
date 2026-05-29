@@ -61,8 +61,9 @@ function hasProxyRight(user) {
 ─────────────────────────────────────────────────────────────── */
 async function resolveUniteId(entite) {
   if (!entite) return null;
+  // Correspondance exacte (insensible à la casse) — pas de regex pour éviter le ReDoS
   const unite = await Unite.findOne(
-    { nom: { $regex: new RegExp(`^${entite}$`, 'i') }, actif: true }
+    { nom: new RegExp(`^${entite.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'), actif: true }
   ).select('_id').lean();
   return unite?._id ?? null;
 }
@@ -346,7 +347,7 @@ const updateTransactionStatut = async (req, res) => {
     }
 
     const updateData = { statut };
-    if (statut === 'En attente' && Array.isArray(req.body.repartGenetique) && req.body.repartGenetique.length > 0) {
+    if (statut === 'Validée_BE' && Array.isArray(req.body.repartGenetique) && req.body.repartGenetique.length > 0) {
       updateData.repartGenetique = req.body.repartGenetique;
     }
 
@@ -371,7 +372,10 @@ const updateTransactionStatut = async (req, res) => {
               locked:        false,
             }).sort({ createdAt: -1 });
             if (!dotation) return;
-            const newConsomme = dotation.consomme + ligne.quantite;
+            // Utilise la quantité réellement livrée (historique) et non la quantité demandée
+            const qteReellementLivree = transaction.historiqueLivraisons
+              .reduce((s, h) => s + (h.quantiteExpediee ?? 0), 0);
+            const newConsomme = dotation.consomme + qteReellementLivree;
             const pct         = dotation.alloue > 0 ? (newConsomme / dotation.alloue) * 100 : 0;
             const newStatut   = pct >= 90 ? 'critique' : pct >= 75 ? 'alerte' : 'normal';
             await Dotation.findByIdAndUpdate(dotation._id, {
@@ -837,6 +841,9 @@ const clotureBeneficiaire = async (req, res) => {
         if (uniteName) {
           const coop = await Cooperative.findOne({ nom: uniteName }).lean();
           if (coop) {
+            // Quantité réellement livrée (somme des bons de livraison)
+            const qteReellementLivree = tx.historiqueLivraisons
+              .reduce((s, h) => s + (h.quantiteExpediee ?? 0), 0);
             await Promise.all(updated.lignes.map(async ligne => {
               if (!ligne.article?._id) return;
               const dotation = await Dotation.findOne({
@@ -845,7 +852,7 @@ const clotureBeneficiaire = async (req, res) => {
                 locked:        false,
               }).sort({ createdAt: -1 });
               if (!dotation) return;
-              const newConsomme = dotation.consomme + ligne.quantite;
+              const newConsomme = dotation.consomme + qteReellementLivree;
               const pct         = dotation.alloue > 0 ? (newConsomme / dotation.alloue) * 100 : 0;
               const newStatut   = pct >= 90 ? 'critique' : pct >= 75 ? 'alerte' : 'normal';
               await Dotation.findByIdAndUpdate(dotation._id, {

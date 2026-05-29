@@ -1,6 +1,6 @@
 const express       = require('express');
 const router        = express.Router();
-const { protect }   = require('../middleware/authMiddleware');
+const { protect, requireAdmin } = require('../middleware/authMiddleware');
 const Configuration = require('../models/Configuration');
 const Lot           = require('../models/Lot');
 const { calculateAllArticlesValuation } = require('../services/inventoryValuation');
@@ -24,7 +24,7 @@ router.get('/', protect, async (req, res) => {
    Met à jour un ou plusieurs champs de la configuration.
    Body : { methodeValorisation?, campagneActive?, ... }
 ════════════════════════════════════════════════════════════ */
-router.put('/', protect, async (req, res) => {
+router.put('/', protect, requireAdmin, async (req, res) => {
   try {
     const updated = await Configuration.updateConfig(req.body);
     res.json(updated);
@@ -40,7 +40,7 @@ router.put('/', protect, async (req, res) => {
    la méthode active (CUMP / FIFO / LIFO).
    Query : ?method=FIFO  (optionnel — surcharge la config)
 ════════════════════════════════════════════════════════════ */
-router.get('/valorisation', protect, async (req, res) => {
+router.get('/valorisation', protect, requireAdmin, async (req, res) => {
   try {
     const config = await Configuration.getSingleton();
     const method = req.query.method ?? config.methodeValorisation ?? 'CUMP';

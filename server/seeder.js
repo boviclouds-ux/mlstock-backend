@@ -129,56 +129,94 @@ async function importData() {
   // ⚠  Les mots de passe sont passés en clair.
   //    Le pre-save hook du modèle User les hashe via bcrypt avant sauvegarde.
   //
+  // ⚠  Le modèle User n'a PAS de champ 'role' — il utilise un objet
+  //    'permissions' avec des booléens. Tout champ 'role' serait
+  //    silencieusement supprimé par Mongoose (strict mode).
   const usersData = [
     {
       prenom: 'Hassan',
       nom:    'El Fassi',
       email:  'admin@maroclait.ma',
       password: '123456',
-      role:   'ADMIN_FEDERAL',
       entite: hubCentral.nom,
       statut: 'Actif',
       mfa:    true,
+      permissions: {
+        isAdmin:        true,
+        canDemand:      true,
+        canReceive:     true,
+        canDispatch:    true,
+        canManageAppro: true,
+        canActAsProxy:  true,
+      },
     },
     {
       prenom: 'Karim',
       nom:    'Benali',
       email:  'magasinier@maroclait.ma',
       password: '123456',
-      role:   'MAGASINIER',
       entite: hubCentral.nom,
       statut: 'Actif',
       mfa:    false,
+      permissions: {
+        isAdmin:        false,
+        canDemand:      false,
+        canReceive:     true,
+        canDispatch:    true,
+        canManageAppro: false,
+        canActAsProxy:  false,
+      },
     },
     {
       prenom: 'Fatima Zahra',
       nom:    'El Alami',
       email:  'contact@taroudant-coop.ma',
       password: '123456',
-      role:   'UNITE',
       entite: coopTar.nom,
       statut: 'Actif',
       mfa:    false,
+      permissions: {
+        isAdmin:        false,
+        canDemand:      true,
+        canReceive:     false,
+        canDispatch:    false,
+        canManageAppro: false,
+        canActAsProxy:  false,
+      },
     },
     {
       prenom: 'Omar',
       nom:    'Tazi',
       email:  'admin2@maroclait.ma',
       password: '123456',
-      role:   'ADMIN',
       entite: hubCentral.nom,
       statut: 'Actif',
       mfa:    false,
+      permissions: {
+        isAdmin:        true,
+        canDemand:      false,
+        canReceive:     false,
+        canDispatch:    false,
+        canManageAppro: false,
+        canActAsProxy:  false,
+      },
     },
     {
       prenom: 'Youssef',
       nom:    'Alaoui',
       email:  'pending@maroclait.ma',
       password: '123456',
-      role:   'UNITE',
       entite: 'Maroc Lait — Hub Central',
       statut: 'En attente',
       mfa:    false,
+      permissions: {
+        isAdmin:        false,
+        canDemand:      false,
+        canReceive:     false,
+        canDispatch:    false,
+        canManageAppro: false,
+        canActAsProxy:  false,
+      },
     },
   ];
 
@@ -287,11 +325,11 @@ async function importData() {
   sep();
   console.log(`\n${c.green}${c.bold}  ✔  Base de données peuplée avec succès !${c.reset}\n`);
   console.log(`${c.dim}  Comptes de démo (mot de passe : 123456) :${c.reset}`);
-  console.log(`${c.dim}  • admin@maroclait.ma       → ADMIN_FEDERAL${c.reset}`);
-  console.log(`${c.dim}  • magasinier@maroclait.ma  → MAGASINIER${c.reset}`);
-  console.log(`${c.dim}  • contact@taroudant-coop.ma → UNITE${c.reset}`);
-  console.log(`${c.dim}  • admin2@maroclait.ma       → ADMIN${c.reset}`);
-  console.log(`${c.dim}  • pending@maroclait.ma      → En attente (non connecté)\n${c.reset}`);
+  console.log(`${c.dim}  • admin@maroclait.ma        → isAdmin: true (tous droits)${c.reset}`);
+  console.log(`${c.dim}  • magasinier@maroclait.ma   → canDispatch: true, canReceive: true${c.reset}`);
+  console.log(`${c.dim}  • contact@taroudant-coop.ma → canDemand: true${c.reset}`);
+  console.log(`${c.dim}  • admin2@maroclait.ma       → isAdmin: true${c.reset}`);
+  console.log(`${c.dim}  • pending@maroclait.ma      → En attente (tous droits: false)\n${c.reset}`);
 }
 
 /* ═══════════════════════════════════════════════════════════

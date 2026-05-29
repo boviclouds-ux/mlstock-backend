@@ -19,6 +19,23 @@ function signToken(user) {
   );
 }
 
+/* ─── Sérialisation des permissions ──────────────────────────
+   On destructure EXPLICITEMENT chaque flag plutôt que de passer
+   le sous-document Mongoose brut (user.permissions) qui peut
+   être sérialisé comme {} si le document DB est partiel/antérieur
+   au schéma actuel.
+──────────────────────────────────────────────────────────── */
+function serializePermissions(p) {
+  return {
+    canDemand:      Boolean(p?.canDemand),
+    canReceive:     Boolean(p?.canReceive),
+    canDispatch:    Boolean(p?.canDispatch),
+    canManageAppro: Boolean(p?.canManageAppro),
+    isAdmin:        Boolean(p?.isAdmin),
+    canActAsProxy:  Boolean(p?.canActAsProxy),
+  };
+}
+
 /* ═══════════════════════════════════════════════════════════
    POST /api/auth/register
    Corps : { prenom, nom, email, password, entite? }
@@ -124,7 +141,7 @@ router.post('/login', async (req, res) => {
         statut:            user.statut,
         mfa:               user.mfa,
         derniereConnexion: user.derniereConnexion,
-        permissions:       user.permissions,
+        permissions:       serializePermissions(user.permissions),
       },
     });
   } catch (err) {
@@ -151,7 +168,7 @@ router.get('/me', protect, (req, res) => {
     statut:            u.statut,
     mfa:               u.mfa,
     derniereConnexion: u.derniereConnexion,
-    permissions:       u.permissions,
+    permissions:       serializePermissions(u.permissions),
   });
 });
 

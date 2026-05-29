@@ -262,9 +262,9 @@ export default function ConfigurationGenerale({ userRole }) {
     setBackupLoad(true);
     try {
       const token   = localStorage.getItem('mlstock_token');
-      const baseUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-        ? 'http://localhost:5000'
-        : 'https://mlstock-backend-2.onrender.com';
+      const baseUrl = (import.meta.env.VITE_API_URL ?? '').trim()
+        || ((window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+            ? 'http://localhost:5000' : '');
 
       const res = await fetch(`${baseUrl}/api/backup/generate`, {
         headers: { Authorization: `Bearer ${token}` },

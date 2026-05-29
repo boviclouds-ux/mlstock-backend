@@ -515,6 +515,11 @@ export default function UtilisateursAcces({ userRole }) {
     setUsers(prev => [optimistic, ...prev]);
     // POST crée le compte ; PATCH injecte la matrice de permissions
     api.post("/api/users", { prenom, nom, email, entite, permissions })
+      .then(data => {
+        if (data?.tempPassword) {
+          alert(`✅ Compte créé.\n\nMot de passe temporaire :\n${data.tempPassword}\n\nCommuniquez-le à l'utilisateur — il ne sera plus visible.`);
+        }
+      })
       .catch(err => setApiError(err.message ?? "Erreur lors de la création du compte."));
   }
 
