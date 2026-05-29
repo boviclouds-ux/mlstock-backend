@@ -102,7 +102,7 @@ function avatarBg(p) {
 
 /* ─── Styles dark ──────────────────────────────────────── */
 const lbl = "text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 block";
-const inp = "w-full bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all";
+const inp = "w-full bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all";
 
 /* ══════════════════════════════════════════════════════════
    BADGES DE PERMISSIONS (tableau)
@@ -139,11 +139,11 @@ function PermissionToggle({ def, checked, onChange, locked = false }) {
     >
       <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0
         ${checked ? 'bg-white/10' : 'bg-slate-700/50'}`}>
-        <Icon size={14} className={checked ? def.iconActiveCls : 'text-slate-500'} />
+        <Icon size={14} className={checked ? def.iconActiveCls : 'text-slate-300'} />
       </div>
       <div className="flex-1 min-w-0">
         <p className={`text-xs font-bold leading-none ${checked ? 'text-white' : 'text-slate-400'}`}>{def.label}</p>
-        <p className="text-[10px] text-slate-500 leading-snug mt-1">{def.description}</p>
+        <p className="text-[10px] text-slate-300 leading-snug mt-1">{def.description}</p>
       </div>
       {/* Toggle pill */}
       <div className={`w-10 h-5 rounded-full relative shrink-0 transition-colors duration-200 ${checked ? def.toggleCls : 'bg-slate-700'}`}>
@@ -164,9 +164,9 @@ function EntiteField({ permissions, entite, setEntite, unites }) {
       <label className={lbl}>Entité rattachée</label>
       {isHub ? (
         <div className="flex items-center gap-2 bg-slate-800/30 border border-slate-700/50 rounded-xl px-3 py-2.5">
-          <Building2 size={13} className="text-slate-600 shrink-0"/>
-          <span className="text-sm text-slate-500 flex-1">{HUB_CENTRAL}</span>
-          <Lock size={11} className="text-slate-600 shrink-0"/>
+          <Building2 size={13} className="text-slate-400 shrink-0"/>
+          <span className="text-sm text-slate-300 flex-1">{HUB_CENTRAL}</span>
+          <Lock size={11} className="text-slate-400 shrink-0"/>
         </div>
       ) : (
         <div className="relative">
@@ -184,7 +184,7 @@ function EntiteField({ permissions, entite, setEntite, unites }) {
         </div>
       )}
       {isHub && (
-        <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-slate-500 leading-snug">
+        <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-slate-300 leading-snug">
           <Info size={10} className="shrink-0 mt-0.5"/>
           Le personnel administratif et logistique est rattaché par défaut au siège national.
         </p>
@@ -250,10 +250,10 @@ function ModalModifierPermissions({ user, unites, onClose, onSave }) {
             </div>
             <div>
               <p className="text-sm font-bold text-white">Modifier les droits</p>
-              <p className="text-[11px] text-slate-500 mt-0.5">{user.prenom} {user.nom} · {user.email}</p>
+              <p className="text-[11px] text-slate-300 mt-0.5">{user.prenom} {user.nom} · {user.email}</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-300 transition-colors mt-0.5"><X size={18}/></button>
+          <button onClick={onClose} className="text-slate-300 hover:text-slate-300 transition-colors mt-0.5"><X size={18}/></button>
         </div>
 
         <div className="px-6 py-5 space-y-3 max-h-[60vh] overflow-y-auto">
@@ -331,10 +331,10 @@ function ModalNouvelUtilisateur({ unites, onClose, onSave }) {
             </div>
             <div>
               <p className="text-sm font-bold text-white">Nouvel Utilisateur</p>
-              <p className="text-[11px] text-slate-500 mt-0.5">Création de compte avec accès immédiat</p>
+              <p className="text-[11px] text-slate-300 mt-0.5">Création de compte avec accès immédiat</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-300 transition-colors mt-0.5"><X size={18}/></button>
+          <button onClick={onClose} className="text-slate-300 hover:text-slate-300 transition-colors mt-0.5"><X size={18}/></button>
         </div>
 
         <div className="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
@@ -385,7 +385,7 @@ function ModalNouvelUtilisateur({ unites, onClose, onSave }) {
           />
 
           <div className="flex items-start gap-2 bg-slate-800/60 border border-slate-700 rounded-xl px-3 py-2.5">
-            <Lock size={12} className="text-slate-500 shrink-0 mt-0.5"/>
+            <Lock size={12} className="text-slate-300 shrink-0 mt-0.5"/>
             <p className="text-[11px] text-slate-400 leading-relaxed">Un email d'invitation avec un lien de définition de mot de passe sera envoyé automatiquement.</p>
           </div>
         </div>
@@ -562,7 +562,7 @@ export default function UtilisateursAcces({ userRole }) {
   const nbSuspendus = users.filter(u => u.statut === "suspendu").length;
 
   const hdrCls = "px-5 py-3 bg-slate-50 border-b border-slate-100";
-  const hdr    = "text-[10px] font-bold text-slate-500 uppercase tracking-wider";
+  const hdr    = "text-[10px] font-bold text-slate-300 uppercase tracking-wider";
   const rowCls = "px-5 py-3.5 hover:bg-slate-50/60 transition-colors";
 
   if (isLoading) {
@@ -584,7 +584,7 @@ export default function UtilisateursAcces({ userRole }) {
           <AlertTriangle size={28} className="text-red-500" />
         </div>
         <h2 className="text-sm font-bold text-slate-900 mb-1">Impossible de charger les utilisateurs</h2>
-        <p className="text-xs text-slate-500 mb-5 max-w-xs leading-relaxed">{error}</p>
+        <p className="text-xs text-slate-300 mb-5 max-w-xs leading-relaxed">{error}</p>
         <button
           onClick={() => window.location.reload()}
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl transition-colors"
@@ -652,7 +652,7 @@ export default function UtilisateursAcces({ userRole }) {
                   <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full tabular-nums
                     ${key === "demandes" && count > 0
                       ? "bg-amber-500/30 text-amber-300"
-                      : activeTab === key ? "text-slate-300" : "text-slate-600"}`}>
+                      : activeTab === key ? "text-slate-300" : "text-slate-400"}`}>
                     {count}
                   </span>
                 )}
@@ -668,7 +668,7 @@ export default function UtilisateursAcces({ userRole }) {
             ].map(s => (
               <div key={s.label} className="bg-white/5 rounded-xl px-3 py-1.5 text-center min-w-16">
                 <p className={`text-lg font-bold tabular-nums ${s.cls}`}>{s.val}</p>
-                <p className="text-[9px] text-slate-500">{s.label}</p>
+                <p className="text-[9px] text-slate-300">{s.label}</p>
               </div>
             ))}
           </div>
@@ -739,13 +739,13 @@ export default function UtilisateursAcces({ userRole }) {
                     <PermissionBadges permissions={user.permissions} />
 
                     {/* Entité */}
-                    <div className="flex items-center gap-1.5 text-xs text-slate-600 min-w-0">
+                    <div className="flex items-center gap-1.5 text-xs text-slate-400 min-w-0">
                       <Building2 size={10} className="text-slate-400 shrink-0"/>
                       <span className="truncate">{user.entite ?? '—'}</span>
                     </div>
 
                     {/* Dernière connexion */}
-                    <div className="flex items-center gap-1 text-[11px] text-slate-500">
+                    <div className="flex items-center gap-1 text-[11px] text-slate-300">
                       <Clock size={10} className="text-slate-400 shrink-0"/>
                       {formatDate(user.derniereConnexion)}
                     </div>
@@ -777,7 +777,7 @@ export default function UtilisateursAcces({ userRole }) {
               <p className="text-[11px] text-slate-400">
                 {filteredUsers.length} utilisateur{filteredUsers.length > 1 ? "s" : ""}
                 {recherche ? ` · filtrés sur ${users.length}` : ""}
-                {" · "}<span className="text-slate-500 italic">Les comptes ne sont jamais supprimés — suspension uniquement.</span>
+                {" · "}<span className="text-slate-300 italic">Les comptes ne sont jamais supprimés — suspension uniquement.</span>
               </p>
             </div>
           </div>
@@ -790,7 +790,7 @@ export default function UtilisateursAcces({ userRole }) {
           {demandes.length === 0 ? (
             <div className="py-16 text-center">
               <CheckCircle size={28} className="text-emerald-300 mx-auto mb-3"/>
-              <p className="text-sm font-semibold text-slate-500">Aucune demande en attente</p>
+              <p className="text-sm font-semibold text-slate-300">Aucune demande en attente</p>
               <p className="text-xs text-slate-400 mt-1">Toutes les inscriptions ont été traitées.</p>
             </div>
           ) : (
@@ -802,19 +802,19 @@ export default function UtilisateursAcces({ userRole }) {
                 {demandes.map(d => (
                   <div key={d.id} className={`grid grid-cols-[0.7fr_1.4fr_1.4fr_1fr_1fr_auto] gap-3 items-center ${rowCls}`}>
                     <div>
-                      <div className="flex items-center gap-1 text-[11px] text-slate-500">
+                      <div className="flex items-center gap-1 text-[11px] text-slate-300">
                         <Calendar size={10} className="text-slate-400 shrink-0"/>
                         {new Date(d.date).toLocaleDateString("fr-FR", { day:"2-digit", month:"short" })}
                       </div>
                       <p className="text-[9px] text-slate-400 font-mono mt-0.5">{d.id}</p>
                     </div>
                     <p className="text-xs font-semibold text-slate-800">{d.prenom} {d.nom}</p>
-                    <div className="flex items-center gap-1.5 text-[11px] text-slate-500 min-w-0">
+                    <div className="flex items-center gap-1.5 text-[11px] text-slate-300 min-w-0">
                       <Mail size={10} className="text-slate-400 shrink-0"/>
                       <span className="truncate">{d.email}</span>
                     </div>
-                    <span className="text-[10px] text-slate-600">{d.roleDemande ?? '—'}</span>
-                    <div className="flex items-center gap-1.5 text-xs text-slate-600 min-w-0">
+                    <span className="text-[10px] text-slate-400">{d.roleDemande ?? '—'}</span>
+                    <div className="flex items-center gap-1.5 text-xs text-slate-400 min-w-0">
                       <Building2 size={10} className="text-slate-400 shrink-0"/>
                       <span className="truncate">{d.entite}</span>
                     </div>

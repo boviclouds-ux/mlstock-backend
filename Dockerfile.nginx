@@ -1,0 +1,39 @@
+# ═══════════════════════════════════════════════════════════════════
+# Dockerfile.nginx  ·  Build React/Vite + Nginx reverse proxy
+# Build context : racine du projet  (docker-compose.yml le fixe)
+# ═══════════════════════════════════════════════════════════════════
+
+# ── Stage 1 : build Vite ──────────────────────────────────────────
+FROM node:20-alpine AS builder
+WORKDIR /build
+
+COPY client/package*.json ./
+# --ignore-scripts : sécurité supply-chain
+RUN npm ci --ignore-scripts
+
+COPY client/ .
+
+# VITE_API_URL vide : toutes les requêtes API passent par /api/ via Nginx
+RUN npm run build
+
+# ── Stage 2 : Nginx alpine (non-root par défaut dans l'image officielle)
+FROM nginx:1.27-alpine AS runtime
+
+# Supprimer la configuration par défaut incluse dans l'image
+RUN rm -f /etc/nginx/conf.d/default.conf && \
+    rm -rf /usr/share/nginx/html/*
+
+# Copier les assets React buildés
+COPY --from=builder /build/dist /usr/share/nginx/html
+
+# Copier nos configurations
+COPY nginx/nginx.conf   /etc/nginx/nginx.conf
+COPY nginx/default.conf /etc/nginx/conf.d/default.conf
+
+# L'image officielle nginx:alpine fait déjà tourner le worker en tant que
+# l'utilisateur 'nginx' (non-root). Aucun USER supplémentaire nécessaire.
+
+EXPOSE 80
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -qO- http://localhost/api/status || exit 1

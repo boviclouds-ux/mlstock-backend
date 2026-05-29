@@ -102,7 +102,7 @@ export default function DashboardMagasinier() {
         <div>
           <p className="text-xs font-bold text-blue-600 uppercase tracking-widest mb-1">Hub Central · Magasinier</p>
           <h1 className="text-2xl font-bold text-slate-900 leading-tight">Vue d'ensemble Opérationnelle</h1>
-          <p className="text-sm text-slate-500 mt-0.5">{today.charAt(0).toUpperCase() + today.slice(1)}</p>
+          <p className="text-sm text-slate-300 mt-0.5">{today.charAt(0).toUpperCase() + today.slice(1)}</p>
         </div>
         <div className="flex items-center gap-1.5 self-start sm:self-auto text-xs font-semibold
           text-emerald-600 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-full">

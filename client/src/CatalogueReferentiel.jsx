@@ -74,7 +74,7 @@ function catIcon(nom, sz = 13) {
 const CAT_BADGE = {
   Semences: "bg-blue-50   text-blue-700   border-blue-200",
   Azote:    "bg-cyan-50   text-cyan-700   border-cyan-200",
-  Matériel: "bg-slate-100 text-slate-600  border-slate-200",
+  Matériel: "bg-slate-100 text-slate-400  border-slate-200",
   Santé:    "bg-rose-50   text-rose-700   border-rose-200",
 };
 
@@ -97,7 +97,7 @@ function nextCode(articles, categorie) {
 
 /* ─── Styles dark ──────────────────────────────────────── */
 const lbl = "text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 block";
-const inp = "w-full bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all";
+const inp = "w-full bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all";
 
 /* ══════════════════════════════════════════════════════════
    MODAL GESTION DES CATÉGORIES
@@ -167,10 +167,10 @@ function ModalCategories({ categories, articles, onApply, onClose }) {
             </div>
             <div>
               <p className="text-sm font-bold text-white">Gestion des Catégories</p>
-              <p className="text-[11px] text-slate-500 mt-0.5">{cats.length} catégorie{cats.length > 1 ? "s" : ""} actives</p>
+              <p className="text-[11px] text-slate-300 mt-0.5">{cats.length} catégorie{cats.length > 1 ? "s" : ""} actives</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-300 transition-colors mt-0.5">
+          <button onClick={onClose} className="text-slate-300 hover:text-slate-300 transition-colors mt-0.5">
             <X size={18} />
           </button>
         </div>
@@ -196,7 +196,7 @@ function ModalCategories({ categories, articles, onApply, onClose }) {
                   <span className="flex-1 text-sm font-medium text-white">{cat.nom}</span>
                 )}
 
-                <span className={`text-[10px] font-bold tabular-nums shrink-0 ${count > 0 ? "text-slate-400" : "text-slate-600"}`}>
+                <span className={`text-[10px] font-bold tabular-nums shrink-0 ${count > 0 ? "text-slate-400" : "text-slate-400"}`}>
                   {count} art.
                 </span>
 
@@ -246,7 +246,7 @@ function ModalCategories({ categories, articles, onApply, onClose }) {
               onChange={e => { setNewNom(e.target.value); setErr(""); }}
               onKeyDown={e => e.key === "Enter" && addCat()}
               placeholder="Nouvelle catégorie…"
-              className="flex-1 bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+              className="flex-1 bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
             />
             <button onClick={addCat} disabled={!newNom.trim()}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs font-bold transition-all whitespace-nowrap">
@@ -324,10 +324,10 @@ function ModalArticle({ article, articles, categories, onClose, onSave }) {
             </div>
             <div>
               <p className="text-sm font-bold text-white">{isEdit ? "Modifier l'article" : "Nouvel Article"}</p>
-              <p className="text-[11px] text-slate-500 mt-0.5 font-mono">{codePreview}</p>
+              <p className="text-[11px] text-slate-300 mt-0.5 font-mono">{codePreview}</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-300 transition-colors mt-0.5">
+          <button onClick={onClose} className="text-slate-300 hover:text-slate-300 transition-colors mt-0.5">
             <X size={18} />
           </button>
         </div>
@@ -355,7 +355,7 @@ function ModalArticle({ article, articles, categories, onClose, onSave }) {
                   <option key={c.id} value={c.nom} className="bg-slate-800">{c.nom}</option>
                 ))}
               </select>
-              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
             </div>
           </div>
 
@@ -369,7 +369,7 @@ function ModalArticle({ article, articles, categories, onClose, onSave }) {
                     <option key={u.value} value={u.value} className="bg-slate-800">{u.label}</option>
                   ))}
                 </select>
-                <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
               </div>
             </div>
             <div>
@@ -405,7 +405,7 @@ function ModalArticle({ article, articles, categories, onClose, onSave }) {
           {!isEdit && categorie && (
             <div className="space-y-2">
               <div className="flex items-center gap-2 bg-slate-800/50 border border-slate-700 rounded-xl px-3 py-2.5">
-                <Tags size={13} className="text-slate-500 shrink-0" />
+                <Tags size={13} className="text-slate-300 shrink-0" />
                 <span className="text-xs text-slate-400">Code généré automatiquement :</span>
                 <span className="ml-auto text-xs font-bold font-mono text-emerald-400">{codePreview}</span>
               </div>
@@ -448,7 +448,7 @@ function ModalSupprimer({ article, onClose, onConfirm }) {
         </div>
         <p className="text-sm font-bold text-white mb-1">Supprimer l'article ?</p>
         <p className="text-xs text-slate-400 mb-1 font-mono">{article.id}</p>
-        <p className="text-xs text-slate-500 mb-5 leading-relaxed">
+        <p className="text-xs text-slate-300 mb-5 leading-relaxed">
           <span className="text-slate-300 font-medium">{article.designation}</span> sera retiré définitivement du catalogue.
         </p>
         <div className="flex gap-2.5">
@@ -623,7 +623,7 @@ export default function CatalogueReferentiel({ userRole }) {
           ].map(s => (
             <div key={s.label} className="bg-white/5 rounded-xl px-3 py-2 text-center">
               <p className={`text-xl font-bold tabular-nums ${s.col}`}>{s.val}</p>
-              <p className="text-[10px] text-slate-500 mt-0.5">{s.label}</p>
+              <p className="text-[10px] text-slate-300 mt-0.5">{s.label}</p>
             </div>
           ))}
         </div>
@@ -646,7 +646,7 @@ export default function CatalogueReferentiel({ userRole }) {
               className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all
                 ${catFiltre === c
                   ? "bg-slate-800 text-white border-slate-700 shadow-sm"
-                  : "bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50"}`}>
+                  : "bg-white text-slate-400 border-slate-200 hover:border-slate-300 hover:bg-slate-50"}`}>
               {c !== "Toutes" && catIcon(c, 10)}
               {c}
               {c !== "Toutes" && (
@@ -698,7 +698,7 @@ export default function CatalogueReferentiel({ userRole }) {
         <div className="overflow-x-auto w-full"><div className="min-w-[680px]">
         <div className="grid grid-cols-[1fr_2.5fr_1fr_0.9fr_0.7fr_1fr_auto] gap-3 px-5 py-3 bg-slate-50 border-b border-slate-100">
           {["Code", "Désignation", "Catégorie", "Valeur", "Unité de Mesure", "Seuil alerte", ""].map(h => (
-            <p key={h} className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{h}</p>
+            <p key={h} className="text-[10px] font-bold text-slate-300 uppercase tracking-wider">{h}</p>
           ))}
         </div>
 
@@ -707,13 +707,13 @@ export default function CatalogueReferentiel({ userRole }) {
           {loading ? (
             <div className="py-16 text-center">
               <div className="w-8 h-8 border-2 border-blue-200 border-t-blue-500 rounded-full animate-spin mx-auto mb-3" />
-              <p className="text-sm font-semibold text-slate-500">Chargement du catalogue…</p>
+              <p className="text-sm font-semibold text-slate-300">Chargement du catalogue…</p>
               <p className="text-xs text-slate-400 mt-1">Connexion à la base de données</p>
             </div>
           ) : filtres.length === 0 ? (
             <div className="py-16 text-center">
               <Package size={28} className="text-slate-300 mx-auto mb-3" />
-              <p className="text-sm font-semibold text-slate-500">
+              <p className="text-sm font-semibold text-slate-300">
                 {fetchError ? "Impossible de charger le catalogue" : "Aucun article dans le catalogue"}
               </p>
               <p className="text-xs text-slate-400 mt-1">
@@ -750,11 +750,11 @@ export default function CatalogueReferentiel({ userRole }) {
               )}
 
               {/* Unité de Mesure (uniteMesure / unite) */}
-              <p className="text-xs text-slate-500 font-mono">{article.uniteMesure ?? article.unite}</p>
+              <p className="text-xs text-slate-300 font-mono">{article.uniteMesure ?? article.unite}</p>
 
               {/* Seuil d'alerte */}
               <div className="flex items-center gap-1.5">
-                <span className="text-xs font-semibold tabular-nums text-slate-500">
+                <span className="text-xs font-semibold tabular-nums text-slate-300">
                   {article.seuilAlerte}
                 </span>
               </div>

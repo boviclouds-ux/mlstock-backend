@@ -84,7 +84,7 @@ function StatutBadge({ statut }) {
 
 /* ─── Styles formulaire ─────────────────────────────── */
 const lbl = "text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 block";
-const sel = "w-full bg-slate-900 border border-slate-600 rounded-xl px-3 py-2.5 text-sm text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all appearance-none";
+const sel = "w-full bg-slate-900 border border-slate-600 rounded-xl px-3 py-2.5 text-sm text-slate-200 placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all appearance-none";
 
 /* ─── Impression Bon d'Enlèvement ───────────────────── */
 function imprimerBE(ordre) {
@@ -296,7 +296,7 @@ export default function OrdresAdmin() {
     },
     { key: 'date', label: 'Date', sortable: true,
       render: (v) => (
-        <div className="flex items-center gap-1 text-xs text-slate-500">
+        <div className="flex items-center gap-1 text-xs text-slate-300">
           <Clock size={10} className="text-slate-400 shrink-0" />
           {new Date(v).toLocaleDateString('fr-FR', { day:'2-digit', month:'short' })}
         </div>
@@ -313,7 +313,7 @@ export default function OrdresAdmin() {
     { key: 'adminValidateur', label: 'Admin Validateur', sortable: true },
     { key: 'motif', label: 'Motif de l\'opération', sortable: true,
       render: (v) => (
-        <div className="flex items-center gap-1.5 text-xs text-slate-600 min-w-0">
+        <div className="flex items-center gap-1.5 text-xs text-slate-400 min-w-0">
           <FileText size={10} className="text-slate-400 shrink-0" />
           <span className="truncate">{v || '—'}</span>
         </div>
@@ -325,7 +325,7 @@ export default function OrdresAdmin() {
           {(v ?? []).map((a, i) => (
             <div key={i} className="flex items-center gap-1.5">
               {typeIcon(a.type ?? 'materiel', 10)}
-              <span className="text-[10px] text-slate-500 truncate">{a.label}</span>
+              <span className="text-[10px] text-slate-300 truncate">{a.label}</span>
               <span className="text-[10px] font-mono text-slate-400 ml-auto shrink-0">{Number(a.qte).toLocaleString()} {a.unite}</span>
             </div>
           ))}
@@ -434,7 +434,7 @@ export default function OrdresAdmin() {
           ].map(s => (
             <div key={s.label} className="bg-white/5 rounded-xl px-3 py-2 text-center">
               <p className={`text-xl font-bold tabular-nums ${s.col}`}>{s.val}</p>
-              <p className="text-[10px] text-slate-500 mt-0.5">{s.label}</p>
+              <p className="text-[10px] text-slate-300 mt-0.5">{s.label}</p>
             </div>
           ))}
         </div>
@@ -500,7 +500,7 @@ export default function OrdresAdmin() {
                       <option key={u._id} value={u._id} className="bg-slate-900">{u.nom}</option>
                     ))}
                   </select>
-                  <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                  <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
                 </div>
               </div>
               <div>
@@ -510,7 +510,7 @@ export default function OrdresAdmin() {
                     <option value="" className="bg-slate-900">— Sélectionner le motif —</option>
                     {MOTIFS.map(m => <option key={m} value={m} className="bg-slate-900">{m}</option>)}
                   </select>
-                  <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                  <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
                 </div>
               </div>
             </div>
@@ -551,10 +551,10 @@ export default function OrdresAdmin() {
                       placeholder="Qté"
                       className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-1.5 text-sm text-slate-200 text-center tabular-nums focus:outline-none focus:ring-1 focus:ring-purple-500 transition-all"
                     />
-                    <span className="text-xs text-slate-500 font-mono text-center">{ligne.unite ?? "—"}</span>
+                    <span className="text-xs text-slate-300 font-mono text-center">{ligne.unite ?? "—"}</span>
                     {lignes.length > 1
                       ? <button onClick={() => removeLigne(ligne._key)}
-                          className="w-6 h-6 rounded-lg flex items-center justify-center text-slate-500 hover:bg-red-500/20 hover:text-red-400 transition-all">
+                          className="w-6 h-6 rounded-lg flex items-center justify-center text-slate-300 hover:bg-red-500/20 hover:text-red-400 transition-all">
                           <X size={12} />
                         </button>
                       : <span className="w-6 h-6" />}
@@ -580,9 +580,9 @@ export default function OrdresAdmin() {
                     value={otpCode}
                     onChange={e => setOtpCode(e.target.value.replace(/\D/g, ""))}
                     placeholder="• • • • • •"
-                    className={`${sel} text-center tracking-[0.5em] text-lg font-mono placeholder:tracking-normal placeholder:text-slate-600`}
+                    className={`${sel} text-center tracking-[0.5em] text-lg font-mono placeholder:tracking-normal placeholder:text-slate-400`}
                   />
-                  <p className="mt-1.5 text-[10px] text-slate-500">
+                  <p className="mt-1.5 text-[10px] text-slate-300">
                     Mode Démo : Saisissez <span className="font-mono font-bold text-slate-400">123456</span> pour valider
                   </p>
                 </div>

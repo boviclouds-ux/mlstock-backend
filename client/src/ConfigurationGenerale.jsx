@@ -1,5 +1,5 @@
 // ConfigurationGenerale.jsx — Administration Système · Section 5
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "./lib/api.js";
 import { METHODE_LABELS, METHODE_BADGE } from "./lib/inventoryValuation.js";
@@ -7,7 +7,7 @@ import {
   Archive, RefreshCw, Database, ShieldCheck,
   Bell, Wrench, AlertTriangle, Download, X,
   CheckCircle, Clock, Lock, ChevronDown, Zap,
-  Save, WifiOff, TrendingUp, FileText, Image,
+  Save, WifiOff, TrendingUp, FileText, Image, UploadCloud,
 } from "lucide-react";
 import { clearBrandingCache } from "./lib/pdfBranding.js";
 
@@ -19,7 +19,7 @@ function Toggle({ value, onChange, label, description, danger = false }) {
     <div className="flex items-start justify-between gap-4">
       <div className="flex-1">
         <p className="text-sm font-medium text-slate-200 leading-none">{label}</p>
-        {description && <p className="text-[11px] text-slate-500 mt-1 leading-snug">{description}</p>}
+        {description && <p className="text-[11px] text-slate-300 mt-1 leading-snug">{description}</p>}
       </div>
       <button
         onClick={() => onChange(!value)}
@@ -46,7 +46,7 @@ function Card({ icon: Icon, iconBg, title, subtitle, children }) {
         </div>
         <div>
           <p className="text-sm font-bold text-white leading-none">{title}</p>
-          {subtitle && <p className="text-[11px] text-slate-500 mt-0.5">{subtitle}</p>}
+          {subtitle && <p className="text-[11px] text-slate-300 mt-0.5">{subtitle}</p>}
         </div>
       </div>
       <div className="flex flex-col gap-4 flex-1">
@@ -78,10 +78,10 @@ function ModalSecurite({ action, onClose, onConfirm }) {
             </div>
             <div>
               <p className="text-sm font-bold text-white">{action.titre}</p>
-              <p className="text-[11px] text-slate-500 mt-0.5">{action.sousTitre}</p>
+              <p className="text-[11px] text-slate-300 mt-0.5">{action.sousTitre}</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-300 transition-colors mt-0.5">
+          <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors mt-0.5">
             <X size={18}/>
           </button>
         </div>
@@ -99,7 +99,7 @@ function ModalSecurite({ action, onClose, onConfirm }) {
         <div className="px-6 py-5 space-y-5">
           {/* Étape 1 */}
           <div>
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2.5">
+            <p className="text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-2.5">
               Étape 1 · Prise de connaissance
             </p>
             <label className="flex items-start gap-3 cursor-pointer group">
@@ -116,7 +116,7 @@ function ModalSecurite({ action, onClose, onConfirm }) {
 
           {/* Étape 2 */}
           <div>
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+            <p className="text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-2">
               Étape 2 · Code de sécurité Admin
             </p>
             <input
@@ -128,7 +128,7 @@ function ModalSecurite({ action, onClose, onConfirm }) {
               placeholder="• • • • • •"
               className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-lg text-white text-center tracking-[0.5em] font-mono placeholder:text-slate-700 placeholder:tracking-normal focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
             />
-            <p className="text-[10px] text-slate-600 mt-1.5 text-center">
+            <p className="text-[10px] text-slate-400 mt-1.5 text-center">
               Entrez n'importe quel code à 6 chiffres (démonstration)
             </p>
           </div>
@@ -155,7 +155,7 @@ function ModalSecurite({ action, onClose, onConfirm }) {
 }
 
 /* ─── Styles communs dark ──────────────────────────────── */
-const inpDark = "w-full bg-slate-700/60 border border-slate-600 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all";
+const inpDark = "w-full bg-slate-700/60 border border-slate-600 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all";
 const lbl     = "text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 block";
 
 /* ══════════════════════════════════════════════════════════
@@ -170,7 +170,9 @@ export default function ConfigurationGenerale({ userRole }) {
   /* ─ État Backups ─ */
   const [backupFreq,      setBackupFreq]      = useState("Quotidien");
   const [backupLoad,      setBackupLoad]      = useState(false);
-  const [derniereBackup,  setDerniereBackup]  = useState("Aujourd'hui à 04:00 AM");
+  const [restoreLoad,     setRestoreLoad]     = useState(false);
+  const [derniereBackup,  setDerniereBackup]  = useState("—");
+  const restoreInputRef = useRef(null);
 
   /* ─ État OTP / Sécurité ─ */
   const [otpDuree,        setOtpDuree]        = useState("300");
@@ -199,11 +201,18 @@ export default function ConfigurationGenerale({ userRole }) {
   useEffect(() => {
     api.get('/api/configuration')
       .then(cfg => {
-        if (cfg?.methodeValorisation) setMethodeValo(cfg.methodeValorisation);
-        if (cfg?.nomEntreprise)       setPdfNom(cfg.nomEntreprise);
-        if (cfg?.slogan)              setPdfSlogan(cfg.slogan);
-        if (cfg?.piedDePage)          setPdfPiedDePage(cfg.piedDePage);
-        if (cfg?.logoUrl)             setPdfLogoUrl(cfg.logoUrl);
+        if (cfg?.methodeValorisation)  setMethodeValo(cfg.methodeValorisation);
+        if (cfg?.frequenceBackup)      setBackupFreq(cfg.frequenceBackup);
+        if (cfg?.derniereBackup) {
+          const d = new Date(cfg.derniereBackup);
+          setDerniereBackup(
+            `${d.toLocaleDateString('fr-FR')} à ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
+          );
+        }
+        if (cfg?.nomEntreprise)        setPdfNom(cfg.nomEntreprise);
+        if (cfg?.slogan)               setPdfSlogan(cfg.slogan);
+        if (cfg?.piedDePage)           setPdfPiedDePage(cfg.piedDePage);
+        if (cfg?.logoUrl)              setPdfLogoUrl(cfg.logoUrl);
       })
       .catch(() => {});
   }, []);
@@ -248,14 +257,74 @@ export default function ConfigurationGenerale({ userRole }) {
     reader.readAsDataURL(file);
   }
 
-  /* ─ Handlers ─ */
-  function handleBackup() {
+  /* ─ Handlers Backup / Restore ─ */
+  async function handleBackup() {
     setBackupLoad(true);
-    setTimeout(() => {
+    try {
+      const token   = localStorage.getItem('mlstock_token');
+      const baseUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+        ? 'http://localhost:5000'
+        : 'https://mlstock-backend-2.onrender.com';
+
+      const res = await fetch(`${baseUrl}/api/backup/generate`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.message ?? `Erreur ${res.status}`);
+      }
+
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      const cd   = res.headers.get('Content-Disposition') ?? '';
+      const match = cd.match(/filename="?([^";\n]+)"?/);
+      a.download = match ? match[1] : `boviclouds_backup_${new Date().toISOString().slice(0, 10)}.json`;
+      a.href = url;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      const now = new Date();
+      setDerniereBackup(
+        `${now.toLocaleDateString('fr-FR')} à ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`
+      );
+      showFeedback('Backup généré et téléchargé avec succès.', 'success');
+    } catch (err) {
+      showFeedback(err.message ?? 'Erreur lors de la génération du backup.', 'error');
+    } finally {
       setBackupLoad(false);
-      const d = new Date();
-      setDerniereBackup(`Aujourd'hui à ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`);
-    }, 1800);
+    }
+  }
+
+  async function handleRestoreConfirmed(file) {
+    setRestoreLoad(true);
+    try {
+      const text   = await file.text();
+      const backup = JSON.parse(text);
+      const result = await api.post('/api/backup/restore', backup);
+      showFeedback(`Restauration terminée — ${Object.keys(result.results ?? {}).length} collections restaurées.`, 'success');
+    } catch (err) {
+      showFeedback(err.message ?? 'Erreur lors de la restauration.', 'error');
+    } finally {
+      setRestoreLoad(false);
+    }
+  }
+
+  function handleRestoreFileSelect(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';  // reset so same file can be picked again
+    setModalAction({
+      type:         'danger',
+      Icon:         AlertTriangle,
+      titre:        'Restaurer une Sauvegarde',
+      sousTitre:    `Fichier : ${file.name} — opération irréversible`,
+      avertissement: 'Cette opération va ÉCRASER DÉFINITIVEMENT toutes les données actuelles (comptes utilisateurs, stocks, transactions, configurations…) par celles du fichier sélectionné. Aucune récupération ne sera possible après confirmation.',
+      confirmLabel: 'Je confirme avoir pris connaissance que TOUTES les données actuelles seront remplacées par celles de cette sauvegarde et que cette action est totalement irréversible.',
+      labelConfirm: 'Restaurer la sauvegarde',
+      onConfirm:    () => handleRestoreConfirmed(file),
+    });
   }
 
   /* ─ Feedback temporaire ─ */
@@ -361,7 +430,7 @@ export default function ConfigurationGenerale({ userRole }) {
           {/* Statut campagne */}
           <div className="flex items-center justify-between bg-slate-900/60 border border-slate-700 rounded-xl px-4 py-3">
             <div>
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Exercice en cours</p>
+              <p className="text-[10px] font-bold text-slate-300 uppercase tracking-wider">Exercice en cours</p>
               <p className="text-sm font-bold text-white mt-0.5">Campagne 2025-2026</p>
             </div>
             {campagneStatut === "active" ? (
@@ -429,14 +498,14 @@ export default function ConfigurationGenerale({ userRole }) {
                   <option key={f} value={f} className="bg-slate-800">{f}</option>
                 ))}
               </select>
-              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none"/>
+              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"/>
             </div>
           </div>
 
           {/* Bouton backup */}
           <button
             onClick={handleBackup}
-            disabled={backupLoad}
+            disabled={backupLoad || restoreLoad}
             className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white text-xs font-bold transition-all"
           >
             {backupLoad ? (
@@ -446,9 +515,34 @@ export default function ConfigurationGenerale({ userRole }) {
             )}
           </button>
 
-          <p className="text-[10px] text-slate-600 -mt-1">
-            Snapshot complet de la base MongoDB · Chiffré AES-256 · Stocké 90 jours
+          <p className="text-[10px] text-slate-400 -mt-1">
+            Snapshot complet des 10 collections MongoDB · Fichier JSON signé
           </p>
+
+          {/* Séparateur + bouton restauration */}
+          <div className="border-t border-slate-700/50 pt-3 space-y-2">
+            <button
+              onClick={() => restoreInputRef.current?.click()}
+              disabled={backupLoad || restoreLoad}
+              className="w-full flex items-center justify-center gap-2 py-2 rounded-xl border border-slate-600 text-slate-400 text-xs font-semibold hover:border-amber-500/50 hover:text-amber-300 disabled:opacity-60 transition-all"
+            >
+              {restoreLoad ? (
+                <><span className="w-3.5 h-3.5 border-2 border-slate-400/30 border-t-slate-300 rounded-full animate-spin"/>Restauration en cours…</>
+              ) : (
+                <><UploadCloud size={13}/> Restaurer une sauvegarde (.json)</>
+              )}
+            </button>
+            <input
+              ref={restoreInputRef}
+              type="file"
+              accept=".json,application/json"
+              className="hidden"
+              onChange={handleRestoreFileSelect}
+            />
+            <p className="text-[10px] text-slate-400 text-center">
+              Remplace intégralement les données actuelles — action irréversible
+            </p>
+          </div>
         </Card>
 
         {/* ─ CARTE 3 : Sécurité & OTP ──────────────────────── */}
@@ -473,7 +567,7 @@ export default function ConfigurationGenerale({ userRole }) {
               />
               <div className="flex-1">
                 <p className="text-xs text-slate-300 font-medium">{Math.floor(Number(otpDuree) / 60)} min {Number(otpDuree) % 60 > 0 ? `${Number(otpDuree) % 60} sec` : ""}</p>
-                <p className="text-[10px] text-slate-500 mt-0.5">Recommandé : 300 sec (5 min)</p>
+                <p className="text-[10px] text-slate-300 mt-0.5">Recommandé : 300 sec (5 min)</p>
               </div>
             </div>
             <input type="range" min="60" max="900" step="30" value={otpDuree} onChange={e => setOtpDuree(e.target.value)}
@@ -555,7 +649,7 @@ export default function ConfigurationGenerale({ userRole }) {
                 <option key={k} value={k} className="bg-slate-800">{v}</option>
               ))}
             </select>
-            <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none"/>
+            <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"/>
           </div>
         </div>
 
@@ -584,7 +678,7 @@ export default function ConfigurationGenerale({ userRole }) {
                   : 'bg-slate-900/40 border-slate-700 hover:border-slate-500'}`}>
               <p className={`text-xs font-bold ${methodeValo === m ? METHODE_BADGE[m].text : 'text-slate-300'}`}>{m}</p>
               <p className={`text-[10px] font-semibold mt-0.5 ${methodeValo === m ? METHODE_BADGE[m].text : 'text-slate-400'}`}>{label}</p>
-              <p className="text-[9px] text-slate-500 mt-0.5 leading-tight">{detail}</p>
+              <p className="text-[9px] text-slate-300 mt-0.5 leading-tight">{detail}</p>
             </div>
           ))}
         </div>
@@ -603,7 +697,7 @@ export default function ConfigurationGenerale({ userRole }) {
             <><Save size={13}/> Appliquer la méthode {methodeValo}</>
           )}
         </button>
-        <p className="text-[10px] text-slate-600 -mt-1 text-center">
+        <p className="text-[10px] text-slate-400 -mt-1 text-center">
           La modification est appliquée immédiatement à toutes les vues de valorisation de l'inventaire.
         </p>
       </Card>
@@ -620,7 +714,7 @@ export default function ConfigurationGenerale({ userRole }) {
           <div className="flex items-center gap-3 bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3">
             <img src={pdfLogoUrl} alt="Logo" className="max-h-12 max-w-[160px] object-contain rounded" />
             <button onClick={() => setPdfLogoUrl('')}
-              className="ml-auto text-slate-500 hover:text-red-400 transition-colors">
+              className="ml-auto text-slate-300 hover:text-red-400 transition-colors">
               <X size={14}/>
             </button>
           </div>
@@ -642,7 +736,7 @@ export default function ConfigurationGenerale({ userRole }) {
               <input type="file" accept="image/*" className="hidden" onChange={handleLogoFile} />
             </label>
           </div>
-          <p className="text-[10px] text-slate-600 mt-1">Formats acceptés : PNG, JPG, SVG · Converti en Base64 automatiquement</p>
+          <p className="text-[10px] text-slate-400 mt-1">Formats acceptés : PNG, JPG, SVG · Converti en Base64 automatiquement</p>
         </div>
 
         {/* Nom entreprise */}
@@ -679,7 +773,7 @@ export default function ConfigurationGenerale({ userRole }) {
             placeholder="ex : RC : 12345 · IF : 67890 · Tél : +212 5XX XXX XXX"
             className={`${inpDark} resize-none leading-relaxed`}
           />
-          <p className="text-[10px] text-slate-600 mt-1">Affiché en bas à droite de tous les documents exportés (BL, Bon de Décharge, Bon de Retrait).</p>
+          <p className="text-[10px] text-slate-400 mt-1">Affiché en bas à droite de tous les documents exportés (BL, Bon de Décharge, Bon de Retrait).</p>
         </div>
 
         {/* Bouton sauvegarder */}
@@ -696,7 +790,7 @@ export default function ConfigurationGenerale({ userRole }) {
             <><Save size={13}/> Appliquer la personnalisation</>
           )}
         </button>
-        <p className="text-[10px] text-slate-600 -mt-1 text-center">
+        <p className="text-[10px] text-slate-400 -mt-1 text-center">
           Appliqué immédiatement sur tous les prochains exports PDF.
         </p>
       </Card>

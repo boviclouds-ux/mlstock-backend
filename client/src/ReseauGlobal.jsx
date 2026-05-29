@@ -169,20 +169,20 @@ function nextId(data, prefix) {
   return `${prefix}-${String(max + 1).padStart(3, "0")}`;
 }
 
-const TYPE_UNITE   = { "Coopérative":"bg-emerald-50 text-emerald-700 border-emerald-200", "Entreprise":"bg-blue-50 text-blue-700 border-blue-200", "Individu":"bg-slate-100 text-slate-600 border-slate-200" };
-const SPEC_BADGE   = { "Semences":"bg-blue-50 text-blue-700 border-blue-200", "Consommables":"bg-cyan-50 text-cyan-700 border-cyan-200", "Équipement":"bg-violet-50 text-violet-700 border-violet-200", "Médicaments":"bg-rose-50 text-rose-700 border-rose-200", "Autres":"bg-slate-100 text-slate-600 border-slate-200" };
+const TYPE_UNITE   = { "Coopérative":"bg-emerald-50 text-emerald-700 border-emerald-200", "Entreprise":"bg-blue-50 text-blue-700 border-blue-200", "Individu":"bg-slate-100 text-slate-400 border-slate-200" };
+const SPEC_BADGE   = { "Semences":"bg-blue-50 text-blue-700 border-blue-200", "Consommables":"bg-cyan-50 text-cyan-700 border-cyan-200", "Équipement":"bg-violet-50 text-violet-700 border-violet-200", "Médicaments":"bg-rose-50 text-rose-700 border-rose-200", "Autres":"bg-slate-100 text-slate-400 border-slate-200" };
 const TYPE_TRP     = { "Interne Maroc Lait":"bg-emerald-50 text-emerald-700 border-emerald-200", "Prestataire Externe":"bg-amber-50 text-amber-700 border-amber-200" };
 
 function badge(map, val) {
-  return <span className={`inline-flex text-[10px] font-bold px-2 py-0.5 rounded-full border ${map[val] ?? "bg-slate-100 text-slate-600 border-slate-200"}`}>{val}</span>;
+  return <span className={`inline-flex text-[10px] font-bold px-2 py-0.5 rounded-full border ${map[val] ?? "bg-slate-100 text-slate-400 border-slate-200"}`}>{val}</span>;
 }
 
 /* ─── Cellule Coordonnées ──────────────────────────────── */
 function Coords({ tel, email }) {
   return (
     <div className="space-y-0.5">
-      {tel   && <div className="flex items-center gap-1.5 text-[11px] text-slate-600"><Phone size={10} className="text-slate-400 shrink-0" />{tel}</div>}
-      {email && <div className="flex items-center gap-1.5 text-[11px] text-slate-500"><Mail  size={10} className="text-slate-400 shrink-0" /><span className="truncate max-w-[160px]">{email}</span></div>}
+      {tel   && <div className="flex items-center gap-1.5 text-[11px] text-slate-400"><Phone size={10} className="text-slate-400 shrink-0" />{tel}</div>}
+      {email && <div className="flex items-center gap-1.5 text-[11px] text-slate-300"><Mail  size={10} className="text-slate-400 shrink-0" /><span className="truncate max-w-[160px]">{email}</span></div>}
       {!tel && !email && <span className="text-[11px] text-slate-400">—</span>}
     </div>
   );
@@ -201,7 +201,7 @@ function RowActions({ isAdmin, onEdit, onDelete }) {
 
 /* ─── Styles dark formulaire ───────────────────────────── */
 const lbl = "text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 block";
-const inp = "w-full bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all";
+const inp = "w-full bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all";
 
 /* ══════════════════════════════════════════════════════════
    MODAL SAISIE (générique, piloté par TAB_CONFIG.fields)
@@ -260,10 +260,10 @@ function ModalSaisie({ tab, item, allData, onClose, onSave }) {
             </div>
             <div>
               <p className="text-sm font-bold text-white">{isEdit ? `Modifier ${cfg.label.slice(0,-1)}` : `Nouveau ${cfg.label.slice(0,-1)}`}</p>
-              <p className="text-[11px] text-slate-500 mt-0.5 font-mono">{codePreview}</p>
+              <p className="text-[11px] text-slate-300 mt-0.5 font-mono">{codePreview}</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-300 transition-colors mt-0.5"><X size={18}/></button>
+          <button onClick={onClose} className="text-slate-300 hover:text-slate-300 transition-colors mt-0.5"><X size={18}/></button>
         </div>
 
         {/* Champs */}
@@ -317,7 +317,7 @@ function ModalSaisie({ tab, item, allData, onClose, onSave }) {
                     <select value={form[field.key] ?? ""} onChange={e => set(field.key, e.target.value)} className={`${inp} appearance-none`}>
                       {field.options.map(o => <option key={o} value={o} className="bg-slate-800">{o}</option>)}
                     </select>
-                    <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none"/>
+                    <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"/>
                   </div>
                 ) : (
                   <input value={form[field.key] ?? ""} onChange={e => set(field.key, e.target.value)} placeholder={field.placeholder} className={inp} />
@@ -365,7 +365,7 @@ function ModalSupprimer({ item, onClose, onConfirm }) {
    TABLES PAR ONGLET
 ══════════════════════════════════════════════════════════ */
 const rowCls = "px-5 py-3.5 hover:bg-slate-50/60 transition-colors";
-const hdr    = "text-[10px] font-bold text-slate-500 uppercase tracking-wider";
+const hdr    = "text-[10px] font-bold text-slate-300 uppercase tracking-wider";
 const hdrCls = "px-5 py-3 bg-slate-50 border-b border-slate-100";
 
 function TableUnites({ data, isAdmin, onEdit, onDelete }) {
@@ -379,7 +379,7 @@ function TableUnites({ data, isAdmin, onEdit, onDelete }) {
           <div key={u.id} className={`grid grid-cols-[1fr_0.8fr_1.1fr_1fr_1.4fr_auto] gap-3 items-center ${rowCls}`}>
             <div><p className="text-xs font-bold text-slate-800">{u.nom}</p><p className="text-[10px] text-slate-400 font-mono">{u.id}</p></div>
             {badge(TYPE_UNITE, u.type)}
-            <div className="flex items-center gap-1.5 text-xs text-slate-600"><MapPin size={10} className="text-slate-400 shrink-0"/>{u.region}</div>
+            <div className="flex items-center gap-1.5 text-xs text-slate-400"><MapPin size={10} className="text-slate-400 shrink-0"/>{u.region}</div>
             <div className="flex items-center gap-1.5 text-xs text-slate-700"><User size={10} className="text-slate-400 shrink-0"/>{u.responsable}</div>
             <Coords tel={u.tel} email={u.email}/>
             <RowActions isAdmin={isAdmin} onEdit={() => onEdit(u)} onDelete={() => onDelete(u)}/>
@@ -400,7 +400,7 @@ function TableFournisseurs({ data, isAdmin, onEdit, onDelete }) {
         {data.map(f => (
           <div key={f.id} className={`grid grid-cols-[1.4fr_0.8fr_1fr_1fr_1.4fr_auto] gap-3 items-center ${rowCls}`}>
             <div><p className="text-xs font-bold text-slate-800">{f.nom}</p><p className="text-[10px] text-slate-400 font-mono">{f.id}</p></div>
-            <div className="flex items-center gap-1.5 text-xs text-slate-600"><span className="text-sm shrink-0">{f.pavillon}</span>{f.pays}</div>
+            <div className="flex items-center gap-1.5 text-xs text-slate-400"><span className="text-sm shrink-0">{f.pavillon}</span>{f.pays}</div>
             <div className="flex flex-wrap gap-1">
               {(Array.isArray(f.specialites) ? f.specialites : [f.specialites ?? 'Autres']).map(s => (
                 <span key={s}>{badge(SPEC_BADGE, s)}</span>
@@ -620,7 +620,7 @@ export default function ReseauGlobal({ userRole }) {
                   : "text-slate-400 hover:text-slate-200 hover:bg-white/5 border border-transparent"}`}
             >
               <Icon size={13}/> {label}
-              <span className={`text-[10px] font-bold tabular-nums ${activeTab === key ? "text-slate-300" : "text-slate-600"}`}>
+              <span className={`text-[10px] font-bold tabular-nums ${activeTab === key ? "text-slate-300" : "text-slate-400"}`}>
                 {dataMap[key].length}
               </span>
             </button>
@@ -680,13 +680,13 @@ export default function ReseauGlobal({ userRole }) {
         {isLoadingTab ? (
           <div className="py-16 text-center">
             <div className="w-8 h-8 border-2 border-blue-200 border-t-blue-500 rounded-full animate-spin mx-auto mb-3" />
-            <p className="text-sm font-semibold text-slate-500">Chargement des {TAB_CONFIG[activeTab].label.toLowerCase()}…</p>
+            <p className="text-sm font-semibold text-slate-300">Chargement des {TAB_CONFIG[activeTab].label.toLowerCase()}…</p>
             <p className="text-xs text-slate-400 mt-1">Connexion à la base de données</p>
           </div>
         ) : filtered.length === 0 ? (
           <div className="py-16 text-center">
             <Network size={28} className="text-slate-300 mx-auto mb-3"/>
-            <p className="text-sm font-semibold text-slate-500">
+            <p className="text-sm font-semibold text-slate-300">
               {errorTab ? "Impossible de charger les données" : `Aucun ${TAB_CONFIG[activeTab].label.slice(0,-1).toLowerCase()} enregistré`}
             </p>
             <p className="text-xs text-slate-400 mt-1">

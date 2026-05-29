@@ -1,0 +1,21 @@
+# ── Contexte server/ (Dockerfile.api) ──────────────────────────────
+# Seuls les fichiers source Node.js sont nécessaires.
+# Les node_modules sont installés depuis le package.json dans le conteneur.
+
+node_modules/
+
+# Fichiers de dev
+*.log
+npm-debug.log*
+nodemon.json
+.env
+*.env.local
+
+# Seed / scripts de dev
+seeder.js
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store

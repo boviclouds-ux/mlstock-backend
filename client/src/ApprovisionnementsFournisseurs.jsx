@@ -68,7 +68,7 @@ function typeIcon(type, sz = 11) {
 }
 
 const STATUT_META = {
-  prevu:        { label: "Prévu",         bg: "bg-slate-100",   text: "text-slate-600",   dot: "bg-slate-400"   },
+  prevu:        { label: "Prévu",         bg: "bg-slate-100",   text: "text-slate-400",   dot: "bg-slate-400"   },
   en_transit:   { label: "En transit",    bg: "bg-blue-50",     text: "text-blue-700",    dot: "bg-blue-500"    },
   a_quai:       { label: "À quai",        bg: "bg-amber-50",    text: "text-amber-700",   dot: "bg-amber-500"   },
   conforme:     { label: "Conforme",      bg: "bg-emerald-50",  text: "text-emerald-700", dot: "bg-emerald-500" },
@@ -97,7 +97,7 @@ function dateRelative(ds) {
 
 /* ─── Champ de formulaire stylisé (dark) ────────────────── */
 const labelCls  = "text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 block";
-const inputCls  = "w-full bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all appearance-none";
+const inputCls  = "w-full bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all appearance-none";
 
 const COULEURS_PAILLETTE = ['Rouge', 'Jaune', 'Vert', 'Bleu', 'Rose', 'Orange', 'Blanc', 'Noir'];
 
@@ -218,10 +218,10 @@ function ModalNouvelleCommande({ onClose, onAjouter }) {
             </div>
             <div>
               <p className="text-sm font-bold text-white">Nouvelle Commande Fournisseur</p>
-              <p className="text-[11px] text-slate-500 mt-0.5">Réf. <span className="font-mono text-slate-400">BC-{new Date().getFullYear()}-auto</span> · Direction Générale</p>
+              <p className="text-[11px] text-slate-300 mt-0.5">Réf. <span className="font-mono text-slate-400">BC-{new Date().getFullYear()}-auto</span> · Direction Générale</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-300 transition-colors mt-0.5">
+          <button onClick={onClose} className="text-slate-300 hover:text-slate-300 transition-colors mt-0.5">
             <X size={18} />
           </button>
         </div>
@@ -255,7 +255,7 @@ function ModalNouvelleCommande({ onClose, onAjouter }) {
                   </option>
                 ))}
               </select>
-              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
             </div>
           </div>
 
@@ -282,10 +282,10 @@ function ModalNouvelleCommande({ onClose, onAjouter }) {
                   </optgroup>
                 ))}
               </select>
-              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
             </div>
             {articleObj && (
-              <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-slate-500">
+              <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-slate-300">
                 {typeIcon(articleType, 10)}
                 <span>{articleObj.designation}</span>
               </div>
@@ -307,7 +307,7 @@ function ModalNouvelleCommande({ onClose, onAjouter }) {
                     <option key={t} value={t} className="bg-slate-800">{t}</option>
                   ))}
                 </select>
-                <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
               </div>
             </div>
           )}
@@ -329,7 +329,7 @@ function ModalNouvelleCommande({ onClose, onAjouter }) {
                 {(isSemence || isAzote) ? (
                   <div className="flex items-center gap-2 bg-slate-800/50 border border-slate-700 rounded-xl px-3 py-2.5">
                     <span className="text-sm text-slate-400">{uniteMesure}</span>
-                    <span className="ml-auto text-[10px] font-bold text-slate-500 bg-slate-700/50 px-2 py-0.5 rounded-full shrink-0">Auto</span>
+                    <span className="ml-auto text-[10px] font-bold text-slate-300 bg-slate-700/50 px-2 py-0.5 rounded-full shrink-0">Auto</span>
                   </div>
                 ) : (
                   <div className="relative">
@@ -342,7 +342,7 @@ function ModalNouvelleCommande({ onClose, onAjouter }) {
                         <option key={u} value={u} className="bg-slate-800">{u}</option>
                       ))}
                     </select>
-                    <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                    <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
                   </div>
                 )}
               </div>
@@ -397,7 +397,7 @@ function ModalNouvelleCommande({ onClose, onAjouter }) {
               {/* Lignes de la fiche */}
               <div className="divide-y divide-slate-700/50 max-h-52 overflow-y-auto">
                 {ficheTechnique.length === 0 ? (
-                  <p className="px-4 py-4 text-xs text-slate-500 text-center italic">
+                  <p className="px-4 py-4 text-xs text-slate-300 text-center italic">
                     Aucun taureau — cliquez «&nbsp;Ajouter&nbsp;» pour renseigner la cuve.
                   </p>
                 ) : ficheTechnique.map((row, i) => (
@@ -414,7 +414,7 @@ function ModalNouvelleCommande({ onClose, onAjouter }) {
                           <option key={r} value={r} className="bg-slate-800">{r}</option>
                         ))}
                       </select>
-                      <ChevronDown size={11} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                      <ChevronDown size={11} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
                     </div>
                     {/* Taureau + NNI */}
                     <div className="grid grid-cols-2 gap-2">
@@ -442,19 +442,19 @@ function ModalNouvelleCommande({ onClose, onAjouter }) {
                             <option key={c} value={c} className="bg-slate-800">{c}</option>
                           ))}
                         </select>
-                        <ChevronDown size={11} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                        <ChevronDown size={11} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
                       </div>
                       <input
                         type="number" min="1"
                         value={row.quantite}
                         onChange={e => updateFicheLigne(i, 'quantite', e.target.value)}
                         placeholder="Qté"
-                        className="w-20 shrink-0 bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all text-right font-mono"
+                        className="w-20 shrink-0 bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all text-right font-mono"
                       />
                       <button
                         type="button"
                         onClick={() => removeFicheLigne(i)}
-                        className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-500 hover:bg-red-500/20 hover:text-red-400 border border-transparent hover:border-red-500/30 transition-all shrink-0"
+                        className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-300 hover:bg-red-500/20 hover:text-red-400 border border-transparent hover:border-red-500/30 transition-all shrink-0"
                       >
                         <X size={13} />
                       </button>
@@ -469,7 +469,7 @@ function ModalNouvelleCommande({ onClose, onAjouter }) {
           <div>
             <label className={labelCls}>Lieu de stockage</label>
             <div className="flex items-center gap-2 bg-slate-800/50 border border-slate-700 rounded-xl px-3 py-2.5">
-              <Building2 size={13} className="text-slate-500 shrink-0" />
+              <Building2 size={13} className="text-slate-300 shrink-0" />
               <span className="text-sm text-slate-400">{LIEU_STOCKAGE_DEFAUT}</span>
               <span className="ml-auto text-[10px] font-bold text-emerald-500 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full shrink-0">
                 Par défaut
@@ -530,7 +530,7 @@ function ModalConformite({ bc, onClose, onSave }) {
               <ShieldCheck size={15} className="text-blue-600" />
               <p className="text-sm font-bold text-slate-800">Notation de Conformité</p>
             </div>
-            <p className="text-xs text-slate-500 font-mono">{bc.id} · {bc.fournisseur}</p>
+            <p className="text-xs text-slate-300 font-mono">{bc.id} · {bc.fournisseur}</p>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700 transition-colors mt-0.5">
             <X size={18} />
@@ -538,13 +538,13 @@ function ModalConformite({ bc, onClose, onSave }) {
         </div>
 
         <div className="px-6 py-3 bg-slate-50 border-b border-slate-100">
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Contenu du bon · BL {bc.ref_bl}</p>
+          <p className="text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-2">Contenu du bon · BL {bc.ref_bl}</p>
           <div className="space-y-1">
             {bc.articles.map((a, i) => (
               <div key={i} className="flex items-center gap-2 text-xs text-slate-700">
                 {typeIcon(a.type, 12)}
                 <span className="flex-1">{a.label}</span>
-                <span className="font-mono text-slate-500">{a.qte.toLocaleString()} {a.unite}</span>
+                <span className="font-mono text-slate-300">{a.qte.toLocaleString()} {a.unite}</span>
               </div>
             ))}
           </div>
@@ -552,22 +552,22 @@ function ModalConformite({ bc, onClose, onSave }) {
 
         <div className="px-6 py-4 space-y-4">
           <div>
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Résultat du contrôle</p>
+            <p className="text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-2">Résultat du contrôle</p>
             <div className="flex gap-2">
               <button onClick={() => setResultat("conforme")}
                 className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-xs font-bold transition-all
-                  ${resultat === "conforme" ? "bg-emerald-600 border-emerald-600 text-white" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}>
+                  ${resultat === "conforme" ? "bg-emerald-600 border-emerald-600 text-white" : "border-slate-200 text-slate-400 hover:bg-slate-50"}`}>
                 <CheckCircle size={13} /> Conforme
               </button>
               <button onClick={() => setResultat("non_conforme")}
                 className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-xs font-bold transition-all
-                  ${resultat === "non_conforme" ? "bg-red-600 border-red-600 text-white" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}>
+                  ${resultat === "non_conforme" ? "bg-red-600 border-red-600 text-white" : "border-slate-200 text-slate-400 hover:bg-slate-50"}`}>
                 <XCircle size={13} /> Non conforme
               </button>
             </div>
           </div>
           <div>
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Observations</p>
+            <p className="text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-2">Observations</p>
             <textarea value={note} onChange={e => setNote(e.target.value)}
               placeholder="Écart de quantité, anomalie, référence du litige…"
               className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-blue-400 text-slate-700 placeholder:text-slate-400"
@@ -576,7 +576,7 @@ function ModalConformite({ bc, onClose, onSave }) {
         </div>
 
         <div className="px-6 pb-5 flex gap-2">
-          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-xs font-semibold hover:bg-slate-50 transition-all">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-400 text-xs font-semibold hover:bg-slate-50 transition-all">
             Annuler
           </button>
           <button onClick={() => { onSave(bc.id, resultat, note); onClose(); }}
@@ -779,7 +779,7 @@ export default function ApprovisionnementsFournisseurs({ userRole, canManageAppr
             {row.articles.map((a, i) => (
               <div key={i} className="flex items-center gap-1.5">
                 {typeIcon(a.type, 10)}
-                <span className="text-[11px] text-slate-500 truncate">{a.label}</span>
+                <span className="text-[11px] text-slate-300 truncate">{a.label}</span>
                 <span className="text-[11px] font-mono text-slate-400 ml-auto shrink-0">{a.qte.toLocaleString()} {a.unite}</span>
               </div>
             ))}
@@ -790,7 +790,7 @@ export default function ApprovisionnementsFournisseurs({ userRole, canManageAppr
     },
     {
       key: 'demandeur', label: 'Demandeur', sortable: true,
-      render: v => <span className="text-xs text-slate-600">{v}</span>,
+      render: v => <span className="text-xs text-slate-400">{v}</span>,
     },
     {
       key: 'dateArrivee', label: 'Arrivée prévue', sortable: true,
@@ -896,7 +896,7 @@ export default function ApprovisionnementsFournisseurs({ userRole, canManageAppr
           ].map(s => (
             <div key={s.label} className="bg-white/5 rounded-xl px-3 py-2 text-center">
               <p className={`text-xl font-bold tabular-nums ${s.col}`}>{s.val}</p>
-              <p className="text-[10px] text-slate-500 mt-0.5">{s.label}</p>
+              <p className="text-[10px] text-slate-300 mt-0.5">{s.label}</p>
             </div>
           ))}
         </div>

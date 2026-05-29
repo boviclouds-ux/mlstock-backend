@@ -85,7 +85,7 @@ function OrigineBadge({ origine }) {
     </span>
   );
   return (
-    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200 whitespace-nowrap">
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-400 border border-slate-200 whitespace-nowrap">
       <User size={9} /> Demande Unité
     </span>
   );

@@ -1,0 +1,191 @@
+# ═══════════════════════════════════════════════════════════════════
+# docker-compose.yml  ·  MLStock  ·  Configuration sécurisée
+#
+# Topologie réseau :
+#   [Internet/LAN] → port 80 → [nginx] ──proxy_net──► [api:5000]
+#                                                            │
+#                                                       db_net (interne)
+#                                                            │
+#                                                      [mongo:27017]
+#
+# Règles d'isolation :
+#   • mongo   : db_net UNIQUEMENT — aucun port exposé sur l'hôte
+#   • api     : proxy_net + db_net — aucun port exposé sur l'hôte
+#   • nginx   : proxy_net — seul service exposé sur l'hôte (port 80)
+# ═══════════════════════════════════════════════════════════════════
+
+services:
+
+  # ─── 1. MongoDB ────────────────────────────────────────────────────
+  mongo:
+    image: mongo:7.0-jammy
+    container_name: mlstock_mongo
+    restart: unless-stopped
+
+    # ⚠ AUCUN port mappé sur l'hôte — accessible uniquement depuis api via db_net
+    networks:
+      - db_net
+
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE:      ${MONGO_DB_NAME}
+      # Variables pour le script d'initialisation
+      MONGO_APP_USER:             ${MONGO_APP_USER}
+      MONGO_APP_PASSWORD:         ${MONGO_APP_PASSWORD}
+
+    volumes:
+      - mongo_data:/data/db
+      - mongo_config:/data/configdb
+      # Script d'init : crée l'utilisateur applicatif avec droits minimaux
+      # ro : le conteneur ne peut pas modifier ce script
+      - ./mongo-init/init.js:/docker-entrypoint-initdb.d/00-init.js:ro
+
+    security_opt:
+      - no-new-privileges:true
+
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+      - DAC_OVERRIDE   # Requis par mongod pour ses fichiers de lock
+
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 5
+
+    deploy:
+      resources:
+        limits:
+          cpus:   "1.0"
+          memory: 1G
+        reservations:
+          memory: 256M
+
+  # ─── 2. API Node.js ────────────────────────────────────────────────
+  api:
+    build:
+      context: ./server          # Contexte = répertoire server/ uniquement
+      dockerfile: ../Dockerfile.api
+    image: mlstock_api:latest
+    container_name: mlstock_api
+    restart: unless-stopped
+
+    # ⚠ Aucun port exposé sur l'hôte — seul nginx peut l'atteindre
+    networks:
+      - proxy_net
+      - db_net
+
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+    environment:
+      NODE_ENV:     production
+      PORT:         5000
+      # L'API se connecte avec le compte applicatif (pas root)
+      MONGO_URI:    mongodb://${MONGO_APP_USER}:${MONGO_APP_PASSWORD}@mongo:27017/${MONGO_DB_NAME}
+      JWT_SECRET:   ${JWT_SECRET}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
+
+    security_opt:
+      - no-new-privileges:true
+
+    # Système de fichiers en lecture seule — les écritures ne sont
+    # possibles que dans /tmp (tmpfs en mémoire)
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+
+    cap_drop:
+      - ALL
+    # Node.js écoutant sur le port 5000 (>1024) n'a besoin d'aucune cap
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5000/api/status"]
+      interval: 30s
+      timeout: 10s
+      start_period: 25s
+      retries: 3
+
+    deploy:
+      resources:
+        limits:
+          cpus:   "0.5"
+          memory: 512M
+        reservations:
+          memory: 128M
+
+  # ─── 3. Nginx — Reverse proxy + SPA React ──────────────────────────
+  nginx:
+    build:
+      context: .                 # Contexte = racine (accès à client/ et nginx/)
+      dockerfile: Dockerfile.nginx
+    image: mlstock_nginx:latest
+    container_name: mlstock_nginx
+    restart: unless-stopped
+
+    # Seul service exposé sur l'hôte
+    ports:
+      - "80:80"
+      # Pour activer HTTPS avec un certificat :
+      # - "443:443"
+
+    networks:
+      - proxy_net    # Nginx → API uniquement (pas accès à db_net)
+
+    depends_on:
+      api:
+        condition: service_healthy
+
+    security_opt:
+      - no-new-privileges:true
+
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:size=64m
+      - /var/run:size=4m
+      - /tmp:size=16m
+
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE   # Nécessaire pour écouter sur le port 80 (< 1024)
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/api/status"]
+      interval: 30s
+      timeout:  5s
+      start_period: 15s
+      retries: 3
+
+    deploy:
+      resources:
+        limits:
+          cpus:   "0.25"
+          memory: 128M
+        reservations:
+          memory: 32M
+
+# ─── Réseaux ────────────────────────────────────────────────────────
+networks:
+  proxy_net:
+    driver: bridge
+    # internal: false (défaut) — Nginx a accès à internet pour la résolution DNS
+    # L'isolation est assurée par le fait que mongo n'est PAS sur ce réseau
+
+  db_net:
+    driver: bridge
+    internal: true   # ⚠ Aucune connexion internet — réseau purement interne
+
+# ─── Volumes ────────────────────────────────────────────────────────
+volumes:
+  mongo_data:
+    driver: local
+  mongo_config:
+    driver: local

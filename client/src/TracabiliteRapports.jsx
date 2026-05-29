@@ -335,7 +335,7 @@ export default function TracabiliteRapports() {
       render: (v, row) => (
         <div className="flex items-center gap-1.5">
           <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
-            <User size={9} className="text-slate-500" />
+            <User size={9} className="text-slate-300" />
           </div>
           <div>
             <p className="text-xs font-medium text-gray-800 whitespace-nowrap">{v}</p>

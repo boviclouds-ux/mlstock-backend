@@ -898,7 +898,7 @@ export default function MagasinierCentral({ userRole = null }) {
                       <td className="px-4 py-3.5">
                         {cmd.origine==="admin"
                           ?<span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-violet-950 text-violet-200 border border-violet-800"><Zap2 size={9} className="text-yellow-400"/>Ordre Admin</span>
-                          :<span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">Demande Unité</span>}
+                          :<span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-400 border border-slate-200">Demande Unité</span>}
                       </td>
                       <td className="px-4 py-3.5"><p className="text-xs font-semibold text-gray-800">{cmd.destinataire}</p><p className="text-[10px] text-gray-400">{cmd.region}</p></td>
                       <td className="px-4 py-3.5 max-w-[180px]">

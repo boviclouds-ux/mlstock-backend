@@ -1,0 +1,41 @@
+# ── Contexte racine (Dockerfile.nginx) ─────────────────────────────
+# GARDÉ  : client/   nginx/   (nécessaires au build)
+# EXCLU  : tout le reste
+
+server/
+backend/
+frontend/
+memory/
+mongo-init/
+
+# Dépendances locales (réinstallées dans le conteneur)
+client/node_modules/
+
+# Artefacts de build locaux
+client/dist/
+client/dist.zip
+
+# Secrets
+.env
+*.env.local
+*.env.production
+
+# Git
+.git/
+.gitignore
+
+# Logs
+*.log
+npm-debug.log*
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore

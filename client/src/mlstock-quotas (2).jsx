@@ -626,7 +626,7 @@ function NouvelleCampagneDrawer({ onClose, onCreated, coopList = [], articleMap 
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-2.5">
                                 <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 transition-colors
-                                  ${isLocked ? "bg-slate-200 text-slate-500" : "bg-blue-50 text-blue-600"}`}>
+                                  ${isLocked ? "bg-slate-200 text-slate-300" : "bg-blue-50 text-blue-600"}`}>
                                   {initials}
                                 </div>
                                 <div>
@@ -1387,7 +1387,7 @@ export default function GestionQuotas() {
           <AlertCircle size={28} className="text-red-500" />
         </div>
         <h2 className="text-sm font-bold text-slate-900 mb-1">Impossible de charger les données de quotas</h2>
-        <p className="text-xs text-slate-500 mb-5 max-w-xs leading-relaxed">{error}</p>
+        <p className="text-xs text-slate-300 mb-5 max-w-xs leading-relaxed">{error}</p>
         <button
           onClick={() => window.location.reload()}
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl transition-colors"

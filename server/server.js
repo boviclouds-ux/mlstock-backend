@@ -37,7 +37,7 @@ const corsOptions = {
 // Répond explicitement aux requêtes preflight OPTIONS avant toute autre route
 app.options('*', cors(corsOptions));
 app.use(cors(corsOptions));
-app.use(express.json());
+app.use(express.json({ limit: '100mb' })); // large limit required for backup/restore
 
 // Enregistrement explicite des modèles Mongoose
 // (nécessaire quand un modèle est référencé via ref: 'X' mais pas importé par une route)
@@ -70,6 +70,7 @@ const dashboardRoutes    = require('./routes/dashboard');
 const quotasRoutes         = require('./routes/quotas');
 const validationsRoutes    = require('./routes/validations');
 const configurationRoutes  = require('./routes/configuration');
+const backupRoutes         = require('./routes/backup');
 
 app.get('/api/status', (req, res) => {
   res.json({ status: 'ok', message: 'API MLstock opérationnelle', version: '2.0' });
@@ -89,6 +90,7 @@ app.use('/api/dashboard',    dashboardRoutes);
 app.use('/api/quotas',       quotasRoutes);
 app.use('/api',             validationsRoutes);    // /api/otp/generate · /api/ordres/:id/valider-*
 app.use('/api/configuration', configurationRoutes); // /api/configuration GET|PUT + /valorisation
+app.use('/api/backup',        backupRoutes);        // /api/backup/generate · /api/backup/restore
 
 const PORT = process.env.PORT || 5000;
 

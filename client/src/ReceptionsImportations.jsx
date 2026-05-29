@@ -73,7 +73,7 @@ function typeIcon(type, sz = 11) {
 }
 
 const STATUT_META = {
-  en_attente: { label: "En attente",         bg: "bg-slate-100",   text: "text-slate-600",   dot: "bg-slate-400"   },
+  en_attente: { label: "En attente",         bg: "bg-slate-100",   text: "text-slate-400",   dot: "bg-slate-400"   },
   en_cours:   { label: "Déchargement",       bg: "bg-blue-50",     text: "text-blue-700",    dot: "bg-blue-500"    },
   controle:   { label: "À contrôler",        bg: "bg-amber-50",    text: "text-amber-700",   dot: "bg-amber-500"   },
   en_stock:   { label: "Mis en stock",       bg: "bg-emerald-50",  text: "text-emerald-700", dot: "bg-emerald-500" },
@@ -256,7 +256,7 @@ function ModalControle({ camion, onClose, onValider }) {
                 ? <><Snowflake size={16} className="text-cyan-500 shrink-0" /><p className="text-sm font-bold text-slate-800">Conteneurs & Traçabilité Génétique</p></>
                 : <><ClipboardCheck size={16} className="text-blue-600 shrink-0" /><p className="text-sm font-bold text-slate-800">Contrôle Réception</p></>}
             </div>
-            <p className="text-xs text-slate-500 font-mono truncate">{camion.id} · {camion.origine}</p>
+            <p className="text-xs text-slate-300 font-mono truncate">{camion.id} · {camion.origine}</p>
             {/* Indicateur d'étapes (semences seulement) */}
             {hasSemence && phase !== 'litige' && (
               <div className="flex items-center gap-1.5 mt-1.5">
@@ -286,13 +286,13 @@ function ModalControle({ camion, onClose, onValider }) {
 
         {/* Récap chargement */}
         <div className="px-6 py-3 bg-slate-50 border-b border-slate-100 shrink-0">
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Articles commandés</p>
+          <p className="text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-2">Articles commandés</p>
           <div className="space-y-1">
             {camion.chargement.map((c, i) => (
               <div key={i} className="flex items-center gap-2 text-xs text-slate-700">
                 {typeIcon(c.type, 12)}
                 <span className="font-medium flex-1">{c.label}</span>
-                <span className="font-mono text-slate-500 font-semibold shrink-0">{c.qte.toLocaleString()} {c.unite}</span>
+                <span className="font-mono text-slate-300 font-semibold shrink-0">{c.qte.toLocaleString()} {c.unite}</span>
               </div>
             ))}
           </div>
@@ -305,7 +305,7 @@ function ModalControle({ camion, onClose, onValider }) {
           {phase === 'checklist' && (
             <>
               <div className="px-6 py-4 space-y-3">
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Checklist terrain</p>
+                <p className="text-[10px] font-bold text-slate-300 uppercase tracking-wider">Checklist terrain</p>
                 {visibleItems.map((item, i) => (
                   <label key={item.id} className="flex items-start gap-3 cursor-pointer group">
                     <div
@@ -315,7 +315,7 @@ function ModalControle({ camion, onClose, onValider }) {
                     >
                       {checks[i] && <CheckCircle size={10} className="text-white" strokeWidth={3} />}
                     </div>
-                    <span className={`text-xs leading-relaxed ${checks[i] ? 'text-slate-500 line-through' : 'text-slate-700'}`}>{item.label}</span>
+                    <span className={`text-xs leading-relaxed ${checks[i] ? 'text-slate-300 line-through' : 'text-slate-700'}`}>{item.label}</span>
                   </label>
                 ))}
               </div>
@@ -327,7 +327,7 @@ function ModalControle({ camion, onClose, onValider }) {
                 />
                 {showPeremption && (
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                    <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1.5">
                       Date de péremption <span className="font-normal normal-case text-slate-400">(Optionnel)</span>
                     </label>
                     <input
@@ -509,10 +509,10 @@ function ModalControle({ camion, onClose, onValider }) {
                               row.couleur === 'Bleu'   ? 'bg-blue-50 text-blue-700 border-blue-200' :
                               row.couleur === 'Vert'   ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
                               row.couleur === 'Jaune'  ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
-                              'bg-slate-100 text-slate-600 border-slate-200'}`}>
+                              'bg-slate-100 text-slate-400 border-slate-200'}`}>
                             {row.couleur}
                           </span>
-                          <span className="ml-auto font-mono text-xs text-slate-500 shrink-0">{row.quantite} doses</span>
+                          <span className="ml-auto font-mono text-xs text-slate-300 shrink-0">{row.quantite} doses</span>
                         </div>
                       ) : (
                         <div className="space-y-2">
@@ -602,7 +602,7 @@ function ModalControle({ camion, onClose, onValider }) {
                     value={qteRecue} onChange={e => setQteRecue(e.target.value)}
                     className={`${inp} text-right font-mono font-semibold ${!qteValide && qteRecue !== '' ? 'border-red-300 focus:ring-red-400' : ''}`}
                   />
-                  <span className="text-sm text-slate-500 shrink-0">{unite}</span>
+                  <span className="text-sm text-slate-300 shrink-0">{unite}</span>
                 </div>
                 {qteValide && ecart > 0 && (
                   <p className="text-xs text-amber-600 mt-1.5 flex items-center gap-1">
@@ -637,7 +637,7 @@ function ModalControle({ camion, onClose, onValider }) {
                         <p className={`text-xs font-bold ${decision === opt.val
                           ? opt.color === 'emerald' ? 'text-emerald-800' : 'text-red-800'
                           : 'text-slate-700'}`}>{opt.label}</p>
-                        <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">{opt.sub}</p>
+                        <p className="text-[11px] text-slate-300 mt-0.5 leading-relaxed">{opt.sub}</p>
                       </div>
                     </button>
                   ))}
@@ -676,7 +676,7 @@ function ModalControle({ camion, onClose, onValider }) {
           {phase === 'semences' && (
             <div className="flex gap-2">
               <button onClick={() => setPhase('checklist')}
-                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-xs font-semibold hover:bg-slate-50 transition-all shrink-0">
+                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-400 text-xs font-semibold hover:bg-slate-50 transition-all shrink-0">
                 <ChevronLeft size={13} /> Retour
               </button>
               <button onClick={confirmerSemences} disabled={!semencesOk}
@@ -689,7 +689,7 @@ function ModalControle({ camion, onClose, onValider }) {
           {phase === 'litige' && (
             <div className="flex gap-2">
               <button onClick={() => setPhase('checklist')}
-                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-xs font-semibold hover:bg-slate-50 transition-all shrink-0">
+                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-400 text-xs font-semibold hover:bg-slate-50 transition-all shrink-0">
                 <ChevronLeft size={13} /> Retour
               </button>
               <button onClick={confirmerLitige} disabled={decision === 'partiel' && !qteValide}
@@ -825,7 +825,7 @@ export default function ReceptionsImportations() {
           {(v ?? []).map((c, i) => (
             <div key={i} className="flex items-center gap-1.5">
               {typeIcon(c.type, 10)}
-              <span className="text-[11px] text-slate-500 truncate">{c.label}</span>
+              <span className="text-[11px] text-slate-300 truncate">{c.label}</span>
               <span className="text-[11px] font-mono text-slate-400 ml-auto shrink-0">{c.qte?.toLocaleString()} {c.unite}</span>
             </div>
           ))}
@@ -835,11 +835,11 @@ export default function ReceptionsImportations() {
     },
     {
       key: 'receptionnaire', label: 'Réceptionnaire', sortable: true,
-      render: v => <span className="text-xs text-slate-600">{v}</span>,
+      render: v => <span className="text-xs text-slate-400">{v}</span>,
     },
     {
       key: 'refBcFournisseur', label: 'N° BC Fournisseur',
-      render: v => <span className="text-xs font-mono text-slate-500">{v ?? '—'}</span>,
+      render: v => <span className="text-xs font-mono text-slate-300">{v ?? '—'}</span>,
     },
     {
       key: 'statut', label: 'Statut final', sortable: true,
@@ -849,7 +849,7 @@ export default function ReceptionsImportations() {
     {
       key: 'dateReception', label: 'Date réelle réception', sortable: true,
       render: v => (
-        <div className="flex items-center gap-1 text-xs text-slate-500">
+        <div className="flex items-center gap-1 text-xs text-slate-300">
           <PackageCheck size={11} className="text-emerald-500 shrink-0" />
           {v ? new Date(v).toLocaleDateString('fr-FR', { day:'2-digit', month:'short', year:'numeric' }) : '—'}
         </div>
@@ -889,7 +889,7 @@ export default function ReceptionsImportations() {
           ].map(s => (
             <div key={s.label} className="bg-white/5 rounded-xl px-3 py-2 text-center">
               <p className={`text-xl font-bold tabular-nums ${s.col}`}>{s.val}</p>
-              <p className="text-[10px] text-slate-500 mt-0.5">{s.label}</p>
+              <p className="text-[10px] text-slate-300 mt-0.5">{s.label}</p>
             </div>
           ))}
         </div>
@@ -918,7 +918,7 @@ export default function ReceptionsImportations() {
         ) : camions.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-14 text-center bg-white rounded-2xl border border-slate-100">
             <Archive size={32} className="text-slate-200 mb-3" />
-            <p className="text-sm font-semibold text-slate-600">Aucune commande en attente de réception</p>
+            <p className="text-sm font-semibold text-slate-400">Aucune commande en attente de réception</p>
             <p className="text-xs text-slate-400 mt-1">Les commandes fournisseurs au statut "Prévu" ou "En transit" apparaîtront ici.</p>
             {apiError && <p className="text-xs text-red-400 mt-2">{apiError}</p>}
           </div>
@@ -948,7 +948,7 @@ export default function ReceptionsImportations() {
                         <p className="text-sm font-bold text-slate-800 font-mono">{camion.matricule}</p>
                         <StatutBadge statut={camion.statut} />
                       </div>
-                      <p className="text-xs text-slate-500">{camion.transporteur}</p>
+                      <p className="text-xs text-slate-300">{camion.transporteur}</p>
                     </div>
                   </div>
                   <div className="text-right shrink-0">
@@ -962,11 +962,11 @@ export default function ReceptionsImportations() {
 
                 {/* Origine + Quai */}
                 <div className="flex items-center gap-4 mb-4">
-                  <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                  <div className="flex items-center gap-1.5 text-xs text-slate-300">
                     <MapPin size={11} className="text-slate-400 shrink-0" />
                     <span>{camion.origine}</span>
                   </div>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 shrink-0">
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-400 shrink-0">
                     {camion.quai}
                   </span>
                 </div>
@@ -979,7 +979,7 @@ export default function ReceptionsImportations() {
                       <div key={i} className="flex items-center gap-2">
                         {typeIcon(c.type, 12)}
                         <span className="text-xs text-slate-700 flex-1">{c.label}</span>
-                        <span className="text-xs font-mono font-semibold text-slate-600">{c.qte.toLocaleString()} {c.unite}</span>
+                        <span className="text-xs font-mono font-semibold text-slate-400">{c.qte.toLocaleString()} {c.unite}</span>
                       </div>
                     ))}
                   </div>

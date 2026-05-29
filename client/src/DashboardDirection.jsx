@@ -184,11 +184,11 @@ export default function DashboardDirection() {
             )}
           </div>
           <div>
-            <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">Stock Central Semences</p>
+            <p className="text-xs text-slate-400 dark:text-slate-300 font-medium">Stock Central Semences</p>
             <p className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums mt-0.5 leading-none">
               {stocks.semences?.toLocaleString() ?? '—'}
             </p>
-            <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">doses · Seuil alerte : {SEUILS.semences.toLocaleString()}</p>
+            <p className="text-xs text-slate-400 dark:text-slate-300 mt-0.5">doses · Seuil alerte : {SEUILS.semences.toLocaleString()}</p>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
@@ -206,11 +206,11 @@ export default function DashboardDirection() {
             )}
           </div>
           <div>
-            <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">Stock Azote National</p>
+            <p className="text-xs text-slate-400 dark:text-slate-300 font-medium">Stock Azote National</p>
             <p className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums mt-0.5 leading-none">
               {stocks.azote?.toLocaleString() ?? '—'}
             </p>
-            <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">litres · Seuil alerte : {SEUILS.azote.toLocaleString()} L</p>
+            <p className="text-xs text-slate-400 dark:text-slate-300 mt-0.5">litres · Seuil alerte : {SEUILS.azote.toLocaleString()} L</p>
           </div>
           <div className="flex items-center gap-1.5">
             {cuveEnAlerte ? (
@@ -235,18 +235,18 @@ export default function DashboardDirection() {
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-slate-500 bg-slate-100 dark:text-slate-400 dark:bg-slate-700">Mois en cours</span>
           </div>
           <div>
-            <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">Consommation Quota National</p>
+            <p className="text-xs text-slate-400 dark:text-slate-300 font-medium">Consommation Quota National</p>
             <p className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums mt-0.5 leading-none">
               {stocks.quotaPct != null ? `${stocks.quotaPct}%` : '—'}
             </p>
-            <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">alloué sur quota national</p>
+            <p className="text-xs text-slate-400 dark:text-slate-300 mt-0.5">alloué sur quota national</p>
           </div>
           {stocks.quotaPct != null ? (
             <div>
               <div className="h-1.5 rounded-full overflow-hidden bg-indigo-100 dark:bg-indigo-900/60">
                 <div className="h-full rounded-full bg-indigo-500 transition-all duration-700" style={{width:`${stocks.quotaPct}%`}} />
               </div>
-              <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">{100 - stocks.quotaPct}% de quota restant</p>
+              <p className="text-[10px] text-slate-400 dark:text-slate-300 mt-1">{100 - stocks.quotaPct}% de quota restant</p>
             </div>
           ) : (
             <p className="text-[10px] text-slate-400">Aucune donnée disponible pour le moment</p>
@@ -263,9 +263,9 @@ export default function DashboardDirection() {
             )}
           </div>
           <div>
-            <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">Alertes Critiques</p>
+            <p className="text-xs text-slate-400 dark:text-slate-300 font-medium">Alertes Critiques</p>
             <p className="text-2xl font-bold text-red-600 dark:text-red-400 tabular-nums mt-0.5 leading-none">{totalAlertes}</p>
-            <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">lots & seuils dépassés</p>
+            <p className="text-xs text-slate-400 dark:text-slate-300 mt-0.5">lots & seuils dépassés</p>
           </div>
           {lotsAlerte.length > 0 ? (
             <div className="space-y-1">
@@ -276,7 +276,7 @@ export default function DashboardDirection() {
               ))}
             </div>
           ) : (
-            <p className="text-[10px] text-slate-400 dark:text-slate-500">Aucune alerte active</p>
+            <p className="text-[10px] text-slate-400 dark:text-slate-300">Aucune alerte active</p>
           )}
         </div>
       </div>
@@ -291,12 +291,12 @@ export default function DashboardDirection() {
               <MapPin size={14} className="text-slate-400" />
               <div>
                 <h2 className="text-sm font-bold text-slate-800 dark:text-white">Consommation par Région</h2>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Semences · Mois en cours</p>
+                <p className="text-xs text-slate-400 dark:text-slate-300 mt-0.5">Semences · Mois en cours</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
               {[["bg-emerald-500","Normal"],["bg-amber-400","Alerte"],["bg-red-500","Critique"]].map(([c,l])=>(
-                <span key={l} className="flex items-center gap-1 text-[10px] text-slate-400 dark:text-slate-500">
+                <span key={l} className="flex items-center gap-1 text-[10px] text-slate-400 dark:text-slate-300">
                   <span className={`w-2 h-2 rounded-sm ${c} inline-block`}/>{l}
                 </span>
               ))}
@@ -318,7 +318,7 @@ export default function DashboardDirection() {
                     <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">{r.nom}</span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0 ml-2">
-                    <span className="text-[10px] text-slate-400 dark:text-slate-500 tabular-nums">{r.doses.toLocaleString()} doses</span>
+                    <span className="text-[10px] text-slate-400 dark:text-slate-300 tabular-nums">{r.doses.toLocaleString()} doses</span>
                     <span className={`text-xs font-bold tabular-nums w-9 text-right ${r.statut==="critique"?"text-red-600 dark:text-red-400":r.statut==="alerte"?"text-amber-600 dark:text-amber-400":"text-slate-700 dark:text-slate-200"}`}>
                       {r.pct}%
                     </span>
@@ -332,7 +332,7 @@ export default function DashboardDirection() {
           </div>
 
           <div className="px-5 py-3 border-t border-slate-100 dark:border-slate-700 flex justify-between">
-            <span className="text-xs text-slate-400 dark:text-slate-500">{regions.length} région{regions.length !== 1 ? "s" : ""} · Données J-1</span>
+            <span className="text-xs text-slate-400 dark:text-slate-300">{regions.length} région{regions.length !== 1 ? "s" : ""} · Données J-1</span>
             <span className="text-xs font-semibold text-red-500 dark:text-red-400">
               {regions.filter(r=>r.statut==="critique").length} critique · {regions.filter(r=>r.statut==="alerte").length} alerte
             </span>
@@ -346,7 +346,7 @@ export default function DashboardDirection() {
               <Activity size={14} className="text-slate-400"/>
               <div>
                 <h2 className="text-sm font-bold text-slate-800 dark:text-white">Activité Logistique en Direct</h2>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Dernières actions MLStock</p>
+                <p className="text-xs text-slate-400 dark:text-slate-300 mt-0.5">Dernières actions MLStock</p>
               </div>
             </div>
             <span className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
@@ -373,7 +373,7 @@ export default function DashboardDirection() {
                       <div className="flex-1 min-w-0 pt-0.5">
                         <div className="flex items-start justify-between gap-2">
                           <p className="text-xs font-bold text-slate-800 dark:text-slate-100">{evt.action}</p>
-                          <span className="text-[10px] text-slate-400 dark:text-slate-500 whitespace-nowrap shrink-0">{evt.delta}</span>
+                          <span className="text-[10px] text-slate-400 dark:text-slate-300 whitespace-nowrap shrink-0">{evt.delta}</span>
                         </div>
                         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                           <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">{evt.detail}</p>

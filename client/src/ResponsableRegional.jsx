@@ -22,7 +22,7 @@ function StatutBadge({ statut }) {
     );
   }
   return (
-    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border bg-slate-100 text-slate-600 border-slate-200">
+    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border bg-slate-100 text-slate-400 border-slate-200">
       {statut}
     </span>
   );
@@ -124,7 +124,7 @@ export default function ResponsableRegional() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-bold text-slate-800">Réceptions Régionales</h2>
-          <p className="text-sm text-slate-500 mt-0.5">
+          <p className="text-sm text-slate-300 mt-0.5">
             Ordres <span className="font-semibold text-amber-600">En transit</span> en attente de votre validation
           </p>
         </div>
@@ -151,7 +151,7 @@ export default function ResponsableRegional() {
       ) : ordres.length === 0 && !fetchError ? (
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-14 text-center">
           <Truck size={36} className="mx-auto text-slate-300 mb-3" />
-          <p className="text-slate-600 font-semibold">Aucun ordre en transit</p>
+          <p className="text-slate-400 font-semibold">Aucun ordre en transit</p>
           <p className="text-slate-400 text-sm mt-1">Les expéditions validées apparaîtront ici dès leur départ.</p>
         </div>
       ) : (
@@ -170,7 +170,7 @@ export default function ResponsableRegional() {
                   </div>
                   <div>
                     <p className="font-bold text-slate-800 text-sm">{ordre.reference}</p>
-                    <p className="text-xs text-slate-500 mt-0.5">
+                    <p className="text-xs text-slate-300 mt-0.5">
                       <MapPin size={10} className="inline mr-0.5" />
                       {ordre.uniteCible?.nom ?? '—'} · {ordre.lignes?.length ?? 0} article(s)
                     </p>
@@ -183,7 +183,7 @@ export default function ResponsableRegional() {
               </div>
 
               {(ordre.transporteur?.societe || ordre.blReference) && (
-                <div className="mt-3 pt-3 border-t border-slate-50 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-slate-500">
+                <div className="mt-3 pt-3 border-t border-slate-50 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-slate-300">
                   {ordre.transporteur?.societe && (
                     <span className="flex items-center gap-1">
                       <Truck size={10} className="text-slate-400" />
@@ -213,7 +213,7 @@ export default function ResponsableRegional() {
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
               <div>
                 <h3 className="font-bold text-slate-800 text-base">Validation de Réception</h3>
-                <p className="text-xs text-slate-500 mt-0.5">{selected.reference}</p>
+                <p className="text-xs text-slate-300 mt-0.5">{selected.reference}</p>
               </div>
               <button
                 onClick={closeModal}
@@ -253,7 +253,7 @@ export default function ResponsableRegional() {
                   ['Nb articles',   `${selected.lignes?.length ?? 0} ligne(s)`],
                 ].map(([label, value]) => (
                   <div key={label} className="flex justify-between gap-2">
-                    <span className="text-slate-500">{label}</span>
+                    <span className="text-slate-300">{label}</span>
                     <span className="font-semibold text-slate-800 text-right">{value}</span>
                   </div>
                 ))}
@@ -271,7 +271,7 @@ export default function ResponsableRegional() {
                       className={`w-full flex items-center gap-3 p-3.5 rounded-xl border text-left transition-all text-sm font-medium disabled:opacity-50 ${
                         checklist[item]
                           ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                          : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                          : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300 hover:bg-slate-50'
                       }`}
                     >
                       {checklist[item]
@@ -348,7 +348,7 @@ export default function ResponsableRegional() {
               <button
                 onClick={closeModal}
                 disabled={submitting}
-                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-400
                            hover:bg-slate-50 disabled:opacity-40"
               >
                 Annuler

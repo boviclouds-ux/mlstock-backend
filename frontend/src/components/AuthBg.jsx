@@ -1,3 +1,4 @@
+npm start
 export default function AuthBg() {
   return (
     <div className="absolute inset-0 overflow-hidden">
