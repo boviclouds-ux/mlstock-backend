@@ -356,10 +356,9 @@ export default function CentreValidations(){
       {drawerRec&&<ReceptionDrawer req={drawerRec} onClose={()=>setDrawerRec(null)} onDecision={handleDecision}/>}
       {showOrdre&&<NouvelOrdreModal onClose={()=>setShowOrdre(false)} onSubmit={handleNouvelOrdre}/>}
 
-      {/* Header */}
+      {/* Actions */}
       <div className="flex flex-col gap-4">
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-          <div><h1 className="text-xl font-semibold text-gray-900">Centre de Validations & Sécurité</h1><p className="text-sm text-gray-500 mt-0.5">Approbation des flux physiques et arbitrage des dérogations</p></div>
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-end gap-4">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-start gap-3 w-full sm:w-auto">
             <button onClick={()=>setShowOrdre(true)} className="flex items-center justify-center gap-2 bg-violet-700 hover:bg-violet-800 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-colors shadow-sm">
               <Zap size={14} className="text-yellow-400"/>Nouvel Ordre de Répartition

@@ -157,14 +157,9 @@ export default function DashboardDirection() {
   return (
     <div className="space-y-6">
 
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
-        <div>
-          <p className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest mb-1">MLStock · Admin Fédéral</p>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white leading-tight">Vue d'ensemble Nationale</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">{today.charAt(0).toUpperCase()+today.slice(1)}</p>
-        </div>
-        <div className="flex items-center gap-1.5 text-xs font-semibold self-start sm:self-auto
+      {/* Statut flux */}
+      <div className="flex justify-end">
+        <div className="flex items-center gap-1.5 text-xs font-semibold
           text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/40
           border border-emerald-200 dark:border-emerald-800 px-3 py-1.5 rounded-full">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />

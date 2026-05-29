@@ -97,14 +97,9 @@ export default function DashboardMagasinier() {
   return (
     <div className="space-y-6">
 
-      {/* ── En-tête ─────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
-        <div>
-          <p className="text-xs font-bold text-blue-600 uppercase tracking-widest mb-1">Hub Central · Magasinier</p>
-          <h1 className="text-2xl font-bold text-slate-900 leading-tight">Vue d'ensemble Opérationnelle</h1>
-          <p className="text-sm text-slate-300 mt-0.5">{today.charAt(0).toUpperCase() + today.slice(1)}</p>
-        </div>
-        <div className="flex items-center gap-1.5 self-start sm:self-auto text-xs font-semibold
+      {/* ── Statut Hub ───────────────────────────────────── */}
+      <div className="flex justify-end">
+        <div className="flex items-center gap-1.5 text-xs font-semibold
           text-emerald-600 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-full">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />
           Hub actif · {cuves.length} cuve{cuves.length !== 1 ? 's' : ''}

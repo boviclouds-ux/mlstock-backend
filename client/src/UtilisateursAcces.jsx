@@ -613,17 +613,7 @@ export default function UtilisateursAcces({ userRole }) {
 
       {/* En-tête dark */}
       <div className="rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 px-6 py-5 text-white shadow-lg">
-        <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <div className="w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center">
-                <Users size={16} className="text-white"/>
-              </div>
-              <p className="text-base font-bold leading-none">Utilisateurs & Accès</p>
-            </div>
-            <p className="text-xs text-slate-400 ml-10">Annuaire sécurisé · Gestion IAM · {users.length} comptes</p>
-          </div>
-
+        <div className="flex flex-wrap items-center justify-end gap-2 mb-4">
           {isAdminUser && (
             <button
               onClick={e => { e.stopPropagation(); setModalAdd(true); }}

@@ -834,22 +834,8 @@ export default function EspaceCooperative({ user }){
         </div>
       )}
 
-      {/* Header — données dynamiques issues du JWT (user.unite, user.email, user.nom) */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-xl font-bold text-gray-900">
-              Portail : <span className="text-blue-700">{user?.unite ?? 'Mon Unité'}</span>
-            </h1>
-            <span className="inline-flex items-center gap-1.5 text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block"/>Unité Active
-            </span>
-          </div>
-          <p className="text-sm text-gray-400 mt-1">
-            {user?.nom ?? user?.role ?? 'Responsable Unité'}
-            {user?.email ? <> · <span className="font-mono text-xs">{user.email}</span></> : null}
-          </p>
-        </div>
+      {/* Actions */}
+      <div className="flex justify-end">
         <button onClick={()=>setShowCommande(true)} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold px-5 py-2.5 rounded-xl transition-colors shadow-sm whitespace-nowrap">
           <Plus size={15}/>Nouvelle Demande
         </button>

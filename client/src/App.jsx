@@ -26,7 +26,6 @@ import ReseauGlobal                 from './ReseauGlobal.jsx';
 import UtilisateursAcces            from './UtilisateursAcces.jsx';
 import ConfigurationGenerale        from './ConfigurationGenerale.jsx';
 import OrdresAdmin                  from './OrdresAdmin.jsx';
-import ResponsableRegional          from './ResponsableRegional.jsx';
 
 /* ═══════════════════════════════════════════════════════════
    TRANSFORMATION API → FORMAT FRONTEND
@@ -108,7 +107,6 @@ const PAGE_TITLES = {
   '/utilisateurs':       'Utilisateurs & Accès',
   '/configuration':      'Configuration Générale',
   '/ordres-admin':       'Ordres Admin',
-  '/regional':           'Réception Régionale',
   '/profil':             'Mon Profil',
 };
 
@@ -200,9 +198,6 @@ function AppLayout({ user, onLogout }) {
             <Route path="/catalogue"    element={guard(pAdmin, <CatalogueReferentiel userRole={user?.roleKey} />)} />
             <Route path="/reseau"       element={guard(pAdmin, <ReseauGlobal userRole={user?.roleKey} />)} />
             <Route path="/utilisateurs" element={guard(pAdmin, <UtilisateursAcces userRole={user?.roleKey} />)} />
-
-            {/* ── Réception Régionale (Admin) ─────────────────────── */}
-            <Route path="/regional" element={guard(pAdmin, <ResponsableRegional />)} />
 
             {/* ── Configuration (Admin uniquement) ───────────────── */}
             <Route path="/configuration" element={guard(pAdmin, <ConfigurationGenerale userRole={user?.roleKey} />)} />

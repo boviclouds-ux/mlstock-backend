@@ -141,26 +141,19 @@ export default function Login({ onLogin }) {
         {/* ── Accès démo rapide ─────────────────────────── */}
         <div className="mt-10 pt-6 border-t border-gray-100">
           <p className="text-[10px] uppercase tracking-widest text-gray-300 mb-3">Accès démo rapide</p>
-          <div className="space-y-1.5">
-            {[
-              { email: "admin@maroclait.ma",        role: "Admin Fédéral",     dot: "bg-violet-400" },
-              { email: "magasinier@maroclait.ma",   role: "Magasinier",        dot: "bg-indigo-400" },
-              { email: "contact@taroudant-coop.ma", role: "Responsable Unité", dot: "bg-emerald-400" },
-            ].map(u => (
-              <button
-                key={u.email}
-                type="button"
-                onClick={() => { setEmail(u.email); setPassword("123456"); setError(""); }}
-                className="w-full flex items-center gap-3 px-3 py-2 rounded-xl border border-gray-100 hover:bg-gray-50 hover:border-gray-200 transition-all text-left"
-              >
-                <span className={`w-2 h-2 rounded-full ${u.dot} shrink-0`} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-[11px] font-semibold text-gray-600 leading-none">{u.role}</p>
-                  <p className="text-[10px] text-gray-400 mt-0.5 font-mono truncate">{u.email}</p>
-                </div>
-                <span className="text-[10px] text-gray-300 font-mono shrink-0">123456</span>
-              </button>
-            ))}
+          <div>
+            <button
+              type="button"
+              onClick={() => { setEmail("admin@maroclait.ma"); setPassword("123456"); setError(""); }}
+              className="w-full flex items-center gap-3 px-3 py-2 rounded-xl border border-gray-100 hover:bg-gray-50 hover:border-gray-200 transition-all text-left"
+            >
+              <span className="w-2 h-2 rounded-full bg-violet-400 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-[11px] font-semibold text-gray-600 leading-none">Admin Fédéral</p>
+                <p className="text-[10px] text-gray-400 mt-0.5 font-mono truncate">admin@maroclait.ma</p>
+              </div>
+              <span className="text-[10px] text-gray-300 font-mono shrink-0">123456</span>
+            </button>
           </div>
           <p className="text-center text-[10px] text-gray-200 mt-6">
             MLstock v1.0 · © 2026 Maroc Lait · Powered by Go Branding

@@ -577,19 +577,7 @@ export default function CatalogueReferentiel({ userRole }) {
 
       {/* En-tête dark */}
       <div className="rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 px-6 py-5 text-white shadow-lg">
-        <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <div className="w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center">
-                <Tags size={16} className="text-white" />
-              </div>
-              <p className="text-base font-bold leading-none">Catalogue & Référentiel</p>
-            </div>
-            <p className="text-xs text-slate-400 ml-10">
-              Master Data des articles · {articles.length} référence{articles.length > 1 ? "s" : ""} · {categories.length} catégorie{categories.length > 1 ? "s" : ""}
-            </p>
-          </div>
-
+        <div className="flex flex-wrap items-center justify-end gap-2 mb-4">
           {isAdmin ? (
             <div className="flex flex-wrap items-center gap-2">
               <button

@@ -3,7 +3,7 @@ import logoImg from '../assets/logo.png';
 import {
   LayoutDashboard, Package, Truck, Inbox, ClipboardList, Send,
   Scale, Zap, ShieldCheck, FileText, Tags, Network, Users, Settings,
-  User, LogOut, Shield, MapPinCheck,
+  User, LogOut, Shield,
 } from 'lucide-react';
 
 /* ─── Prédicats de permission V2 ─────────────────────────── */
@@ -37,7 +37,6 @@ const NAV_GROUPS = [
     { label: 'Gestion des Quotas',  path: '/quotas',       icon: Scale,       canSee: isAdminOnly },
     { label: 'Ordres Admin',        path: '/ordres-admin', icon: Zap,         canSee: isAdminOnly },
     { label: 'Validations & OTP',   path: '/validations',  icon: ShieldCheck, canSee: isAdminOnly },
-    { label: 'Réception Régionale', path: '/regional',     icon: MapPinCheck, canSee: isAdminOnly },
     { label: 'Traçabilité',         path: '/tracabilite',  icon: FileText,    canSee: isAdminOnly },
   ],
   // Bloc 5 : Administration (Admin uniquement)

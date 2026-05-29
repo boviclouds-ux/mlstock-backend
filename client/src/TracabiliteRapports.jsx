@@ -386,30 +386,18 @@ export default function TracabiliteRapports() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
 
-        {/* ── Header ───────────────────────────────── */}
+        {/* ── Filtres & Export ──────────────────────────── */}
         <div className="flex flex-col gap-4">
-          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2 text-xs text-gray-400 mb-1 flex-wrap">
-                <span>MLstock</span><span>/</span>
-                <span>Administration Fédérale</span><span>/</span>
-                <span className="text-blue-600 font-medium">Traçabilité & Rapports</span>
-              </div>
-              <h1 className="text-xl font-semibold text-gray-900">Tableau de Bord & État des Stocks</h1>
-              <p className="text-sm text-gray-500 mt-0.5">Vue exécutive · Stocks, consommation et audit de sécurité</p>
-            </div>
-
+          <div className="flex justify-end gap-2">
             {/* Boutons Export → ouvrent la modale */}
-            <div className="flex items-center gap-2 shrink-0">
-              <button onClick={() => setExportModal("pdf")}
-                className="flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg border bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50 transition-all">
-                <FileText size={14} /> Exporter PDF
-              </button>
-              <button onClick={() => setExportModal("excel")}
-                className="flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg border bg-white border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:border-emerald-300 transition-all">
-                <FileSpreadsheet size={14} /> Export Excel / CSV
-              </button>
-            </div>
+            <button onClick={() => setExportModal("pdf")}
+              className="flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg border bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50 transition-all">
+              <FileText size={14} /> Exporter PDF
+            </button>
+            <button onClick={() => setExportModal("excel")}
+              className="flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg border bg-white border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:border-emerald-300 transition-all">
+              <FileSpreadsheet size={14} /> Export Excel / CSV
+            </button>
           </div>
 
           {/* ── Barre de filtres avancés ─────────── */}

@@ -401,16 +401,7 @@ export default function OrdresAdmin() {
 
       {/* ── En-tête ─────────────────────────────────── */}
       <div className="rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 px-6 py-5 text-white shadow-lg">
-        <div className="flex items-start justify-between gap-4 mb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center shrink-0">
-              <Zap size={17} className="text-purple-400" />
-            </div>
-            <div>
-              <p className="text-base font-bold leading-none">Ordres Admin</p>
-              <p className="text-[11px] text-slate-400 mt-0.5">Flux push · Administration Centrale → Unités</p>
-            </div>
-          </div>
+        <div className="flex items-center justify-end gap-2 mb-4">
           <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={() => setShowProxyModal(true)}

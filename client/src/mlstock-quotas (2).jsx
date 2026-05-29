@@ -1419,15 +1419,7 @@ export default function GestionQuotas() {
 
         {/* Header */}
         <div className="flex flex-col gap-4 mb-8">
-          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2 text-xs text-gray-400 mb-1 flex-wrap">
-                <span>MLstock</span><span>/</span><span>Administration Fédérale</span><span>/</span>
-                <span className="text-blue-600 font-medium">Quotas & Subventions</span>
-              </div>
-              <h1 className="text-xl font-semibold text-gray-900">Gestion des Quotas & Subventions</h1>
-              <p className="text-sm text-gray-500 mt-0.5">Répartition des dotations par coopérative régionale</p>
-            </div>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3">
             <button onClick={() => setShowCampagne(true)}
               className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors shadow-sm sm:shrink-0 w-full sm:w-auto">
               <Plus size={15} /> Nouvelle Campagne

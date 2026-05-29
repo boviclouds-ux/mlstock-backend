@@ -863,16 +863,7 @@ export default function ReceptionsImportations() {
 
       {/* En-tête */}
       <div className="rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 px-6 py-5 text-white shadow-lg">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <div className="w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center">
-                <Archive size={16} className="text-white" />
-              </div>
-              <p className="text-base font-bold leading-none">Hub Logistique Central</p>
-            </div>
-            <p className="text-xs text-slate-400 ml-10">Maroc Lait · Magasin National · Agadir</p>
-          </div>
+        <div className="flex items-center justify-end">
           <span className="flex items-center gap-1.5 text-[11px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-3 py-1.5 rounded-full shrink-0">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" />
             Quai actif
