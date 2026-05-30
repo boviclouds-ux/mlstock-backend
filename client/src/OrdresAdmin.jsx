@@ -401,8 +401,8 @@ export default function OrdresAdmin() {
 
       {/* ── En-tête ─────────────────────────────────── */}
       <div className="rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 px-6 py-5 text-white shadow-lg">
-        <div className="flex items-center justify-end gap-2 mb-4">
-          <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center justify-end gap-2 mb-4">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setShowProxyModal(true)}
               className="flex items-center gap-2 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold shadow-lg shadow-teal-900/40 transition-all"

@@ -1399,7 +1399,7 @@ export default function GestionQuotas() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 font-sans">
+    <div className="w-full max-w-full overflow-x-hidden min-h-screen bg-gray-50 font-sans">
 
       {showCampagne && (
         <NouvelleCampagneDrawer
@@ -1415,7 +1415,7 @@ export default function GestionQuotas() {
           onSave={v => { handleSave(ajusterRow.id, v); setAjusterRow(null); }} />
       )}
 
-      <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 py-8">
 
         {/* Header */}
         <div className="flex flex-col gap-4 mb-8">
@@ -1453,7 +1453,7 @@ export default function GestionQuotas() {
 
         {/* Table card */}
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-          <div className="flex border-b border-gray-100 px-4">
+          <div className="flex overflow-x-auto overflow-y-hidden whitespace-nowrap border-b border-gray-100 px-4 pb-px [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {tabs.map(({ id, label, icon:Icon }) => {
               const isActive = activeTab === id;
               const activeClass = id === 'simulateur'
@@ -1461,7 +1461,7 @@ export default function GestionQuotas() {
                 : 'border-blue-600 text-blue-600';
               return (
                 <button key={id} onClick={() => setActiveTab(id)}
-                  className={`flex items-center gap-2 px-4 py-3.5 text-sm font-medium border-b-2 transition-colors
+                  className={`shrink-0 flex items-center gap-2 px-4 py-3.5 text-sm font-medium border-b-2 transition-colors
                     ${isActive ? activeClass : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
                   <Icon size={15} />{label}
                 </button>
@@ -1473,7 +1473,7 @@ export default function GestionQuotas() {
             <SimulateurPonderation coopList={coopList} articleMap={articleMap} />
           ) : (
             <>
-              <div className="overflow-x-auto -mx-px">
+              <div className="w-full overflow-x-auto relative">
                 <div className="min-w-[640px]">
                 <table className="w-full">
                   <thead>
@@ -1518,7 +1518,7 @@ export default function GestionQuotas() {
                 </div>
               </div>
 
-              <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between">
+              <div className="px-3 sm:px-5 py-3 border-t border-gray-100 flex flex-wrap items-center justify-between gap-2">
                 <span className="text-xs text-gray-400">{rows.length} coopérative{rows.length>1?"s":""} affichée{rows.length>1?"s":""}</span>
                 <span className="text-xs text-gray-400">
                   Total consommé : <span className="font-semibold text-gray-700">{totalConso.toLocaleString()} / {total.toLocaleString()}</span>
